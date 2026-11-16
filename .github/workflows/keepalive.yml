@@ -1,0 +1,23 @@
+# Free Supabase projects pause after 7 days without activity (DEPLOY §1). This touches the project
+# every 2 days with the same public health check the app uses, so it never goes quiet.
+name: keepalive
+on:
+  schedule:
+    - cron: '17 6 */2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call health()
+        env:
+          URL: ${{ vars.VITE_SUPABASE_URL }}
+          KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          curl -fsS --retry 3 --retry-delay 10 -X POST "$URL/rest/v1/rpc/health" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}'

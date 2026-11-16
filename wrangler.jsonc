@@ -1,0 +1,12 @@
+// The app: static assets only, served by Cloudflare Workers (DEPLOY §2). Deployed by .github/workflows/deploy.yml.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "smsm",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

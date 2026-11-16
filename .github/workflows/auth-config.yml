@@ -1,0 +1,44 @@
+# Sign-in settings live in supabase/config.toml. This workflow only runs by hand.
+#   mode=diff (default): shows exactly what a push would change on the live project. Read-only.
+#   mode=push: applies them. Only after the owner has approved the diff (DEPLOY §1).
+name: auth-config
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'diff (read-only) or push (owner approved)'
+        type: choice
+        options: [diff, push]
+        default: diff
+
+permissions:
+  contents: read
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_SMTP_USER: ${{ secrets.SUPABASE_SMTP_USER }}
+      SUPABASE_SMTP_PASS: ${{ secrets.SUPABASE_SMTP_PASS }}
+      SMSM_SITE_URL: ${{ vars.SMSM_SITE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
+      - name: Diff (read-only; emails hidden because logs are public)
+        run: set -o pipefail; npx supabase config diff 2>&1 | scripts/redact.sh
+      - name: Push
+        if: inputs.mode == 'push'
+        run: |
+          set -o pipefail
+          if grep -q '^\[auth.email.smtp\]' supabase/config.toml && { [ -z "$SUPABASE_SMTP_USER" ] || [ -z "$SUPABASE_SMTP_PASS" ]; }; then
+            echo "SMTP is configured but SUPABASE_SMTP_USER or SUPABASE_SMTP_PASS is not set as a GitHub secret. Not pushing."; exit 1
+          fi
+          npx supabase config push --yes 2>&1 | scripts/redact.sh

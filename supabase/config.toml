@@ -1,0 +1,60 @@
+# Supabase settings as code (DEPLOY §1). The CLI (v3) pushes only what this file declares; anything not
+# declared is left as it is on the live project. Auth settings are pushed by hand only, through
+# .github/workflows/auth-config.yml, after the owner has approved the diff it prints.
+# This repository is public: nothing personal goes in this file. The sender address and password come
+# from the GitHub secrets SUPABASE_SMTP_USER and SUPABASE_SMTP_PASS.
+project_id = "smsm"
+
+[auth]
+enabled = true
+# The app's address. Sign-in uses 6-digit codes, so no redirect links are needed.
+site_url = "env(SMSM_SITE_URL)"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# On until both people have joined, then off (DEPLOY §1).
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+
+[auth.rate_limit]
+email_sent = 30
+sign_in_sign_ups = 30
+token_verifications = 30
+token_refresh = 150
+
+[auth.email]
+enabled = true
+enable_confirmations = false
+double_confirm_changes = true
+secure_password_change = true
+max_frequency = "60s"
+otp_length = 6
+otp_expiry = 900
+
+# PROPOSED, waiting for the owner's choice of how sign-in codes are sent (see BUILD_LOG open questions).
+# Uncommented only after approval and once SUPABASE_SMTP_USER and SUPABASE_SMTP_PASS exist as GitHub secrets.
+# [auth.email.smtp]
+# enabled = true
+# host = "smtp.gmail.com"
+# port = 587
+# user = "env(SUPABASE_SMTP_USER)"
+# pass = "env(SUPABASE_SMTP_PASS)"
+# admin_email = "env(SUPABASE_SMTP_USER)"
+# sender_name = "smsm"
+
+# # A new person's first code and a returning person's code use the same email: the 6-digit code.
+# [auth.email.template.magic_link]
+# subject = "Your smsm code"
+# content_path = "./supabase/templates/code.html"
+
+# [auth.email.template.confirmation]
+# subject = "Your smsm code"
+# content_path = "./supabase/templates/code.html"
+
+[auth.sms]
+enabled = false
+
+[auth.mfa]
+max_enrolled_factors = 10

@@ -1,0 +1,13 @@
+// Demo build (seeded household, no backend) with the design gallery. Main deploys it; each pull request
+// uploads a preview version of it so interface changes can be checked on a phone before merging.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "smsm-demo",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": "./dist-demo",
+    "not_found_handling": "single-page-application"
+  }
+}

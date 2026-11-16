@@ -49,4 +49,12 @@
 Re-check each at the slice that uses it.
 
 ## Made during the build
-(Claude Code adds rows: date, decision, reason.)
+| Date | Decision | Reason |
+|---|---|---|
+| 2026-11-16 | **Repository is public** (owner's choice). | GitHub Actions minutes for private repos were used up; public repos have unlimited free minutes. Checked first: no secrets, keys, project ids or personal emails anywhere in the history (all commits use a no-reply identity). Consequences: Actions logs are public, so workflows never print account emails, SMTP users or any secret (no `wrangler whoami`; token checks print only "active"); the nightly backup (EXP-2) will not use this repo's artifacts but a private destination chosen in S2. |
+| 2026-11-16 | Supabase CLI pinned at 3.2.0. In v3, `config push` sends only what `config.toml` declares and leaves the rest unchanged (v2 overwrote undeclared settings with defaults); `config diff` previews without changing anything. | Read from the CLI's own `--help`. The `DEPLOY.md` §1 warning was about v2. Auth settings are still pushed only by hand (`auth-config.yml`), after the owner approves the diff. |
+| 2026-11-16 | TypeScript 6.0 (not 7). | typescript-eslint 8.73 supports TypeScript below 6.1; TS 7 (the native port) has no lint support yet. |
+| 2026-11-16 | Hardening migration: functions are no longer executable by `public`/`anon`; `health()` added for the smoke test and keep-alive. | PostgreSQL grants EXECUTE to PUBLIC by default, so the publishable key could call the RPCs; `post_due_recurring(uuid)` skipped its household check without a sign-in. Tests in `tests/sql/hardening_test.sql`. |
+| 2026-11-16 | `supabase/schema.sql` and `src/data/database.types.ts` are generated from the migrations by `npm run db:generate` (types via the CLI against a scratch PostgreSQL, no Docker needed); CI fails if either is stale. | One source of truth: the migrations. |
+| 2026-11-16 | Two Workers: `smsm` (the app) and `smsm-demo` (demo build with the gallery, plus a preview version per branch). | The gallery and previews never touch real data, and the production bundle never contains the gallery. |
+| 2026-11-16 | Secrets and variables are checked on every branch push (link, migration dry run, token status) before anything can reach main. | A wrong secret is found and named before a deploy, not during one. |
