@@ -1,4 +1,14 @@
 node_modules/
 dist/
+dist-demo/
 public/config.js
 .env*
+!.env.example
+test-results/
+playwright-report/
+reports/
+.stryker-tmp/
+supabase/.temp/
+supabase/.branches/
+coverage/
+*.tsbuildinfo

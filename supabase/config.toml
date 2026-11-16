@@ -1,0 +1,4 @@
+# Supabase settings as code (DEPLOY §1). The CLI (v3) pushes only what this file declares; anything not
+# declared is left as it is on the live project. Auth settings are pushed by hand only, through
+# .github/workflows/auth-config.yml, after the owner has approved the diff it prints.
+project_id = "smsm"

@@ -1,0 +1,73 @@
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { defineConfig, type Plugin } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { VitePWA } from 'vite-plugin-pwa';
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+
+function commitSha(): string {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  try {
+    return execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const build = { version: pkg.version, commit: commitSha(), builtAt: new Date().toISOString() };
+
+/** Writes /version.json so the smoke test (and a stale app) can compare versions with the server. */
+function versionFile(): Plugin {
+  return {
+    name: 'smsm-version-file',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify(build) + '\n' });
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => ({
+  define: {
+    __APP_VERSION__: JSON.stringify(build.version),
+    __APP_COMMIT__: JSON.stringify(build.commit),
+    __APP_DEMO__: JSON.stringify(mode === 'demo'),
+  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    versionFile(),
+    VitePWA({
+      registerType: 'prompt',
+      injectRegister: false,
+      includeAssets: ['icons/icon.svg', 'icons/favicon.svg'],
+      manifest: {
+        id: '/',
+        name: 'smsm',
+        short_name: 'smsm',
+        description: 'Shared money for two',
+        lang: 'en-GB',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#EEF0E5',
+        theme_color: '#EEF0E5',
+        icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/icon-monochrome-512.png', sizes: '512x512', type: 'image/png', purpose: 'monochrome' },
+        ],
+      },
+      workbox: {
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/version\.json$/],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
+  build: { sourcemap: true, target: 'es2023' },
+}));
