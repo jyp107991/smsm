@@ -10,6 +10,8 @@ GitHub (`jyp107991/smsm`) → GitHub Actions runs the checks → Supabase (datab
 5. Account → Access Tokens: create one for the pipeline.
 6. Note the project ref, the project URL and the anon key (Project Settings → API).
 
+Free Supabase projects can be paused after a period with no activity (check the current policy). Daily use and the nightly jobs normally prevent it; if the app ever says it can't reach the server after a long gap, un-pause the project in the dashboard. Entries made meanwhile wait on the phones and sync afterwards.
+
 The schema, migrations, storage buckets, scheduled jobs and functions are applied by the pipeline, not by hand.
 
 ## 2. Cloudflare

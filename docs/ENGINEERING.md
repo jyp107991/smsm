@@ -44,7 +44,7 @@ Rules: `src/core` imports nothing from the other folders and takes "today" as an
 2. **Core unit and property tests** (seconds): vectors plus properties: shares and paid always sum to the amount and are never negative; nets always sum to zero; swapping the two people negates the balance; adding then soft-deleting an entry leaves the balance unchanged; recurring dates from TypeScript equal the SQL function's for 500 random templates; quick-add never throws on arbitrary text.
 3. **Mutation tests on `src/core/{money,split,balance,recurring}`**: Stryker score at least 85%. This checks the tests themselves: an AI-written test that can't fail is worth nothing.
 4. **Database tests** (`npm run test:sql`): `scripts/test-sql.sh` against PostgreSQL 16 with the auth stub, as three different users. In CI the same checks also run against the real Supabase local stack.
-5. **End-to-end, two users** (Playwright, two browser contexts, against the Supabase local stack in CI; fixed clock; seeded data): setup and join; identity lock and approval; add, edit, delete, undo; settle; recurring posted by both at once; offline entries on one phone converging on both; realtime. After every scenario: the balance on screen equals `core/balance` equals `member_net`.
+5. **End-to-end, two users** (Playwright, two browser contexts, against the Supabase local stack in CI; fixed clock; seeded data): setup and join; identity lock and approval; add, edit, delete, undo; settle; recurring posted by both at once; offline entries on one phone converging on both; a full offline session (open with no network, add, edit, settle, restart the browser, reconnect); typing Korean with composition events; realtime. After every scenario: the balance on screen equals `core/balance` equals `member_net`.
 6. **Visual snapshots** of the key screens at 390×800 in both themes, plus overflow checks at 320×568 and with the keyboard open. A snapshot change must be intended and mentioned in the commit.
 7. **Accessibility**: axe on every screen in both themes; the token contrast test.
 8. **AI contract tests** in CI and the live eval by hand (`docs/AI.md` §5).
@@ -85,7 +85,7 @@ Independent slices or modules (for example the pure core modules in S1, or the a
 ## 8. Definition of done (every slice)
 - [ ] Every criterion in the brief has a passing test named with its id; `npm run trace` is clean.
 - [ ] `npm run verify` and CI are green; mutation score held where the core changed.
-- [ ] Works at 390×800 and 320 wide, both themes, offline where §3 of the spec applies; keyboard and back gesture behave.
+- [ ] Works at 390×800 and 320 wide, both themes, offline as SPEC §11.1; composing keyboards (Hangul) behave; keyboard and back gesture behave.
 - [ ] Screens compared with `DESIGN.md`; snapshots updated intentionally.
 - [ ] Fresh-review findings fixed or answered.
 - [ ] No new `any`, skipped tests, mock data on live paths, or unexplained dependencies.

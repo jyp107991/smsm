@@ -210,9 +210,37 @@ Plan:
 ## 10. Not doing
 Groups of more than two; balances in several currencies; bank linking in v1; budgets, savings goals, personal spending, incomes; moving money inside the app; maps; ads; accounts for anyone else.
 
-## 11. Quality bar
+## 11. Things that must hold everywhere
+
+### 11.1 Offline [OFF]
+Only smart features need a connection to be useful. Everything else works without one.
+- OFF-1 After the first sign-in on a phone, the app opens and is fully usable with no connection, for as long as needed. The app itself and the household's data are stored on the phone, and the browser is asked to keep that storage (`navigator.storage.persist`).
+- OFF-2 **Works offline and syncs later, in order:** add, edit, delete, undo, duplicate, money back, recording a settle-up, comments, tags and notes, categories, chapters, recurring templates, Inbox decisions, attaching a photo (the upload waits).
+- OFF-3 **Works offline from the phone's copy:** the balance, Activity with search and filters, Bills, Insights and charts, chapter pages, past recaps (and a recap computed on the phone if the month has turned), reading a CSV for import, and CSV, PDF and JSON export.
+- OFF-4 **Waits for a connection, and says so in plain words:** the very first sign-in and joining; the partner's changes arriving; recurring bills posting (a due bill shows as "Rent is due today and will post when you're back online", and is not counted until it posts); approval requests and decisions; place names and the day's exchange rate (the current country and the last rate are used, both editable); opening Monzo; notifications; smart features.
+- OFF-5 Waiting changes survive closing the app and restarting the phone, however long they wait. Home shows "3 changes waiting to sync". If the server refuses one after reconnecting, the person is told and the entry is kept for them to fix; nothing is dropped silently.
+- OFF-6 Being offline never signs anyone out: a sign-in that can't be refreshed for lack of connection stays valid on the phone and refreshes when the connection returns.
+- OFF-7 Both phones offline, both changing things, then both online: they end up identical, with the right balance.
+
+### 11.2 Text in any language [TXT]
+- TXT-1 Descriptions, notes, tags, names, and category and chapter names accept any language and script, mixed freely, with emoji.
+- TXT-2 Typing with a composing keyboard (Korean, Japanese, Chinese) works everywhere: Enter and Save never fire in the middle of composing a character, and quick add is tested with Hangul composition.
+- TXT-3 Search, learned categories and suggestions ignore case and character width and are Unicode-normalised, so 이마트 matches however it was typed, and a category learned for it is applied next time.
+- TXT-4 Quick add's command words (`me`, `yesterday`, `treat`, `for`) are English in v1; every other word, in any language, passes through as the description. Amounts accept ordinary and full-width digits. Loose wording in another language is read by the AI parse when smart features are on.
+- TXT-5 Receipts in other languages (a Japanese receipt on a trip) are scanned like any other; the place and item names are kept as printed.
+- TXT-6 Long and non-Latin text wraps and truncates correctly (by whole characters, using `Intl.Segmenter`); sorting uses `Intl.Collator`; fonts fall back to the system's for scripts the app's font lacks.
+- TXT-7 The interface itself is in English in v1. Every interface string lives in one place (`src/ui/strings.ts`) so a Korean interface can be added later without touching screens.
+
+### 11.3 Dates and the passage of time [DAT]
+- DAT-1 An entry's date is a calendar date, not a moment. An entry dated 14 November shows as 14 November on both phones, wherever each phone is.
+- DAT-2 "Today" for a new entry is the date on that phone (in Japan, Japan's date). Recurring bills post on the UK date.
+- DAT-3 Correct across month ends (31st → 28th or 29th → 31st), leap years, the turn of the year (December-to-January comparisons, year in review), and both clock changes (no missing or doubled day). Weeks start on Monday.
+- DAT-4 No code reads the clock directly; "now" is passed in. The test suite runs at fixed moments including 31 December 23:59, 29 February and the clock-change Sundays, and a property test simulates several years of a household with recurring bills and asserts none is missed or doubled.
+- DAT-5 Nothing is tied to a particular year or to a service's current version: the AI model id is a setting, dependencies are pinned, and the app keeps working with no maintenance. When an outside service changes or disappears (rates, place names, AI), the feature falls back as in OFF-4 and the rest is unaffected.
+
+## 12. Quality bar
 - Designed for a 390×800 Android phone in Chrome and as an installed app; works from 320 px; usable on a desktop.
 - Home is usable in under a second from a cold start with cached data on a mid-range phone; every tap responds at once.
-- Everything in §3 works offline.
+- Offline behaviour as §11.1.
 - WCAG AA in both themes; targets at least 44 px; screen-reader labels; reduced motion respected; system text size respected.
 - Row-level security on every table; no secrets in the repo; integer pence everywhere.
