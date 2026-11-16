@@ -29,7 +29,7 @@ Open the address in Chrome → menu → Install app. Sign in, start the househol
 ## 5. Gemini (S6)
 1. Create an API key in Google AI Studio.
 2. `supabase secrets set GEMINI_API_KEY=... GEMINI_MODEL=<current stable Flash-Lite id>` (or add them as GitHub secrets for the pipeline to set).
-3. **Billing: the owner's call.** The free tier's capacity is more than enough. Google's terms say apps offered to users in the UK must use the paid service; with billing on, usage at this scale costs pennies a month, and for UK users content is not used to improve Google's products either way. Recommended: turn billing on and set a spend cap of a pound or two.
+3. **Billing: off.** The owner has chosen the free tier (a private tool for one household). If the daily free limit ever gets in the way, turning billing on in Google AI Studio needs no code change.
 
 ## 6. Notifications (S8)
 As MacroPy `docs/DEPLOY.md` §4: generate VAPID keys, `supabase secrets set`, deploy the function, schedule it.

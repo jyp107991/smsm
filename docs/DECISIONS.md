@@ -28,7 +28,7 @@
 | P6 | **Variable recurring bills** ask for their amount in the Inbox. | Energy and water aren't the same each month. |
 | P7 | Settle-up opens **Monzo with the amount filled in** (monzo.me). Monzo's API cannot send payments. | The nearest thing to in-app payment that exists. |
 | P8 | AI is optional, behind one switch, never computes money, never saves without a tap; people are sent as A/B. | Trust in the numbers. |
-| P9 | Gemini billing on with a small cap (pennies a month). | Google's terms for UK-facing apps. Owner's call (`DEPLOY.md` §5). |
+| P9 | **Decided by the owner (16 Nov 2026): use Gemini's free tier, no billing.** | The app is a private tool for one household of two, not a product offered to UK users. Free-tier limits are per project and can be low; every smart feature already falls back gracefully when a limit is hit. Billing can be switched on later without code changes. |
 | P10 | Location is asked once and optional; positions are rounded to about 100 m; places come from a free reverse-geocoding service called from the phone. | Enough for "Kyoto"; not a tracking log. |
 | P11 | Stack: React, Tailwind, TanStack Query (changed from Preact and a hand-built sync). | Fewer bugs when an AI writes the code; no custom sync engine to debug. |
 | P12 | Deploys go through GitHub Actions so nothing ships unless every check passes; needs three secrets added once. | Quality gate. Alternative noted in `DEPLOY.md` §2. |

@@ -14,8 +14,8 @@
 - Photos are downscaled on the phone to 1280 px on the long side, JPEG, before upload.
 - Each call writes one row of counts to `ai_usage`. No prompts, images or replies are logged.
 
-### Cost and terms (owner decision, see DEPLOY §5)
-The free tier's limits are far above two people's use. Google's terms, however, say that apps made available to users in the UK must use the paid service, and that for UK users the paid-service data terms (content not used to improve Google's products) apply either way. Turning billing on with a low spend cap is the clean route; at Flash-Lite prices a receipt scan costs a fraction of a penny, so a heavy month is a few pence.
+### Cost (owner decision, see DEPLOY §5)
+The free tier is used, with no billing. Its limits are set per project by Google and can be low (reports for late 2026 range from tens to hundreds of requests a day depending on the model), so the caps in this section, the `limit` fallback and the choice of a Flash-Lite model matter: check the project's actual limits in AI Studio in S6 and set the daily caps below them.
 
 ## 3. Tasks
 
