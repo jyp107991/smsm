@@ -14,7 +14,9 @@
 
 ## Needs the owner
 - [ ] Skim the remaining proposals in `docs/DECISIONS.md` (the main ones are confirmed).
-- [ ] S0: Supabase project, Cloudflare token, GitHub secrets (`docs/DEPLOY.md` §1–3). Custom SMTP via Gmail app password and the code email template (DEPLOY §1.3). After the partner joins: turn off "Allow new users to sign up".
+- [x] Supabase project created.
+- [ ] Collect Supabase URL, publishable key, project ref, access token; Cloudflare token and account ID; add all to GitHub (`docs/DEPLOY.md` §1–3).
+- [ ] S2: approve Claude Code's proposal for how sign-in codes reach both of you.
 - [ ] S0: on the gallery, choose the logo variant and the type option; confirm the palette, including the fifth colour (read as `#D6D9C7`, partly hidden in the screenshot).
 - [ ] S2: both install; both save a monzo.me name in Settings.
 - [ ] S6: Gemini key; ten receipt photos for the eval.
