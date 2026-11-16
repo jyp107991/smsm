@@ -21,6 +21,7 @@ OUT=$(mktemp -d)
   "$PG_DUMP" -d "$DB" --schema-only --schema=public --no-owner \
     | grep -v -E '^(-- Dumped (from|by)|\\(un)?restrict |SET |SELECT pg_catalog.set_config)' \
     | grep -v -E 'ALTER COLUMN .* SET \(pg_attver=' \
+    | sed -E 's/FOR ROLE [a-z_]+ IN SCHEMA/FOR ROLE <owner> IN SCHEMA/' \
     | cat -s
 } > "$OUT/schema.sql"
 
