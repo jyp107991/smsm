@@ -4,8 +4,12 @@ GitHub (`jyp107991/smsm`) → GitHub Actions runs the checks → Supabase (datab
 
 ## 1. Supabase (a new project, separate from MacroPy's)
 1. supabase.com → New project `smsm`, region West Europe (London). Leave GitHub blank. Generate the database password and save it. Under Security: **Enable Data API** on; **Automatically expose new tables** off (the schema grants exactly what the app needs); **Enable automatic RLS** on (a second safety net; the schema turns it on for every table anyway).
-2. Auth → Providers → Email: on; "Confirm email" off. Auth → Email Templates → Magic Link: the body must contain `{{ .Token }}` (sign-in is by 6-digit code).
-3. **Email delivery to the partner.** Supabase's built-in email only reaches members of the Supabase organisation. Either invite the partner's email to the organisation, or set custom SMTP (Auth → SMTP; for example Resend's free tier). Without one of these the partner never receives a code.
+2. Authentication → Sign In / Providers: Email enabled; **Confirm email off**; Allow new users to sign up **on until both people have joined, then off**.
+3. **Custom SMTP (required).** Supabase's built-in email only reaches the organisation's members and, since 2026, its templates can't be edited without custom SMTP; the default Magic Link email contains only a link, and smsm needs the 6-digit code. Use Gmail with an app password (free, no domain needed):
+   - Google Account → Security → turn on 2-Step Verification if it isn't → App passwords → create one named `smsm` → copy the 16-character password.
+   - Supabase → Authentication → Emails → Set up SMTP: host `smtp.gmail.com`, port `465`, username = the Gmail address, password = the app password, sender email = the same Gmail address, sender name `smsm`. Save.
+   - Then Authentication → Emails → Magic link or OTP → Source: subject `Your smsm code`, body `<h2>Your smsm code</h2><p>{{ .Token }}</p>`. Save.
+   - Test: sign-in codes should arrive for both email addresses.
 4. Database → Extensions: enable `pg_cron` and `pg_net`.
 5. Account → Access Tokens: create one for the pipeline.
 6. Note the project ref, the project URL and the **publishable key** (Settings → API Keys; it starts `sb_publishable_`). Supabase is retiring the older `anon` and `service_role` keys at the end of 2026, so smsm uses the publishable key in the app and a secret key (`sb_secret_`) only inside Edge Functions.
