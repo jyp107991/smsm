@@ -4,22 +4,21 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 
 ## 2026-11-16: S0 and S1 in progress (handoff)
 **Done**
-- `docs/slices/S0.md` and `docs/slices/S1.md` (briefs, with the exact interfaces the tests are written against).
-- Repo skeleton: Vite 8, React 19, TypeScript 6 strict, Tailwind 4 on tokens, PWA (update prompt), ESLint (money rule, pure core, import boundaries), Vitest 5, Playwright 1.65, `npm run verify`, `npm run trace` (all 108 criteria deferred to their slices in `OPEN_ITEMS.md`).
-- Database: `schema.sql` is now the first migration; a second migration stops signed-out callers running database functions and adds `health()`. SQL tests: 26 checks pass, 23 forbidden actions refused. `schema.sql` and the TypeScript types are generated from the migrations; CI fails if stale.
-- Workflows: `ci` (every branch: checks; secrets dry run; preview of the demo), `deploy` (main: checks, migrations, functions, build, Cloudflare, smoke test), `keepalive` (every 2 days), `auth-config` (manual; diff by default, push only after approval).
-- GitHub Actions minutes ran out; the owner made the repo public (checked first: no secrets or personal details in history). Logs are public, so no workflow prints account details.
+- Briefs: `docs/slices/S0.md`, `S1.md`, `S2.md` (S2 drafted).
+- Repo skeleton, lint rules, trace, migrations, generated schema/types, workflows (see DECISIONS).
+- GitHub Actions minutes ran out; the owner made the repo public (history checked first). Public logs: tool output goes through `scripts/redact.sh`.
+- PR #1 (pipeline, database baseline, app shell) reviewed by a fresh agent (no blockers; 9 should-fix items fixed before merge: log redaction, deploy only from main, future functions closed to PUBLIC, SQL tests that can fail, smoke test checks content, error queue ids, SMTP not pushable until chosen, known risks recorded) and **merged; first deploy passed**: migrations applied to the live project, app and demo deployed, smoke test passed.
+  - App: https://smsm.jaexpark94.workers.dev · Demo/gallery: https://smsm-demo.jaexpark94.workers.dev/gallery
+- Auth diff (read-only, `auth-config.yml` mode diff, run 43956954065). A push of the current `config.toml` would change 4 settings: `site_url` http://localhost:3000 → the app address; `otp_length` 8 → 6; `otp_expiry` 3600 → 900 s; `secure_password_change` false → true. Not changed (not declared): TOTP MFA enroll/verify on, SMS confirmations on, pooler sizes, storage vector. With the SMTP block (still commented, waiting for the owner): custom SMTP on, sender "smsm", the code email template for both new and returning sign-ins, email rate limit 30/hour.
 
 **In progress**
-- First CI run on the branch after going public.
-- Four agents in parallel: S0 tests and S1 tests (independent writers, from the briefs only); S0 builders for the animal rig/plank/logos and for tokens/type options/primitives.
+- Four agents: S0 tests and S1 tests (independent writers); S0 builders (animal rig/plank/logos; tokens/type options/primitives).
 
 **Next**
-- Merge the agents' work; build the S1 core against its tests; gallery and demo data; merge to main so the pipeline deploys; run `auth-config` (diff only).
-- Then one message to the owner: gallery link, the Auth settings the first config push would change, and how sign-in codes should reach both people.
+- Merge agents' work; S1 core against its tests; gallery assembly and demo data; PR #2; then the owner message (gallery link, the auth changes above, sign-in email recommendation).
 
 **Open questions for the owner**
-- None right now (sign-in email delivery will be asked with the gallery).
+- (to be sent together) logo/type/fifth colour; approve the Auth changes; how sign-in codes are sent.
 
 ## 2026-11-16: owner decisions
 - Palette set to the owner's "Forest Green and Walnut" (contrast re-measured); chapters, the plank and free editing confirmed; no joint account (not built in v1); Gemini on the free tier.
