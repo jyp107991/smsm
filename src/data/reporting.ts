@@ -12,10 +12,31 @@ const sink = (): ErrorSink | null => {
   };
 };
 
-export const reporter = createErrorReporter(window.localStorage, sink);
+/** localStorage, or an in-memory stand-in when the browser blocks storage (the getter itself can throw). */
+function safeStorage(): Storage {
+  try {
+    const s = window.localStorage;
+    s.getItem('smsm.probe');
+    return s;
+  } catch {
+    const mem = new Map<string, string>();
+    return {
+      get length() { return mem.size; },
+      clear: () => { mem.clear(); },
+      getItem: (k) => mem.get(k) ?? null,
+      key: (i) => [...mem.keys()][i] ?? null,
+      removeItem: (k) => { mem.delete(k); },
+      setItem: (k, v) => { mem.set(k, v); },
+    };
+  }
+}
+
+export const reporter = createErrorReporter(safeStorage(), sink);
 
 export function installGlobalErrorReporting(): void {
   window.addEventListener('error', (e) => void reporter.report(e.error ?? e.message, location.pathname));
   window.addEventListener('unhandledrejection', (e) => void reporter.report(e.reason, location.pathname));
   window.addEventListener('online', () => void reporter.flush());
+  // Send anything queued by an earlier visit (S2 also flushes after sign-in).
+  void reporter.flush();
 }

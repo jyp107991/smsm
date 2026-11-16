@@ -11,7 +11,8 @@ psql -q -d "$DB" -v ON_ERROR_STOP=1 -f tests/sql/auth_stub.sql
 for f in supabase/migrations/*.sql; do
   psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$f" 2>&1 | { grep -v NOTICE || true; }
 done
-TESTS=(tests/sql/schema_test.sql $(ls tests/sql/*_test.sql | grep -v schema_test.sql | sort))
+TESTS=(tests/sql/schema_test.sql)
+for t in $(ls tests/sql/*_test.sql | sort); do [ "$t" = tests/sql/schema_test.sql ] || TESTS+=("$t"); done
 OUT=""
 for t in "${TESTS[@]}"; do OUT+=$(psql -q -d "$DB" -At -f "$t" 2>&1 | grep -v CONTEXT || true)$'\n'; done
 PASS=$(grep -cx 't' <<<"$OUT" || true); FAIL=$(grep -cx 'f' <<<"$OUT" || true); ERR=$(grep -c 'ERROR' <<<"$OUT" || true)

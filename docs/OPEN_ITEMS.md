@@ -22,6 +22,12 @@
 - [ ] S6: Gemini key; ten receipt photos for the eval.
 - [ ] S7: Splitwise export (if you want your history) and a Monzo CSV.
 
+## Known risks
+- **Keep-alive stops if the repo goes quiet.** GitHub disables scheduled workflows in public repos after 60 days without activity; Supabase would then pause 7 days later. S2 adds a second keep-alive that doesn't depend on GitHub (a Cloudflare Cron Trigger calling `health()`).
+- **Actions pinned by tag, not commit.** `actions/checkout@v5` etc. Pin to commit SHAs in S9 hardening.
+- **`service_role` grants.** When server-side code first writes money rows (S2 backup restore, S7 import), check it can run `check_money`'s helper and the tables it needs.
+- **`post_due_recurring` has no upper bound per call.** A template started years ago back-posts every occurrence. Decide in S3 (probably: confirm before back-posting more than a few).
+
 ## Deferred criteria
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
 - BAL-3, TXT-6, TXT-7, DAT-5: S0 (in progress): the plank component, font fallback and truncation, the strings file and pinned dependencies.

@@ -32,8 +32,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
-      - name: Diff (read-only)
-        run: npx supabase config diff
+      - name: Diff (read-only; emails hidden because logs are public)
+        run: set -o pipefail; npx supabase config diff 2>&1 | scripts/redact.sh
       - name: Push
         if: inputs.mode == 'push'
-        run: npx supabase config push --yes
+        run: |
+          set -o pipefail
+          if grep -q '^\[auth.email.smtp\]' supabase/config.toml && { [ -z "$SUPABASE_SMTP_USER" ] || [ -z "$SUPABASE_SMTP_PASS" ]; }; then
+            echo "SMTP is configured but SUPABASE_SMTP_USER or SUPABASE_SMTP_PASS is not set as a GitHub secret. Not pushing."; exit 1
+          fi
+          npx supabase config push --yes 2>&1 | scripts/redact.sh

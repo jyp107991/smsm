@@ -4,10 +4,14 @@
 -- `authenticated` but never revoked the PUBLIC default, so the publishable (anon) key could call them.
 -- Most refuse without a sign-in, but post_due_recurring(uuid) skipped its household check when
 -- auth.uid() was null (inside a security definer function current_user is the owner, so the caller's
--- role is read from the 'role' setting). From here on, functions are executable only where granted.
+-- role is read from the 'role' setting). From here on, functions are executable only where granted
+-- (tests/sql/hardening_test.sql checks every public function's privileges).
 
 revoke execute on all functions in schema public from public, anon;
-alter default privileges in schema public revoke execute on functions from public, anon;
+-- Future functions: remove the global PUBLIC default (a per-schema rule cannot), and Supabase's per-schema
+-- grant to anon. Each new function is then granted explicitly in its migration.
+alter default privileges revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon;
 
 -- Signed-in people call the RPCs; trigger functions need no grant (triggers run regardless).
 grant execute on function my_household(), create_household(), join_household(text), set_identity(text, text),

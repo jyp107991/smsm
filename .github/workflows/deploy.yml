@@ -20,6 +20,8 @@ jobs:
 
   deploy:
     needs: checks
+    # Only main ever deploys, even when started by hand.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -39,6 +41,8 @@ jobs:
       - run: npm ci
       - name: Check secrets and variables are present
         run: bash scripts/check-deploy-settings.sh
+      - name: Build
+        run: npm run build && npm run build:demo
       - name: Link Supabase project
         run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
       - name: Database migrations
@@ -52,12 +56,10 @@ jobs:
           else
             echo "No Edge Functions yet."
           fi
-      - name: Build
-        run: npm run build && npm run build:demo
       - name: Deploy the app
-        run: set -o pipefail; npx wrangler deploy 2>&1 | tee deploy-app.log
+        run: set -o pipefail; npx wrangler deploy 2>&1 | scripts/redact.sh | tee deploy-app.log
       - name: Deploy the demo and gallery
-        run: set -o pipefail; npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | tee deploy-demo.log
+        run: set -o pipefail; npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | scripts/redact.sh | tee deploy-demo.log
       - name: Smoke test
         run: |
           app=$(grep -oE 'https://smsm\.[a-z0-9-]+\.workers\.dev' deploy-app.log | head -1)

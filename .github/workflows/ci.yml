@@ -126,7 +126,7 @@ jobs:
         run: |
           set -o pipefail
           alias=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-30 | sed 's/-*$//')
-          if ! npx wrangler versions upload -c wrangler.demo.jsonc --preview-alias "$alias" --message "${GITHUB_SHA::7}" 2>&1 | tee upload.log; then
+          if ! npx wrangler versions upload -c wrangler.demo.jsonc --preview-alias "$alias" --message "${GITHUB_SHA::7}" 2>&1 | scripts/redact.sh | tee upload.log; then
             if grep -q 'does not yet exist' upload.log; then
               echo "smsm-demo has not been deployed from main yet; previews start after the first deploy." | tee -a "$GITHUB_STEP_SUMMARY"
               exit 0

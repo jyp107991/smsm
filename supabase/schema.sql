@@ -1635,6 +1635,8 @@ GRANT USAGE ON SCHEMA public TO anon;
 --
 
 REVOKE ALL ON FUNCTION public.check_money() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.check_money() TO authenticated;
+GRANT ALL ON FUNCTION public.check_money() TO service_role;
 
 --
 -- Name: FUNCTION create_household(); Type: ACL; Schema: public; Owner: -
@@ -1642,6 +1644,7 @@ REVOKE ALL ON FUNCTION public.check_money() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.create_household() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.create_household() TO authenticated;
+GRANT ALL ON FUNCTION public.create_household() TO service_role;
 
 --
 -- Name: FUNCTION decide_change(p_id uuid, p_approve boolean); Type: ACL; Schema: public; Owner: -
@@ -1649,26 +1652,32 @@ GRANT ALL ON FUNCTION public.create_household() TO authenticated;
 
 REVOKE ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) TO authenticated;
+GRANT ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) TO service_role;
 
 --
 -- Name: FUNCTION guard_household(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_household() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.guard_household() TO authenticated;
+GRANT ALL ON FUNCTION public.guard_household() TO service_role;
 
 --
 -- Name: FUNCTION guard_member_identity(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_member_identity() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.guard_member_identity() TO authenticated;
+GRANT ALL ON FUNCTION public.guard_member_identity() TO service_role;
 
 --
 -- Name: FUNCTION health(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.health() FROM PUBLIC;
-GRANT ALL ON FUNCTION public.health() TO anon;
 GRANT ALL ON FUNCTION public.health() TO authenticated;
+GRANT ALL ON FUNCTION public.health() TO service_role;
+GRANT ALL ON FUNCTION public.health() TO anon;
 
 --
 -- Name: FUNCTION join_household(p_code text); Type: ACL; Schema: public; Owner: -
@@ -1676,6 +1685,7 @@ GRANT ALL ON FUNCTION public.health() TO authenticated;
 
 REVOKE ALL ON FUNCTION public.join_household(p_code text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.join_household(p_code text) TO authenticated;
+GRANT ALL ON FUNCTION public.join_household(p_code text) TO service_role;
 
 --
 -- Name: FUNCTION jsonb_pence_sum(j jsonb); Type: ACL; Schema: public; Owner: -
@@ -1683,12 +1693,15 @@ GRANT ALL ON FUNCTION public.join_household(p_code text) TO authenticated;
 
 REVOKE ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO authenticated;
+GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO service_role;
 
 --
 -- Name: FUNCTION log_activity(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.log_activity() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.log_activity() TO authenticated;
+GRANT ALL ON FUNCTION public.log_activity() TO service_role;
 
 --
 -- Name: FUNCTION my_household(); Type: ACL; Schema: public; Owner: -
@@ -1696,6 +1709,7 @@ REVOKE ALL ON FUNCTION public.log_activity() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.my_household() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.my_household() TO authenticated;
+GRANT ALL ON FUNCTION public.my_household() TO service_role;
 
 --
 -- Name: FUNCTION post_due_recurring(p_household uuid); Type: ACL; Schema: public; Owner: -
@@ -1703,6 +1717,7 @@ GRANT ALL ON FUNCTION public.my_household() TO authenticated;
 
 REVOKE ALL ON FUNCTION public.post_due_recurring(p_household uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO authenticated;
+GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO service_role;
 
 --
 -- Name: FUNCTION request_change(p_kind text, p_payload jsonb); Type: ACL; Schema: public; Owner: -
@@ -1710,6 +1725,7 @@ GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO authenticat
 
 REVOKE ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO authenticated;
+GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO service_role;
 
 --
 -- Name: FUNCTION set_identity(p_name text, p_animal text); Type: ACL; Schema: public; Owner: -
@@ -1717,6 +1733,7 @@ GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO aut
 
 REVOKE ALL ON FUNCTION public.set_identity(p_name text, p_animal text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO authenticated;
+GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO service_role;
 
 --
 -- Name: FUNCTION set_monzo_me(p_username text); Type: ACL; Schema: public; Owner: -
@@ -1724,12 +1741,15 @@ GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO authent
 
 REVOKE ALL ON FUNCTION public.set_monzo_me(p_username text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO authenticated;
+GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO service_role;
 
 --
 -- Name: FUNCTION stamp_update(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.stamp_update() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.stamp_update() TO authenticated;
+GRANT ALL ON FUNCTION public.stamp_update() TO service_role;
 
 --
 -- Name: TABLE accounts; Type: ACL; Schema: public; Owner: -
@@ -1850,6 +1870,13 @@ GRANT SELECT ON TABLE public.recaps TO authenticated;
 --
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.recurring TO authenticated;
+
+--
+-- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: -
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE root IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE root IN SCHEMA public GRANT ALL ON FUNCTIONS TO service_role;
 
 --
 -- PostgreSQL database dump complete
