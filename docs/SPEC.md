@@ -24,7 +24,6 @@ Each feature below has short, numbered acceptance criteria (`ADD-3`, `SET-2`…)
 | Trips and one-offs | separate groups, separate balances | separate tricounts | chapters: separate totals, one balance, kept out of your "usual month" |
 | Location | no | no | country and place on every entry; trips suggest themselves |
 | Paying each other | Venmo/PayPal (US) | bunq | one tap opens Monzo with the amount filled in |
-| Joint account as payer | no | no | yes |
 | Refunds | awkward | awkward | "money back" entries |
 | Monthly summary | email of totals | no | a five-line recap, written for the two of you |
 | Ask in plain English | no | no | "how much did we spend on food in Japan?" |
@@ -43,7 +42,7 @@ The first screen answers "are we square?" and lets you add.
 - BAL-6 Before the partner joins: "Waiting for your partner" with a share-invite button; adding still works.
 
 ### 3.2 Adding [ADD]
-- ADD-1 **Quick add.** One box on Home. `42.50 tesco` and Enter saves. Grammar (any order after the amount): amount (required: `42.5`, `£42.50`, `1,200`, simple sums `12+8.50`); category word or prefix (`groc`); payer (`me`, a name, `cat`/`dog`, `joint`); split (`60/40`, `treat`, `for sam`); date (`yesterday`, `mon`, `12/11`); `#tag`; the remaining words are the description.
+- ADD-1 **Quick add.** One box on Home. `42.50 tesco` and Enter saves. Grammar (any order after the amount): amount (required: `42.5`, `£42.50`, `1,200`, simple sums `12+8.50`); category word or prefix (`groc`); payer (`me`, a name, `cat`/`dog`); split (`60/40`, `treat`, `for sam`); date (`yesterday`, `mon`, `12/11`); `#tag`; the remaining words are the description.
 - ADD-2 A live reading appears under the box as you type ("£42.50 · Tesco · Groceries · Jae paid · 50/50"); tapping it opens the full form prefilled.
 - ADD-3 Anything not typed is filled from what the household has taught the app: category and usual split for that description (3.6), payer = me, date = today, chapter and country = the current ones (4.2, 4.3).
 - ADD-4 **Full form** (a bottom sheet): amount, description (autocomplete from history), category, who paid, split, date; under "More": chapter, place, notes, tags, photo, itemise, paid in another currency, repeat.
@@ -65,7 +64,7 @@ The first screen answers "are we square?" and lets you add.
 
 - SPL-2 Defaults cascade: this description's usual split → the category's default → the household default (50/50 until both people approve another, 6.3).
 - SPL-3 Rounding: largest-remainder in pence; a leftover penny goes to the payer's own share.
-- SPL-4 **Who paid:** me, partner, or (if switched on in Settings) **joint account**. A joint payment is treated as paid by both in the joint account's funding ratio (default 50/50), so a 50/50 expense from the joint account creates no debt and a 70/30 one does.
+- SPL-4 **Who paid:** me or partner. (The owner has no joint account, so a joint-account payer is not built in v1. The data model already supports it: `paid` is a map, so it is an interface addition later, not a redesign.)
 - SPL-5 Shares and paid amounts always sum to the amount; the phone and the database both enforce it.
 
 ### 3.4 Money back [MB]
@@ -180,7 +179,7 @@ A screenshot of an order confirmation or a photo of a bill shared from another a
 - PPL-5 Identity and the household default split. A pending request shows as a banner for the partner (Approve / Decline) and as "Waiting for Sam" for the requester, who can cancel.
 
 ### 6.4 Settings
-Names and animals; default split; joint account (on/off, funding ratio); monzo.me name; settle day; home country and current country; location on/off; smart features on/off; categories; chapters; recurring; import rules; notifications; join code (until full); export and backup; history; theme; report a problem; version.
+Names and animals; default split; monzo.me name; settle day; home country and current country; location on/off; smart features on/off; categories; chapters; recurring; import rules; notifications; join code (until full); export and backup; history; theme; report a problem; version.
 
 ## 7. Notifications and the phone [NOT]
 - NOT-1 Web push, each type its own switch: a shared bill posts tomorrow (on); partner added, changed or commented, bundled at most hourly (on); recap ready or settle day (on); balance above a chosen amount for 30 days (off); an approval is waiting (always on).
@@ -203,7 +202,7 @@ What Monzo's developer API allows (checked November 2026): reading accounts incl
 Plan:
 - Each person connects their Monzo account in Settings (approved in the Monzo app). Tokens are held server-side only.
 - A webhook delivers each new transaction within seconds to the Inbox, with a notification: "Tesco £42.50. Ours?" Keep / Not ours. Rules keep or skip the obvious ones automatically. Undecided items expire after 14 days, leaving only a hash.
-- Kept transactions carry Monzo's merchant name, category, address and position, so place and category need no typing. Joint-account transactions arrive as paid from joint.
+- Kept transactions carry Monzo's merchant name, category, address and position, so place and category need no typing. 
 - A transfer between the two of you is recognised and offered as a settle-up, which closes the loop on SET-2 without the "did it go through?" question.
 - Optional: push the itemised receipt back onto the Monzo transaction.
 - v1 already contains the fields, the Inbox, the rules and the ignore-hashes this needs. v1 must not add anything that assumes typing is the only source of entries.

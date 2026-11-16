@@ -13,17 +13,18 @@
 - [ ] S9 hardening → v1.0.0
 
 ## Needs the owner
-- [ ] Read the proposals P1–P15 in `docs/DECISIONS.md`; say which to change.
+- [ ] Skim the remaining proposals in `docs/DECISIONS.md` (the main ones are confirmed).
 - [ ] S0: Supabase project, Cloudflare token, GitHub secrets (`docs/DEPLOY.md` §1–3). Partner email delivery (invite to the Supabase organisation or SMTP).
-- [ ] S0: on the gallery, choose the logo variant, the type option, and confirm or adjust the palette (the reference palette page could not be opened; paste the hex codes or a screenshot if exact colours matter).
-- [ ] S2: both install; both save a monzo.me name in Settings; say whether you use a joint account.
-- [ ] S6: Gemini key; billing decision; ten receipt photos for the eval.
+- [ ] S0: on the gallery, choose the logo variant and the type option; confirm the palette, including the fifth colour (read as `#D6D9C7`, partly hidden in the screenshot).
+- [ ] S2: both install; both save a monzo.me name in Settings.
+- [ ] S6: Gemini key; ten receipt photos for the eval.
 - [ ] S7: Splitwise export (if you want your history) and a Monzo CSV.
 
 ## Deferred criteria
 (id, reason, slice it moves to)
 
 ## Ideas (not in scope until promoted)
+- Joint account as a payer (data model ready).
 - Push the itemised receipt onto the Monzo transaction (with live Monzo).
 - A small seasonal prop for the animals.
 - App lock with fingerprint.

@@ -16,23 +16,25 @@
 | D11 | One-off things (a wedding, a holiday) can be kept apart like a separate Splitwise group, or left in everyday spending. |
 | D12 | Monzo: both people bank with Monzo. Live sync later; v1 keeps the door open. |
 | D13 | Hosting as for MacroPy: GitHub → Cloudflare, Supabase for data and sign-in; independent of Claude. Claude Code builds; the spec comes first. |
+| D14 | **Chapters** for trips and one-offs: separate totals, one shared balance, kept out of "your usual month". (Confirmed 16 Nov.) |
+| D15 | **The plank**: the cat and dog sit on a wooden plank that tilts with the balance. (Confirmed 16 Nov.) |
+| D16 | Either person can edit or delete any entry without approval; everything is logged and undoable. (Confirmed 16 Nov.) |
+| D17 | Palette: "Forest Green and Walnut" — `#3E4938`, `#57664A`, `#6F5138`, `#AA9071`, and a fifth read as `#D6D9C7` (to confirm in the gallery). |
+| D18 | No joint account. Gemini on the free tier, no billing. |
 
 ## Proposed in the spec (owner may overrule; these are the ones to read)
 | # | Proposal | Why |
 |---|---|---|
-| P1 | **Chapters** implement D11: a named trip or project with its own totals, one shared balance, and kept out of "your usual month". | Separate groups mean separate balances and settle-ups, which two people don't need. |
-| P2 | **The plank**: the animals sit on a wooden plank that tilts with the balance. | One memorable picture that says "balance" without a chart. Falls back to a level shelf if disliked. |
-| P3 | Colours were built from the brief because the reference page would not open; type and logo have three options each. All are chosen by the owner in the S0 gallery. | Decide by looking, once, before features depend on it. |
-| P4 | **Joint account** as an optional third payer. | Common for couples; nearly free to support now, awkward to add later. Off by default. |
+| P3 | Type and logo have three options each, chosen by the owner in the S0 gallery; the palette's derived steps and the fifth colour are confirmed there too. | Decide by looking, once, before features depend on it. |
+| P4 | Joint-account payer: not built in v1 (the owner has none); the data model keeps `paid` as a map so it can be added without redesign. | Cheap to keep the door open. |
 | P5 | **Money back** entries for refunds. | Otherwise refunds get entered as fake negative expenses and totals go wrong. |
 | P6 | **Variable recurring bills** ask for their amount in the Inbox. | Energy and water aren't the same each month. |
 | P7 | Settle-up opens **Monzo with the amount filled in** (monzo.me). Monzo's API cannot send payments. | The nearest thing to in-app payment that exists. |
 | P8 | AI is optional, behind one switch, never computes money, never saves without a tap; people are sent as A/B. | Trust in the numbers. |
-| P9 | **Decided by the owner (16 Nov 2026): use Gemini's free tier, no billing.** | The app is a private tool for one household of two, not a product offered to UK users. Free-tier limits are per project and can be low; every smart feature already falls back gracefully when a limit is hit. Billing can be switched on later without code changes. |
 | P10 | Location is asked once and optional; positions are rounded to about 100 m; places come from a free reverse-geocoding service called from the phone. | Enough for "Kyoto"; not a tracking log. |
 | P11 | Stack: React, Tailwind, TanStack Query (changed from Preact and a hand-built sync). | Fewer bugs when an AI writes the code; no custom sync engine to debug. |
 | P12 | Deploys go through GitHub Actions so nothing ships unless every check passes; needs three secrets added once. | Quality gate. Alternative noted in `DEPLOY.md` §2. |
-| P13 | Either person can edit or delete any entry without approval; everything is logged and undoable. Changing the household default split needs approval. | Daily use stays quick; trust comes from the history. |
+| P13 | Changing the household default split needs both people's approval. | It changes every future split. |
 | P14 | Rounding pennies go to the payer's own share. Balance sentences use names, never "you owe". | Fair and symmetrical. |
 | P15 | Dropped from earlier drafts: multi-currency accounts (replaced by the other-currency helper), a separate "conflict" screen, Preact, Nunito-only, terracotta. | Simpler, and in line with the new brief. |
 

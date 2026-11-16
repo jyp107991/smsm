@@ -2,7 +2,7 @@
 
 ## 1. The idea
 
-smsm is the ledger two people keep on the shelf at home. Not a bank, not a dashboard: something made of wood and paper, with two small animals living in it. The palette is a forest and the things built from it: leaf greens, bark and oak, lichen-coloured paper. The warmth comes from material, voice and the two animals; the modernity comes from motion, type and restraint.
+smsm is the ledger two people keep on the shelf at home. Not a bank, not a dashboard: something made of wood and paper, with two small animals living in it. The palette is the owner's "Forest Green and Walnut": deep grey-greens, walnut and wool-coloured wood, pale sage paper. The warmth comes from material, voice and the two animals; the modernity comes from motion, type and restraint.
 
 **One bold thing, everything else quiet.** The bold thing is the plank on the Home screen: the cat and the dog sit at either end of a wooden plank that tilts with the balance and comes level when you're square. It is the brand, the main figure and the only illustration that moves by itself. Lists, forms and charts around it stay plain and calm.
 
@@ -22,7 +22,7 @@ Principles:
 - ㅅ is wider than ㅁ (about 120%) so it overhangs like eaves; its two strokes have equal weight and lean together.
 - ㅁ is a square with softly rounded corners. At most one detail (a door gap in the bottom stroke); test with and without at 48 px.
 - One constant, thick stroke (about 12% of the icon's width), round caps and joins.
-- App icon: the mark in birch (`#F6F5EC`) on forest (`#2F5D3A`), inside the central 66% (maskable safe zone). Also a monochrome version for Android themed icons, and a favicon.
+- App icon: the mark in pale sage (`#EEF0E5`) on Copper Pyrite Green (`#3E4938`), inside the central 66% (maskable safe zone). Also a monochrome version for Android themed icons, and a favicon.
 - Hand-written SVG in `public/icons/`, PNGs generated from it. Three variants rendered at 48 px go in the gallery for the owner to choose (BUILD_PLAN S0).
 
 ### 2.3 The cat and the dog
@@ -62,25 +62,25 @@ No image files, no animation library files, no sprite sheets. Each animal is a f
 ## 3. Visual system
 
 ### 3.1 Colour
-Forest, wood and paper. (The owner's reference palette page could not be opened during design; these were built from the brief "natural, green, wood". The gallery in S0 is where the owner confirms or adjusts them.) Defined once as tokens in `src/styles/tokens.css`, written in OKLCH with these sRGB values as the reference, switched with `light-dark()`.
+Built on the owner's chosen palette, "Forest Green and Walnut": Copper Pyrite Green `#3E4938`, Ancient Bark `#57664A`, Dachshund `#6F5138`, Spun Wool Yarn `#AA9071`, and a fifth, pale sage `#D6D9C7` (labelled "Wine Bottle"; its code was partly hidden in the owner's screenshot and its swatch looked dark, so confirm it in the gallery; a dark bottle green is used for the night theme either way). The five are used as given; the lighter and darker steps around them are derived. Defined once as tokens in `src/styles/tokens.css`, written in OKLCH with these sRGB values as the reference, switched with `light-dark()`.
 
 | Token | Light | Dark ("the wood at night") | Use |
 |---|---|---|---|
-| `--paper` | `#F1F2EA` lichen | `#141B16` | page |
-| `--surface` | `#FBFBF6` birch | `#1D2620` | sheets, cards |
-| `--sunk` | `#E4E8DA` | `#0F1511` | inputs, chips, wells |
-| `--ink` | `#2A2118` bark | `#ECE8DA` | text |
-| `--ink-2` | `#655A4D` driftwood | `#A9A694` | secondary text |
-| `--line` | `#D9DCCB` | `#2F3A31` | rules |
-| `--forest` | `#2F5D3A` | `#8FC49A` | primary actions, links, focus, selected |
-| `--on-forest` | `#F6F5EC` | `#10210F` | text on forest |
-| `--moss` | `#587A3C` | `#A9C48A` | "all square", positive, fills (large text and shapes only in light) |
-| `--walnut` | `#6B4A33` | `#9C7350` | the plank, wood edges, chapter spines |
-| `--oak` | `#B88A58` | `#D0A676` | lighter wood, the dog, highlights |
-| `--honey` | `#8F5E12` | `#E2B25C` | amounts owed (owing is normal, so never red) |
-| `--berry` | `#A3423A` | `#EE8A7E` | destructive actions only |
+| `--paper` | `#EEF0E5` (a tint of the pale sage) | `#1D221A` bottle green | page |
+| `--surface` | `#FAFAF5` | `#272D23` | sheets, cards |
+| `--sunk` | `#D6D9C7` **pale sage** | `#161A14` | inputs, chips, wells, rules on surface |
+| `--ink` | `#2B2118` (a deep shade of Dachshund) | `#E9EADC` | text |
+| `--ink-2` | `#5E5446` | `#AFB19F` | secondary text |
+| `--line` | `#D6D9C7` | `#3A4234` | rules |
+| `--forest` | `#3E4938` **Copper Pyrite Green** | `#C3CFAE` | primary actions, focus, selected, the app icon |
+| `--on-forest` | `#F4F5EC` | `#1D221A` | text on forest |
+| `--moss` | `#57664A` **Ancient Bark** | `#A3B58D` | "all square", positive, secondary fills |
+| `--walnut` | `#6F5138` **Dachshund** | `#A8825F` | the plank, wood edges, chapter spines |
+| `--oak` | `#AA9071` **Spun Wool Yarn** | `#C9AE8C` | lighter wood, the dog's coat, highlights (shapes only in light, never text) |
+| `--honey` | `#85602A` (a deeper Spun Wool) | `#DDB978` | amounts owed (owing is normal, so never red) |
+| `--berry` | `#9C4338` | `#E79283` | destructive actions only |
 
-Measured contrast (WCAG): ink on paper 14.0, ink-2 5.9, forest 6.8, honey 4.9, berry 5.5, on-forest on forest 7.0; dark theme all above 6.3 for text. Honey text is not placed on `--sunk` in light (4.46). An automated test checks every pair that is used.
+Measured contrast on paper (WCAG), light: ink 13.7, ink-2 6.4, forest 8.2, moss 5.4, walnut 6.3, honey 4.9, berry 5.6, on-forest on forest 8.6. Dark: every text colour is above 6.8 on paper. In light, honey, moss and berry are not used as text on `--sunk` (below 4.5), and oak is never text. An automated test checks every pair that is used.
 
 **Category colours** are twelve muted natural hues named as tokens (`moss, amber, walnut, honey, slate, plum, oak, berry, lake, clay, fern, stone`), each with a light and dark value chosen to be distinguishable from its neighbours (checked for colour-blind confusion in the gallery). They appear only as small dots and chart fills. Charts never rely on colour alone: bars carry labels.
 
@@ -149,7 +149,7 @@ Four tabs along the bottom: **Home · Activity · Bills · Insights**. Settings 
 - The chapter and country chips appear beside the quick-add box only when not everyday/home ("Japan 🗾").
 
 ### 4.2 Add / edit (bottom sheet, full height)
-Amount first and largest, numeric keypad open at once; description with suggestions; category chips (most likely first, guess marked with a small dot); who paid (two heads, plus a joint-account chip if enabled); split (segmented: Split · Exact · For Sam · My treat; the ratio control appears under Split); date (Today, Yesterday, picker). "More" expands: chapter, place, notes, tags, photo, itemise, other currency, repeat. Save stays above the keyboard. The system back gesture closes the sheet (it has its own history entry) and asks before discarding typed changes.
+Amount first and largest, numeric keypad open at once; description with suggestions; category chips (most likely first, guess marked with a small dot); who paid (two heads); split (segmented: Split · Exact · For Sam · My treat; the ratio control appears under Split); date (Today, Yesterday, picker). "More" expands: chapter, place, notes, tags, photo, itemise, other currency, repeat. Save stays above the keyboard. The system back gesture closes the sheet (it has its own history entry) and asks before discarding typed changes.
 
 ### 4.3 Entry page
 Amount and description as the heading; then who paid and the split in words ("Jae paid. Jae £21.25, Sam £21.25"); category, date, chapter, place; photo; lines if itemised; original currency if any; comments; history. Actions: Edit, Duplicate, Refund this, Delete.
@@ -198,4 +198,4 @@ From 900 px wide: a two-pane layout (list left, detail or form right), tabs as a
 - Lists of thousands of rows stay smooth (`content-visibility` or virtualisation).
 
 ## 7. What to show the owner before building features
-The S0 gallery, deployed, viewed on a phone: the three logo variants at icon size; the three type options on the real Home screen; the palette in both themes; the plank at five balances; both animals in every mood and pose with motion; an entry row, the add sheet and a recap card with realistic data. The owner picks and comments once; the choices are recorded in `docs/DECISIONS.md` and only then does feature work rely on them.
+The S0 gallery, deployed, viewed on a phone: the three logo variants at icon size; the three type options on the real Home screen; the palette in both themes (including the fifth colour to confirm); the plank at five balances; both animals in every mood and pose with motion; an entry row, the add sheet and a recap card with realistic data. The owner picks and comments once; the choices are recorded in `docs/DECISIONS.md` and only then does feature work rely on them.

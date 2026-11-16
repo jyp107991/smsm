@@ -16,7 +16,7 @@ Owner checkpoints are marked ★. Nothing else needs the owner.
 - ★ Owner: one-time accounts and secrets (`DEPLOY.md` §1–3); then look at the gallery on a phone and choose logo, type and any colour changes.
 
 ## S1: the money core
-Pure `src/core`: money, split (all modes, joint payer), balance, dates, recurring dates, quick-add grammar, categorise (memory + seed list), filters. Vectors, property tests, mutation score ≥ 85%. No screens. Can run in parallel with S0's interface work.
+Pure `src/core`: money, split (all modes; `paid` as a map so a joint payer can be added later), balance, dates, recurring dates, quick-add grammar, categorise (memory + seed list), filters. Vectors, property tests, mutation score ≥ 85%. No screens. Can run in parallel with S0's interface work.
 
 ## S2: the daily loop → **first real use**
 - Sign-in by emailed code; start or join; name and animal; identity lock; approvals.
@@ -30,7 +30,7 @@ Pure `src/core`: money, split (all modes, joint payer), balance, dates, recurrin
 - ★ Owner and partner install it and start using it. From here, a short "what annoyed us this week" note from the owner goes into `OPEN_ITEMS.md` and is triaged at the start of each slice.
 
 ## S3: recurring, bills, inbox
-Templates (fixed and "amount varies"), database posting and the nightly job, suggestions to make something recurring, price-change history; Bills tab (month, upcoming, subscriptions, what home costs); the Inbox with variable bills; categories editor and learned defaults; joint account as a payer; default-split approval.
+Templates (fixed and "amount varies"), database posting and the nightly job, suggestions to make something recurring, price-change history; Bills tab (month, upcoming, subscriptions, what home costs); the Inbox with variable bills; categories editor and learned defaults; default-split approval.
 
 ## S4: chapters and places
 Chapters (create, current chapter, page, close); country on entries, current country, location permission and place capture, trip suggestions and "welcome home"; other-currency helper; filters by chapter, country, place. Everyday-versus-chapter rule in all figures.

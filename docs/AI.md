@@ -34,7 +34,7 @@ Output schema:
 Guards in code: amounts are non-negative integers; the date is not in the future and within two years; if `items` are present and `sum(items) − discount_pence + service_pence` differs from `total_pence`, the form shows both figures and asks the person to set the amount (SCAN-3); when lines are unticked, discount and service are shared out in proportion; a non-GBP currency switches the form to "paid in another currency" (PLC-6); `low` confidence fills nothing but the photo.
 
 ### 3.2 `parse`: loose wording → form
-Used only when the rule-based quick-add grammar can't read the text with confidence. Input: the text, category names, the two labels A/B and which is the speaker, today's date, current chapter names. Output: the same fields the grammar produces (`amount_pence`, `description`, `category`, `payer: A|B|joint`, `split: {mode, ratio?}`, `date`, `tags`, `chapter`), each nullable. The form opens prefilled; nothing saves by itself.
+Used only when the rule-based quick-add grammar can't read the text with confidence. Input: the text, category names, the two labels A/B and which is the speaker, today's date, current chapter names. Output: the same fields the grammar produces (`amount_pence`, `description`, `category`, `payer: A|B`, `split: {mode, ratio?}`, `date`, `tags`, `chapter`), each nullable. The form opens prefilled; nothing saves by itself.
 
 ### 3.3 `categorise`: description → category
 Called after a save, only when steps 1–3 of CAT-2 found nothing. Input: the description and the category names. Output: `{category: name|null}`. If the person has not changed the category in the meantime, the entry's category is updated and marked as a guess; the result is stored in `category_memory` with `source = 'ai'` so the same description never costs a second call. A person's later choice overwrites it.
@@ -47,7 +47,7 @@ Guard: every number in the output must appear in the input (compared after norma
 Input: the question, category names, chapter names, the list of countries present in the data, today's date. Output, from a closed schema:
 ```
 { measure: "total"|"count"|"average"|"largest",
-  filters: { categories?: [name], chapters?: [name], countries?: [ISO2], payer?: "A"|"B"|"joint",
+  filters: { categories?: [name], chapters?: [name], countries?: [ISO2], payer?: "A"|"B",
              from?: date, to?: date, text?: string, tags?: [string], mode?: [split modes] },
   group_by?: "category"|"month"|"country"|"payer"|"chapter" }
 ```
