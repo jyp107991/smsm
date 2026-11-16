@@ -44,6 +44,7 @@
 - Gemini API: Flash and Flash-Lite models have a free tier with daily limits that vary by project; UK-facing apps are required to use paid services; UK users get paid-service data terms either way.
 - Android Chrome installed apps support manifest shortcuts, share target, push and icon badges.
 - BigDataCloud offers a free, keyless reverse-geocoding endpoint for calls made from the user's device.
+- Supabase: the `anon` and `service_role` keys are being retired at the end of 2026; use the publishable key in the app and secret keys on the server.
 Re-check each at the slice that uses it.
 
 ## Made during the build

@@ -8,7 +8,7 @@ GitHub (`jyp107991/smsm`) → GitHub Actions runs the checks → Supabase (datab
 3. **Email delivery to the partner.** Supabase's built-in email only reaches members of the Supabase organisation. Either invite the partner's email to the organisation, or set custom SMTP (Auth → SMTP; for example Resend's free tier). Without one of these the partner never receives a code.
 4. Database → Extensions: enable `pg_cron` and `pg_net`.
 5. Account → Access Tokens: create one for the pipeline.
-6. Note the project ref, the project URL and the anon key (Project Settings → API).
+6. Note the project ref, the project URL and the **publishable key** (Settings → API Keys; it starts `sb_publishable_`). Supabase is retiring the older `anon` and `service_role` keys at the end of 2026, so smsm uses the publishable key in the app and a secret key (`sb_secret_`) only inside Edge Functions.
 
 Free Supabase projects can be paused after a period with no activity (check the current policy). Daily use and the nightly jobs normally prevent it; if the app ever says it can't reach the server after a long gap, un-pause the project in the dashboard. Entries made meanwhile wait on the phones and sync afterwards.
 
@@ -22,8 +22,8 @@ The schema, migrations, storage buckets, scheduled jobs and functions are applie
 
 ## 3. GitHub repository secrets and variables
 Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `CLOUDFLARE_API_TOKEN`.
-Variables: `SUPABASE_PROJECT_REF`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, later `VITE_VAPID_PUBLIC_KEY`.
-No secret is ever committed. The Supabase URL and anon key are safe in the app; everything else lives only in GitHub secrets or Supabase secrets.
+Variables: `SUPABASE_PROJECT_REF`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, later `VITE_VAPID_PUBLIC_KEY`.
+No secret is ever committed. The Supabase URL and publishable key are safe in the app; everything else lives only in GitHub secrets or Supabase secrets.
 
 ## 4. Phones
 Open the address in Chrome → menu → Install app. Sign in, start the household, share the join code.
@@ -31,10 +31,11 @@ Open the address in Chrome → menu → Install app. Sign in, start the househol
 ## 5. Gemini (S6)
 1. Create an API key in Google AI Studio.
 2. `supabase secrets set GEMINI_API_KEY=... GEMINI_MODEL=<current stable Flash-Lite id>` (or add them as GitHub secrets for the pipeline to set).
-3. **Billing: off.** The owner has chosen the free tier (a private tool for one household). If the daily free limit ever gets in the way, turning billing on in Google AI Studio needs no code change.
+3. (Or add `GEMINI_API_KEY` as a GitHub secret now; the pipeline sets it in Supabase when S6 arrives.)
+4. **Billing: off.** The owner has chosen the free tier (a private tool for one household). If the daily free limit ever gets in the way, turning billing on in Google AI Studio needs no code change.
 
 ## 6. Notifications (S8)
 As MacroPy `docs/DEPLOY.md` §4: generate VAPID keys, `supabase secrets set`, deploy the function, schedule it.
 
 ## 7. Optional: let Claude Code see production health
-Give the Claude Code environment a read-only database connection string (or the service-role key) as an environment secret so it can read `client_errors` and `ai_usage` at the start of each session. Never commit it.
+Give the Claude Code environment a read-only database connection string (or a Supabase secret key) as an environment secret so it can read `client_errors` and `ai_usage` at the start of each session. Never commit it.
