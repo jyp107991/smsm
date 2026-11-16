@@ -1,54 +1,59 @@
-# smsm: build plan
+# smsm: build plan (v2)
 
-Work through the milestones in order. Each ends with: tests green, a commit and push to `main`, and an entry in `docs/BUILD_LOG.md` (what was built, what was tested, what failed, what's next). Tick `docs/OPEN_ITEMS.md` as you go.
+Ten slices. Each ends deployed, with the app better and still fully working. The owner and partner start using it for real at the end of **S2**; everything after that is added to an app already in daily use, which is the fastest way to find what matters. Each slice follows the protocol in `docs/ENGINEERING.md` §5 and its definition of done (§8).
 
-## M0: skeleton and pipeline
-- Vite + TypeScript + Preact PWA (`vite-plugin-pwa`, Workbox), Node 22 (`.node-version`), strict TS.
-- `wrangler.jsonc` for Cloudflare Workers static assets with a single-page fallback, and `public/_headers` (no-cache for `sw.js` and `index.html`, security headers), the same as MacroPy (`jyp107991/macropy`: `wrangler.jsonc`, `public/_headers`, `docs/DEPLOY.md`).
-- Vitest and Playwright wired up; GitHub Actions CI: typecheck, unit, SQL tests (PostgreSQL service container running `tests/sql/`), build, e2e.
-- Design tokens (`src/styles/tokens.css`), Nunito, both themes, the tab bar and empty screens.
-- Logo: 3 SVG variants of ㅅ over ㅁ (DESIGN §2.2), rendered at 48 px into `docs/logo/`; pick one and record it in `docs/DECISIONS.md`. Generate icons and the manifest.
-- Cat and dog avatars with four expressions each (DESIGN §2.3), plus a gallery page (`/dev/avatars`, dev builds only) for review.
-- **Done when:** the empty app installs on a phone from the Cloudflare URL and works offline.
+Owner checkpoints are marked ★. Nothing else needs the owner.
 
-## M1: money core (pure TypeScript, no UI)
-- `money.ts` (parse and format), `split.ts` (ratio, exact, for_other, treat, with largest-remainder rounding), `balance.ts`, `recurring.ts` (occurrence dates, matching the SQL), `quickadd.ts` (SPEC §3.1 grammar), `analytics.ts` (DATA_MODEL §5), `itemise.ts`, `fx.ts`.
-- Unit tests, including property tests (fast-check): shares always sum to the amount, never negative; balance is antisymmetric (swap people → negated balance); recurring dates match the SQL function's dates for 500 random templates.
-- Quick-add: at least 60 example phrases with expected readings, in `tests/vectors/quickadd.json`.
-- **Done when:** coverage ≥ 95% on `src/lib/`.
+## S0: the pipeline and the look
+- Repo skeleton (ENGINEERING §3), strict TypeScript, lint rules, Vitest, Playwright, `npm run verify`, `npm run trace`.
+- CI and deploy pipeline end to end: checks → migrations → functions → Cloudflare; preview builds; smoke test. Deploy an empty installable app.
+- Supabase project connected; `schema.sql` applied through the pipeline; generated types.
+- Design tokens, both themes, the paper grain; primitives (button, field, chip, sheet, toast, tabs).
+- The avatar rig: both animals, all moods and poses, motion. The plank at any balance.
+- Demo mode with the seeded 18-month household.
+- **The gallery** (DESIGN §7), deployed.
+- Error reporting to `client_errors`; version and build shown; update prompt.
+- ★ Owner: one-time accounts and secrets (`DEPLOY.md` §1–3); then look at the gallery on a phone and choose logo, type and any colour changes.
 
-## M2: backend, sign-in, setup
-- Supabase project; `supabase/schema.sql` applied; `household_balance` view plus `updated_at` on every synced table as migrations; SQL tests extended.
-- Email one-time-code sign-in (as in MacroPy). Start or join a household, pick name and animal, locked identity, change requests with an approval banner.
-- **Done when:** two test accounts can create, join, pick animals and approve a change, end to end against a real Supabase project.
+## S1: the money core
+Pure `src/core`: money, split (all modes, joint payer), balance, dates, recurring dates, quick-add grammar, categorise (memory + seed list), filters. Vectors, property tests, mutation score ≥ 85%. No screens. Can run in parallel with S0's interface work.
 
-## M3: local-first sync
-- IndexedDB store, outbox with retries, pull by `updated_at`, Realtime subscription, conflict notice, offline indicator (DATA_MODEL §6).
-- **Done when:** e2e passes for: two browsers, one goes offline, both edit, reconnect, and both converge with the right balance.
+## S2: the daily loop → **first real use**
+- Sign-in by emailed code; start or join; name and animal; identity lock; approvals.
+- Home: the plank, the sentence, whose turn; quick add with live reading; recent.
+- Add/edit sheet (amount, description, category, payer, split, date, notes); entry page with history; undo; duplicate; money back.
+- Activity with search and basic filters.
+- Settle up, with the Monzo handoff and the all-square moment.
+- Persisted cache, optimistic writes, offline queue, realtime, stale-app check.
+- Full JSON backup download and the nightly backup (so real data is safe from the first day).
+- Two-user end-to-end suite.
+- ★ Owner and partner install it and start using it. From here, a short "what annoyed us this week" note from the owner goes into `OPEN_ITEMS.md` and is triaged at the start of each slice.
 
-## M4: the daily loop
-- Home (balance card with avatar states, quick add with live preview, this month, recent).
-- Add/edit sheet, expense detail with history, duplicate, soft delete with undo.
-- Activity list with search and filters. Settle up, with the hop animation.
-- **Done when:** the whole daily loop works at 390×800 in both themes, offline and online.
+## S3: recurring, bills, inbox
+Templates (fixed and "amount varies"), database posting and the nightly job, suggestions to make something recurring, price-change history; Bills tab (month, upcoming, subscriptions, what home costs); the Inbox with variable bills; categories editor and learned defaults; joint account as a payer; default-split approval.
 
-## M5: recurring and extras
-- Recurring templates (create from the add sheet via "Repeat", edit, pause, end); `post_due_recurring` on open; pg_cron job.
-- Bills tab: This month, Upcoming, Subscriptions.
-- Categories editor, category default ratios, the household default ratio via approval.
-- Tags, notes, receipt photo (compression, private bucket, storage policies), itemised bills, foreign currency.
+## S4: chapters and places
+Chapters (create, current chapter, page, close); country on entries, current country, location permission and place capture, trip suggestions and "welcome home"; other-currency helper; filters by chapter, country, place. Everyday-versus-chapter rule in all figures.
 
-## M6: insights
-- Insights tab: overview, by category, trend, who paid, fairness, insight cards, year in review. Every figure with its ⓘ definition.
+## S5: insights and the recap
+Month-so-far on Home; Insights tab and charts; notes; fairness; standing-order hint; the monthly recap with template wording; settle day; year in review; on this day; comments.
 
-## M7: import and export
-- CSV import (Monzo plus generic with mapping), inbox, rules, hashed ignores. Check the Monzo column names against a real export and record them.
-- Export: CSV, monthly PDF statement, full JSON backup.
+## S6: smart features
+The `ai` function with caps and guards; scan and itemise; loose-wording parse; category guesses; recap wording; Ask smsm; photo attachments and the receipts bucket; share target and app shortcuts. Contract tests in CI; the live eval run and logged.
+- ★ Owner: add the Gemini key (`DEPLOY.md` §5) and drop ten receipt photos into the eval folder.
 
-## M8: notifications
-- Web push: subscriptions, prefs, Edge Function on cron (port from MacroPy's `remind`), the four notification types (SPEC §4.5).
+## S7: import and export
+Splitwise import with the balance cross-check; Monzo CSV and generic CSV through the Inbox with rules and hashed ignores; CSV export; PDF statement; restore from backup.
+- ★ Owner: a Splitwise export (if history is wanted) and a real Monzo CSV to confirm the columns.
 
-## M9: release QA
-- Full `docs/QA.md` pass, an independent review, fixes, and a version tag `v1.0.0`.
+## S8: notifications
+Push subscriptions and preferences; the Edge Function on a schedule; the five notification types; deep links; icon badge.
 
-**Later (not v1):** live Monzo sync (SPEC §5).
+## S9: hardening → v1.0
+Release QA (ENGINEERING §9); performance pass on a mid-range phone profile; larger-screen layout; fix everything found; tag `v1.0.0`.
+
+## Later
+Monzo, live (SPEC §9).
+
+## Order and cutting
+The order is by value and by risk: money first, then the loop, then everything else. If time presses, slices S5–S8 are independent of one another and can be reordered or trimmed without touching the core; S0–S2 cannot be shortened.

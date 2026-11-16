@@ -1,20 +1,29 @@
 # smsm: open items
 
-## Milestones
-- [ ] M0 skeleton and pipeline
-- [ ] M1 money core
-- [ ] M2 backend, sign-in, setup
-- [ ] M3 local-first sync
-- [ ] M4 daily loop
-- [ ] M5 recurring and extras
-- [ ] M6 insights
-- [ ] M7 import and export
-- [ ] M8 notifications
-- [ ] M9 release QA → v1.0.0
+## Slices
+- [ ] S0 pipeline and look
+- [ ] S1 money core
+- [ ] S2 daily loop → first real use
+- [ ] S3 recurring, bills, inbox
+- [ ] S4 chapters and places
+- [ ] S5 insights and recap
+- [ ] S6 smart features
+- [ ] S7 import and export
+- [ ] S8 notifications
+- [ ] S9 hardening → v1.0.0
 
 ## Needs the owner
-- [ ] Create the Supabase project and Cloudflare Worker (`docs/DEPLOY.md`), and put the build variables in Cloudflare.
-- [ ] Partner email delivery: invite the partner to the Supabase org, or set up custom SMTP.
-- [ ] Pick the logo variant (M0) and approve the avatars (M0 gallery).
-- [ ] Provide a real Monzo CSV export (personal rows can be deleted first) to confirm the column mapping (M7).
-- [ ] Review the assumptions A1–A9 in `docs/DECISIONS.md`.
+- [ ] Read the proposals P1–P15 in `docs/DECISIONS.md`; say which to change.
+- [ ] S0: Supabase project, Cloudflare token, GitHub secrets (`docs/DEPLOY.md` §1–3). Partner email delivery (invite to the Supabase organisation or SMTP).
+- [ ] S0: on the gallery, choose the logo variant, the type option, and confirm or adjust the palette (the reference palette page could not be opened; paste the hex codes or a screenshot if exact colours matter).
+- [ ] S2: both install; both save a monzo.me name in Settings; say whether you use a joint account.
+- [ ] S6: Gemini key; billing decision; ten receipt photos for the eval.
+- [ ] S7: Splitwise export (if you want your history) and a Monzo CSV.
+
+## Deferred criteria
+(id, reason, slice it moves to)
+
+## Ideas (not in scope until promoted)
+- Push the itemised receipt onto the Monzo transaction (with live Monzo).
+- A small seasonal prop for the animals.
+- App lock with fingerprint.

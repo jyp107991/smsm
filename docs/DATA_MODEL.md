@@ -1,98 +1,93 @@
-# smsm: data model and money rules
+# smsm: data model and money rules (v2)
 
-`supabase/schema.sql` is the draft of record. It was run and tested on PostgreSQL 16 with an auth stub (`tests/sql/`): 15 checks pass and 9 forbidden actions are refused. Extend it; don't rewrite it. Every schema change goes in `supabase/migrations/` as a numbered file, and `tests/sql/` grows with it.
+`supabase/schema.sql` is the tested baseline: `scripts/test-sql.sh` applies it twice to a scratch PostgreSQL 16 database with an auth stub and runs `tests/sql/schema_test.sql` (24 checks pass, 15 forbidden actions are refused). Until the schema is first applied to the live project it may be edited in place, with the tests; after that, every change is a numbered file in `supabase/migrations/` with tests added in the same commit.
 
 ## 1. Tables
 
 | Table | Holds | Notes |
 |---|---|---|
-| `households` | one row per couple | `join_code`, `currency` (GBP), `default_ratio` (null = 50/50; changed only by an approved request) |
-| `members` | the two people | `display_name`, `animal` (cat/dog, unique per household), `locked_at`. No direct updates: `set_identity()` once, then change requests |
-| `categories` | 12 defaults + custom | `default_ratio` per category (null = household default), `archived`, `sort` |
-| `expenses` | every shared expense | money in pence; `split_mode`, `split_params`, `shares`; itemised `items`; foreign currency fields; `receipt_path`; import/Monzo fields `source`, `external_id`, `merchant`, `external_category`, `account_id`; `recurring_id` + `occurrence_date`; soft delete `deleted_at` |
-| `recurring` | recurring templates | `frequency`, `every`, `start_date`, `end_date`, `posted_count`, `is_subscription` |
-| `settlements` | "A paid B £x" | soft delete |
-| `accounts` | bank accounts (for Monzo later) | `provider`, `external_id`, `owner_id` (null = joint) |
-| `import_rules` | inbox rules | `match_text`, `decision` keep/skip, category and split to apply |
-| `import_ignores` | discarded import rows | only `sha256(transaction id)` |
-| `change_requests` | approvals | kinds `identity`, `default_ratio`; one pending per kind |
-| `activity` | append-only history | written only by triggers and RPCs; readable by the household |
+| `households` | one row per couple | `join_code`, `home_country` (GB), `default_ratio` (null = 50/50; approval needed), `joint_enabled`, `joint_ratio` |
+| `members` | the two people | `display_name`, `animal`, `locked_at`, `monzo_me`. No direct writes: `set_identity()`, `set_monzo_me()`, change requests |
+| `categories` | 12 defaults + custom | `colour` is a palette token name; `default_ratio`; `archived`; `sort` |
+| `chapters` | trips and projects | `kind`, `country`, dates, `closed` |
+| `expenses` | every entry | `kind` expense / money_back; `paid` and `shares` (jsonb, pence); `paid_via`; `split_mode`, `split_params`; `chapter_id`; `country`, `place`, `lat`, `lng` (3 decimals); itemised `items`; original currency fields (reference only); `receipt_path`; source fields; `refund_of`; soft delete |
+| `recurring` | templates | `amount_varies`; `is_subscription`; schedule; `posted_count` |
+| `settlements` | "A paid B £x" | `method` monzo / other; soft delete |
+| `inbox_items` | things awaiting a decision | sources bill / scan / share / monzo; never counted as money |
+| `comments` | threads on entries | author-only edit; soft delete |
+| `category_memory` | what the household has taught the app | key → category and usual split; `source` user / ai / seed |
+| `import_rules`, `import_ignores` | import decisions | ignores hold only a hash |
+| `recaps` | monthly recap | computed `stats`, optional `prose` |
+| `change_requests` | approvals | identity, default ratio; one pending per kind |
+| `activity` | append-only history | written by triggers and RPCs |
+| `accounts` | bank accounts (Monzo later) | |
+| `ai_usage`, `client_errors`, `app_config` | operations | usage counts; crash reports (insert-only); `min_client_version` |
+| view `member_net` | the balance in SQL | one row per person; the two sum to zero |
 
-**To add in later milestones** (write them as migrations, with tests):
-- `push_subscriptions(user_id, endpoint, p256dh, auth, created_at)` and `notification_prefs(user_id, bills_tomorrow bool, partner_activity bool, settle_nudge_pence bigint null)`, both with RLS keyed to `auth.uid()`. Port the pattern from MacroPy (`supabase/schema.sql`, `supabase/functions/remind`).
-- Storage bucket `receipts` (private). Object path `{household_id}/{expense_id}.jpg`. Storage policies: select/insert/update/delete allowed when the first path segment equals `my_household()::text`.
-- Monzo later: `monzo_connections` (tokens, server-only, no client policies) and `monzo_staging` (rows awaiting a keep/skip decision, deleted on decision).
+**To add in their slices, as migrations with tests:** `push_subscriptions` and `notification_prefs` (port MacroPy's pattern); Storage buckets `receipts` and `backups` (private; object path starts with the household id; policies compare the first path segment with `my_household()`); for Monzo later, `monzo_connections` (tokens, no client access).
 
-## 2. RPCs (all `security definer`, all check `auth.uid()`)
+## 2. RPCs
+`create_household()`, `join_household(code)`, `set_identity(name, animal)`, `set_monzo_me(name)`, `request_change(kind, payload)`, `decide_change(id, approve)`, `post_due_recurring(household?)`, `my_household()`. All `security definer`, all check the caller. `post_due_recurring` turns fixed templates into expenses and "amount varies" templates into inbox items, always at the home country and outside any chapter, and is safe to call from both phones at once.
 
-| Function | Does |
-|---|---|
-| `create_household()` | creates household + first member + default categories |
-| `join_household(code)` | second person joins; refuses a third |
-| `set_identity(name, animal)` | first-time name and animal, then locks |
-| `request_change(kind, payload)` | opens a change request (needs the partner present) |
-| `decide_change(id, approve)` | partner approves or declines; requester may only cancel; applies identity (including an animal swap) or the default ratio |
-| `post_due_recurring(household?)` | posts all due recurring occurrences; idempotent; called on app open and nightly by pg_cron |
-| `my_household()` | the caller's household id (used by every policy) |
+## 3. Money rules
 
-## 3. Integrity enforced by the database
+**Pence only.** Integer pence in SQL (`bigint`) and TypeScript (a branded `Pence` type; `Number.isSafeInteger` asserted at boundaries). Decimals exist only inside `src/core/money.ts` (parse and format). A lint rule bans `parseFloat`, `toFixed` and arithmetic on unbranded money elsewhere.
 
-- Shares sum to `amount_pence`, are non-negative, and only name members; the payer is a member.
-- `for_other`: payer's share is 0. `treat`: payer's share is the whole amount.
-- No hard deletes of expenses or settlements (no delete policy); soft delete only.
-- Locked identity and the default ratio can't be changed except through an approved request.
-- Recurring occurrences are unique per `(recurring_id, occurrence_date)`; imports are unique per `(household, source, external_id)`.
-- Every create/edit/delete/restore of an expense, settlement or template writes `activity` with the actor and the fields that changed.
-
-The client still validates everything first, so the user sees friendly messages, but the database is the authority.
-
-## 4. Money rules
-
-**Pence only.** All amounts are integer pence (`bigint` in SQL, `number` checked with `Number.isSafeInteger` in TS). Parsing user input to pence is the only place decimals appear (`src/lib/money.ts`).
+**Every entry has two maps that each sum to the amount:** `paid` (who handed over the money) and `shares` (whose cost it is).
+- One payer: `paid = {payer: amount}`.
+- Joint account: `paid` = the amount split by `joint_ratio` (largest remainder, leftover penny to the first member by id, deterministic).
+- `for_other`: one payer, whose share is 0. `treat`: `shares = paid`.
 
 **Shares from a ratio** (largest remainder, leftover pennies to the payer):
 ```
-raw_i   = amount * pct_i / 100
-floor_i = floor(raw_i)
-left    = amount - Σ floor_i
-give `left` pennies one each in order of largest fractional part; ties → payer first, then the other person
+raw_i = amount × pct_i / 100;  floor each;  hand out the remaining pennies by largest fraction,
+ties to the payer first (for joint: to the first member by id)
 ```
-Example: £42.51 at 50/50 paid by Jae → raw 2125.5 each → floors 2125/2125, left 1, tie → Jae. Shares Jae 2126, Sam 2125. Sam owes £21.25.
+£42.51 at 50/50 paid by Jae → Jae 2126, Sam 2125. Sam owes £21.25.
 
-**Balance** (positive = Sam owes Jae), over live (not deleted) rows:
+**Net position** (positive = this person is owed), over live rows:
 ```
-balance = Σ_expenses paid by Jae (shares[Sam])  −  Σ_expenses paid by Sam (shares[Jae])
-        − Σ_settlements Sam→Jae (amount)        +  Σ_settlements Jae→Sam (amount)
+net(P) = Σ expenses   ( paid[P] − shares[P] )
+       − Σ money_back ( paid[P] − shares[P] )
+       + Σ settle-ups P paid   − Σ settle-ups P received
+net(Jae) + net(Sam) = 0 always.    Balance sentence: if net(Jae) > 0, "Sam owes Jae £net".
 ```
-Worked example (also in `tests/sql/schema_test.sql`): Jae pays Tesco £44.00 at 50/50 (+2200), Jae pays Sam's haircut £30.00 for_other (+3000), Sam treats dinner £60.00 (0). Balance +5200: "Sam owes Jae £52.00". Sam settles £52.00 → 0: "All square".
+Worked example (this is the SQL test): Jae pays Tesco £44.00 at 50/50 (+2200). Jae pays Sam's haircut £30.00, for_other (+3000). Sam treats dinner £60.00 (0). Net(Jae) = 5200. A £100 sofa from the joint account split 70/30: Jae paid 5000, owes 7000 (−2000) → 3200. Jae receives a £20 refund that belongs to both: −(2000 − 1000) → 2200. Sam pays Jae £22.00 → 0: "All square".
 
-Implement balance once, as a pure function in `src/lib/balance.ts`, used by the UI, exports and tests. A database view `household_balance` computing the same figure is used by the settle-up nudge, and a test asserts both agree on randomised data.
+One pure function, `src/core/balance.ts`, computes this for the UI and exports; the `member_net` view computes it in SQL; a property test and every two-user end-to-end scenario assert they agree.
 
-**Shared spending** (for all analytics): live expenses with `split_mode in ('ratio','exact','treat')`, counted at full `amount_pence` on `date`. Excludes `for_other` and settlements.
+**Shared spending** (all analytics): live `expense` rows with `split_mode` in (`ratio`, `exact`, `treat`), at full `amount_pence` on `date`, minus live `money_back` rows in the same category and period. Excludes `for_other` and settle-ups.
 
-**Foreign currency.** `amount_pence = round(original_amount * fx_rate * 100)`; shares computed from that.
+**Everyday vs chapters.** "Usual", comparisons and notes use rows with `chapter_id is null`. Totals may include chapters when the person asks.
 
-**Itemised.** `amount_pence = Σ items where shared`; must match exactly.
+**Other currency.** `amount_pence = round(original_amount × fx_rate × 100)`, computed once at entry and stored; the original and rate are reference only.
 
-## 5. Analytics definitions (shown in the UI's ⓘ)
+**Itemised.** `amount_pence` = the shared lines, plus the shared lines' proportion of any service charge, minus their proportion of any discount, rounded once; the form shows the working.
 
+## 4. Dates
+- An entry's `date` is a calendar date chosen by the person (default: today on their phone). No timestamps are used for "when it was spent".
+- All date arithmetic goes through `src/core/dates.ts` (plain `YYYY-MM-DD` strings in, strings out). Server-side "today" is `Europe/London`. Tests run with a fixed clock, including across midnight, month ends, leap day and the two clock changes.
+
+## 5. Definitions shown in the app
 | Figure | Definition |
 |---|---|
-| Shared spend (period) | Σ shared spending with `date` in the period |
-| vs usual | this month ÷ mean of the previous 3 full months − 1 |
-| Who paid | Σ amount of shared spending by `paid_by` |
-| Each person's share | Σ `shares[person]` over shared spending |
-| Fairness | person's paid ÷ total shared spend, shown beside the default ratio |
-| Cost per day | shared spend this month ÷ days elapsed this month |
-| Unusual category | this month ≥ 1.3 × its 3-month mean and ≥ £20 above it |
-| Unusual expense | amount ≥ 3 × the category's 6-month median, needs ≥ 5 past expenses |
-| Subscription yearly cost | weekly × 52 / every, monthly × 12 / every, yearly ÷ every |
+| Shared spend | as §3, for the period |
+| Usual | median of the previous 3–6 full months of everyday shared spend (fewer than 3 months of history: not shown) |
+| Pace | this month's everyday spend to date ÷ (usual × days elapsed ÷ days in month) − 1 |
+| Who paid | Σ `paid[person]` over shared spending |
+| Fairness | person's paid ÷ total paid, beside the default ratio |
+| Unusual category | this month ≥ 1.3 × usual for that category and ≥ £20 above |
+| Unusual entry | ≥ 3 × the category's 6-month median, with ≥ 5 earlier entries |
+| What home costs | Σ active recurring, converted to monthly (weekly × 52 ÷ 12 ÷ every; yearly ÷ 12 ÷ every) |
+| Subscription yearly cost | monthly × 12 ÷ every, etc. |
+| Standing-order hint | mean month-end net over the last 3+ months in the same direction, rounded down to £10 |
+| Trip cost per day | chapter total ÷ days from first to last entry |
 
-## 6. Sync (client)
-
-- **Local store:** IndexedDB (`idb`) mirrors households, members, categories, expenses, recurring, settlements, change_requests, recent activity, import_rules.
-- **Pull:** on open, on reconnect, on a Realtime event, and every 60 s while visible: rows with `updated_at > last_pulled_at` per table (add `updated_at` + trigger to every synced table that lacks it, as a migration).
-- **Push:** every local write goes to an outbox (operation, table, row, client id) and is sent in order; retries with backoff; client-generated UUIDs make retries idempotent.
-- **Conflicts:** server wins; the losing local edit is shown once as "Sam changed this at the same time; their version was kept" with a button to reapply yours.
-- **Realtime:** subscribe to the household's rows; a partner's change appears within seconds.
-- Call `post_due_recurring()` after each sign-in and on the first open of each day.
+## 6. Keeping two phones in step
+The data is small (a few thousand rows over years), so the design is deliberately simple and uses a well-trodden library, not a hand-built sync engine.
+- **Read:** the whole household is loaded with TanStack Query and kept in a cache persisted to IndexedDB, so the app opens instantly and works offline.
+- **Write:** every change is an optimistic mutation: the cache updates at once, the request is sent, and on failure the cache rolls back with a message. Offline, mutations queue (persisted) and replay in order when the phone is back. Row ids are made on the phone and writes are upserts, so a retry can't duplicate.
+- **Hear:** a Supabase Realtime subscription on the household invalidates the affected queries, so the partner's change appears within seconds. A refetch also runs on open, on reconnect and when the app returns to the foreground.
+- **Conflicts:** last write wins per row; both versions are in `activity`, so nothing is lost and either can be restored. For two people this is enough; do not build merge logic.
+- **Stale apps:** on open and before the first write, the app compares its version with `app_config.min_client_version`; an older app refreshes itself first. The service worker shows "Updated. Tap to refresh" when a new version is waiting.
+- `post_due_recurring()` is called after sign-in and on the first open of each day.

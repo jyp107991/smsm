@@ -1,26 +1,25 @@
 # smsm: project instructions for Claude Code
 
-smsm is an installable phone app (PWA) for two people who share a home. It records shared spending and keeps one running answer to "who owes whom". It replaces Splitwise and Tricount for a couple.
+smsm is an installable phone app (PWA) for two people who share a home. It records shared spending and keeps one running answer to "who owes whom". Two people, pounds only.
 
-Read these before writing any code, in this order: `docs/SPEC.md` (what to build), `docs/DESIGN.md` (how it looks and feels), `docs/DATA_MODEL.md` (tables, money rules, sync), `docs/DECISIONS.md` (the owner's decisions and the spec's assumptions), `docs/BUILD_PLAN.md` (milestones), `docs/QA.md`, `docs/DEPLOY.md`. `supabase/schema.sql` and `tests/sql/` are the tested starting point for the database: extend them with migrations, don't rewrite them.
+Read before writing any code, in this order: `docs/SPEC.md` (what, with acceptance-criteria ids), `docs/DESIGN.md` (look, feel, the avatar rig), `docs/DATA_MODEL.md` (tables, money rules, keeping phones in step), `docs/AI.md` (Gemini features and their guards), `docs/ENGINEERING.md` (stack, structure, tests, the slice protocol, definition of done), `docs/BUILD_PLAN.md` (slices), `docs/DECISIONS.md`, `docs/DEPLOY.md`. `supabase/schema.sql` with `tests/sql/` and `scripts/test-sql.sh` is the tested database baseline.
 
 ## Non-negotiables
-
-1. **Scope rule.** Shared spending and debts between the two people only. Nothing about either person's own finances: no incomes, personal spending, budgets or savings goals. If a change needs individual finances, it's out of scope; ask.
-2. **Money is exact.** Integer pence everywhere; no floating-point money. Shares always sum to the amount, enforced in TypeScript and in the database. The balance is computed by one pure function and cross-checked against the database view in tests.
-3. **The database is the authority.** Row-level security on every table, keyed to the household via `my_household()`. Locked identity and the default ratio change only through approved change requests. No hard deletes of money rows. Every change is logged in `activity`.
-4. **Phone-first and offline-capable.** Everything works on a 390×800 Android phone in Chrome and as an installed app; local-first with an outbox; nothing breaks offline.
-5. **Warm, clean, intuitive** (`docs/DESIGN.md`): both themes, WCAG AA, tap targets ≥ 44 px, no horizontal overflow at 320 px, no layout shift, keyboard-aware sheets, reduced motion respected. The cat and dog are original drawings.
-6. **Secrets never enter the repo.** Supabase URL and anon key come from `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` at build time (local dev: gitignored `public/config.js`, with `config.example.js` committed). Server secrets (VAPID private key, later Monzo tokens) live only in Supabase secrets.
-7. **Monzo-ready.** Don't assume manual entry is the only source of expenses (SPEC §5).
+1. **Scope.** Shared spending and the debt between two people. Nothing about either person's own finances. If a change needs individual finances, it's out; ask.
+2. **Money is exact.** Integer pence everywhere. `paid` and `shares` each sum to the amount, enforced in TypeScript and in the database. One pure function computes the balance; tests prove it equals the database view.
+3. **Code computes, people decide.** AI never calculates a shown figure and never writes money without a person's tap. Every smart feature has a working fallback.
+4. **The database is the authority.** Row-level security on every table. Locked identity and the default split change only through approved requests. No hard deletes of money rows. Every change is logged.
+5. **Nothing blocks adding.** Saving is instant, offline or online.
+6. **The spec is executable.** Every criterion id has a test or an explicit deferral; `npm run trace` enforces it.
+7. **Warm, quiet, exact** (`docs/DESIGN.md`): tokens only, both themes, WCAG AA, 44 px targets, no overflow at 320 px, no layout shift, reduced motion respected. The cat and dog are original drawings built as one SVG rig.
+8. **Secrets never enter the repo.**
+9. **Monzo-ready.** Never assume typing is the only source of entries.
 
 ## Working style
-
-- Work autonomously through `docs/BUILD_PLAN.md` milestone by milestone. Where the docs are silent, choose the option most consistent with the non-negotiables, record it in `docs/DECISIONS.md` ("Made during the build"), and continue. Ask the owner only about scope or about anything that changes a decision in the "Decided by the owner" table.
-- Commit and push to `main` at least once per completed milestone step; keep `docs/BUILD_LOG.md` current (what was built, what was tested, what failed, what's next).
-- Tests: `npm test` (Vitest), `npm run test:sql`, `npm run e2e` (Playwright). All must pass before a commit that claims a milestone.
-- UI copy: plain language, sentence case, active verbs, no jargon, no ALL-CAPS labels. Copy is part of the design.
-
-## Stack (decided)
-
-Preact + TypeScript (strict) + Vite PWA (`vite-plugin-pwa`, Workbox), IndexedDB via `idb`, Supabase JS (auth, Postgres, Realtime, Storage, Edge Functions with pg_cron), Vitest + fast-check + Playwright + axe-core, Lucide icons, Nunito via `@fontsource`, Cloudflare Workers static assets from this repo. The hosting, sign-in and push setup mirror `jyp107991/macropy`; reuse its patterns.
+- Follow the slice protocol in `docs/ENGINEERING.md` §5 exactly: brief → tests first by a separate subagent → build → look at it → fresh review → merge on green → log. Use the definition of done (§8) as a checklist, not a summary.
+- Work autonomously. Where the docs are silent, choose what best fits the non-negotiables, record it in `docs/DECISIONS.md`, continue. Ask the owner only about scope, about anything in the owner's decisions table, or at the ★ checkpoints in the build plan.
+- Before first use of any library or service API, read its current documentation; do not rely on memory for versions, model ids or request shapes.
+- Never weaken, skip or delete a failing test to get to green. Never present a stub as done. Add nothing the spec doesn't ask for.
+- Main is always releasable; work on short branches; `npm run verify` before every commit; keep `docs/BUILD_LOG.md` current, since it is how the owner follows progress.
+- The owner is not a developer and reads on a phone: explain choices in plain language, give setup steps one at a time, and send the preview link when there is something to look at.
+- UI copy is part of the design: plain, sentence case, names not "you owe".

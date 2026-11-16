@@ -1,172 +1,219 @@
-# smsm: product spec
+# smsm: product spec (v2)
 
 ## 1. What smsm is
 
-smsm is a phone app for two people who share a home. It records money either of them spends on shared things and keeps one running answer to "who owes whom". It replaces Splitwise and Tricount for a couple, and beats their paid tiers on the things that matter to two people.
+smsm is a phone app for two people who share a home. It records money either of them spends on shared things and keeps one running answer to "who owes whom". It is built for exactly two people and for pounds, and that narrowness is the advantage: everything a group app spends its complexity on (who is in which group, simplifying debts between many people, many currencies) disappears, and the space goes to things a couple wants.
 
-**Scope rule.** smsm tracks shared spending and the debts between the two people. It holds nothing about either person's own finances: no incomes, no personal spending, no budgets, no savings goals, no net worth. When a feature idea needs individual finances to make sense, it is out of scope. (The one bridge is "paid for the other", §3.3, which records a debt, not personal spending.)
+**Scope rule.** smsm tracks shared spending and the debt between the two people. It holds nothing about either person's own finances: no incomes, no personal spending, no budgets, no savings goals. If a feature needs individual finances to make sense, it is out of scope.
 
-**Users.** Exactly two people per household. Each signs in on their own phone. They are equals: there is no admin.
+**Three rules for every feature**
+1. *Code computes, people decide.* Every figure is calculated by tested code from recorded entries. AI may read, suggest and phrase; it never calculates, and nothing it produces becomes money without a person's tap.
+2. *Nothing blocks adding.* Saving an expense is instant, offline or online, with or without AI.
+3. *One number.* However rich the app gets, the answer to "are we square?" stays one sentence on the first screen.
 
-## 2. Release plan
+Each feature below has short, numbered acceptance criteria (`ADD-3`, `SET-2`…). They are the contract: every one has a test named after it, or is explicitly deferred in `docs/OPEN_ITEMS.md` (`docs/ENGINEERING.md` §2).
 
-- **v1 (this build):** everything in §3 and §4.
-- **Later:** live Monzo sync (§5). v1 includes the data fields it needs, so it is an addition, not a rebuild.
+## 2. Where this beats the existing apps
 
-Build order inside v1 is in `docs/BUILD_PLAN.md`. Money logic comes first and is tested hardest.
+| | Splitwise (Pro) | Tricount | smsm |
+|---|---|---|---|
+| Unlimited entries, no ads | paid | yes | yes |
+| Receipt scanning and itemising | paid | no | yes, and it itemises so you can untick lines that are just yours |
+| Search, charts, default splits | paid | limited | yes |
+| Recurring | fixed only | no | fixed, variable ("how much was the energy bill?"), auto-detected, subscription audit |
+| Trips and one-offs | separate groups, separate balances | separate tricounts | chapters: separate totals, one balance, kept out of your "usual month" |
+| Location | no | no | country and place on every entry; trips suggest themselves |
+| Paying each other | Venmo/PayPal (US) | bunq | one tap opens Monzo with the amount filled in |
+| Joint account as payer | no | no | yes |
+| Refunds | awkward | awkward | "money back" entries |
+| Monthly summary | email of totals | no | a five-line recap, written for the two of you |
+| Ask in plain English | no | no | "how much did we spend on food in Japan?" |
+| Both people's edits | history | no | history, undo, comments, and approvals for the things that should need two |
+| Works offline, yours to keep | partly | partly | fully; your data in your own database, exportable |
 
-## 3. Features: money
+## 3. Features: the daily loop
 
-### 3.1 Adding an expense
+### 3.1 Home and the balance [BAL]
+The first screen answers "are we square?" and lets you add.
+- BAL-1 The balance is one signed number: each person's net is what they paid minus their share of every live entry, adjusted by settle-ups (`docs/DATA_MODEL.md` §3). The two nets always sum to zero.
+- BAL-2 Shown as a sentence with both avatars: "All square", or "Sam owes Jae £24.50". Names, never "you owe" (the same sentence on both phones).
+- BAL-3 The plank the two animals sit on tilts with the balance (DESIGN §4.1): level when square.
+- BAL-4 **Whose turn.** When the balance is £10 or more, a quiet line says "Next one's on Sam". Paying when it's your turn is the easiest way to stay square.
+- BAL-5 Offline, the balance is computed from the phone's copy and marked "offline".
+- BAL-6 Before the partner joins: "Waiting for your partner" with a share-invite button; adding still works.
 
-Two ways in, both from the home screen:
+### 3.2 Adding [ADD]
+- ADD-1 **Quick add.** One box on Home. `42.50 tesco` and Enter saves. Grammar (any order after the amount): amount (required: `42.5`, `£42.50`, `1,200`, simple sums `12+8.50`); category word or prefix (`groc`); payer (`me`, a name, `cat`/`dog`, `joint`); split (`60/40`, `treat`, `for sam`); date (`yesterday`, `mon`, `12/11`); `#tag`; the remaining words are the description.
+- ADD-2 A live reading appears under the box as you type ("£42.50 · Tesco · Groceries · Jae paid · 50/50"); tapping it opens the full form prefilled.
+- ADD-3 Anything not typed is filled from what the household has taught the app: category and usual split for that description (3.6), payer = me, date = today, chapter and country = the current ones (4.2, 4.3).
+- ADD-4 **Full form** (a bottom sheet): amount, description (autocomplete from history), category, who paid, split, date; under "More": chapter, place, notes, tags, photo, itemise, paid in another currency, repeat.
+- ADD-5 The amount field accepts sums (`18.50+4+12`) and shows the result.
+- ADD-6 Save is instant and works offline; a toast offers Undo for 5 seconds. Entries made offline sync in order when the phone is back online and can never duplicate (ids are made on the phone).
+- ADD-7 Duplicate any entry with today's date. Long-press the add button for "Same as last time".
+- ADD-8 **From outside the app:** the installed app offers "Add expense" and "Scan receipt" when you long-press its icon, and appears in Android's share sheet so a photo, screenshot or text shared from another app opens the add form (5.3).
+- ADD-9 If the wording is too loose for the grammar and smart features are on, the text is read by AI into the same form (`docs/AI.md` §3.2). The person always sees the reading before it saves.
 
-- **Quick add.** One text box. Typing `42.50 tesco groceries me` and pressing enter saves an expense. Grammar, in any order after the amount:
-  - amount: first number in the text (`42.5`, `£42.50`, `1,200`); required
-  - category: a word matching a category name or alias, case-insensitive, prefix match allowed (`groc` → Groceries); optional, default the category last used with that description, else Other
-  - payer: `me` / `I` / own name / own animal (`dog`) → me; partner's name or animal → partner; optional, default me
-  - split keywords: `for <partner>` → paid for the other; `treat` → treat; `60/40` → ratio for this expense; optional, default the category or household default
-  - date: `yesterday`, `mon`…`sun` (the most recent such day), `12/11`; optional, default today
-  - description: whatever words remain, title-cased; if none, the category name
-  - A live preview under the box shows how it was read ("£42.50 · Tesco · Groceries · you paid · split 50/50") before saving. Tapping the preview opens the full form prefilled.
-- **Full form.** Amount, description, category, date, who paid, split, notes, tags, receipt photo, itemise, foreign currency. Opens prefilled from the last expense with the same description when one exists.
-- **Duplicate.** Any expense can be duplicated with today's date.
+### 3.3 Splits and payers [SPL]
+- SPL-1 Four ways to split:
 
-Saving is instant (local first, §6) and shows a toast with Undo for 5 seconds.
-
-### 3.2 Splits
-
-Every expense has a split mode. The app turns it into shares: how many pence each person owes. Shares always sum to the amount.
-
-| Mode | Label in UI | Shares |
+| Mode | In the app | Shares |
 |---|---|---|
-| `ratio` | Split | By percentage. Default 50/50. Per-expense override with a slider or presets (50/50, 60/40, 70/30, and their reverses). |
-| `exact` | Exact amounts | Each person's pence entered; must sum to the amount (the form shows the remainder live). |
-| `for_other` | Paid for [partner] | Partner owes all of it; payer owes nothing. Excluded from shared-spending analytics (§3.8). |
-| `treat` | My treat | Payer covers it all; nobody owes anything. Counts as shared spending. |
+| `ratio` | Split | by percentage; default 50/50; presets 50/50, 60/40, 70/30 and reverses; slider for anything else |
+| `exact` | Exact amounts | each person's pounds entered; the remainder shows live; must sum |
+| `for_other` | Paid for Sam | Sam owes all of it. Counts in the balance, not in shared-spending figures |
+| `treat` | My treat | the payer covers it; nobody owes; counts as shared spending |
 
-**Defaults.** Household default ratio is 50/50. Each category can have its own default ratio (for example Rent 60/40). Changing the household default ratio needs both people to approve (§4.3); category defaults do not.
+- SPL-2 Defaults cascade: this description's usual split → the category's default → the household default (50/50 until both people approve another, 6.3).
+- SPL-3 Rounding: largest-remainder in pence; a leftover penny goes to the payer's own share.
+- SPL-4 **Who paid:** me, partner, or (if switched on in Settings) **joint account**. A joint payment is treated as paid by both in the joint account's funding ratio (default 50/50), so a 50/50 expense from the joint account creates no debt and a 70/30 one does.
+- SPL-5 Shares and paid amounts always sum to the amount; the phone and the database both enforce it.
 
-**Rounding.** Ratio shares are computed in pence with the largest-remainder method; leftover pennies go to the payer's own share, so the partner is never charged a rounding penny. Unit tests must cover odd pence, 1p amounts and 33.3% style ratios.
+### 3.4 Money back [MB]
+- MB-1 A refund, deposit returned or money from selling something shared is a "money back" entry: who received it and whose it is (default: the same split as the original).
+- MB-2 "Refund this" on any expense prefills one linked to the original.
+- MB-3 Money back reduces shared spending in its category and adjusts the balance the opposite way to an expense.
 
-### 3.3 Paid for the other
+### 3.5 Settling up [SET]
+- SET-1 "Settle up" on Home is prefilled with the full balance; editable for a part payment; date and note optional.
+- SET-2 **Pay with Monzo.** If the person owed has saved their monzo.me name, the button opens `https://monzo.me/<name>/<amount>?d=smsm` — the Monzo app opens with the amount filled in. On return, smsm asks "Did it go through?" and records the settle-up on Yes. smsm never moves money itself.
+- SET-3 Settle-ups appear in Activity, are editable and soft-deletable, and are logged.
+- SET-4 **Settle day** (optional): pick a day of the month; on it both phones get the month's recap with a settle button (4.5, 7).
+- SET-5 After a settle-up that brings the balance to zero: the "all square" moment (DESIGN §3.4).
 
-When one person buys something that is entirely the other's (a prescription, a haircut), they log it as "Paid for [partner]". The partner owes the full amount. It counts in the balance but not in shared-spending totals, charts, insights or year in review. In lists it shows a small "for [name]" tag.
+### 3.6 Categories and learning [CAT]
+- CAT-1 Twelve starting categories; rename, re-emoji, recolour (from the palette), reorder, archive, add. Archived ones keep their history.
+- CAT-2 **Auto-categorise**, in this order, never delaying a save: (1) what this household chose last time for that description; (2) a close match in the household's history; (3) a built-in list of about 250 common UK names and words (`content/merchants.json`); (4) if smart features are on, an AI guess that arrives a moment later and is marked as a guess (`docs/AI.md` §3.3). Otherwise "Other".
+- CAT-3 Changing a category teaches the app: next time that description gets your choice. A person's choice always beats a guess.
+- CAT-4 The usual split for a description is learned the same way.
 
-### 3.4 Balance and settling up
+### 3.7 Activity, history, comments [ACT]
+- ACT-1 Activity lists entries and settle-ups, newest first, grouped by day, with search (description, notes, tags, place) and filters (who paid, category, chapter, country, dates, tag, type).
+- ACT-2 Every create, edit, delete and restore is recorded by the database with who and when. An entry's page shows its history ("Sam changed £42.50 to £45.20, yesterday 18:02").
+- ACT-3 Delete is soft, with Undo; deleted entries can be restored from history.
+- ACT-4 **Comments.** A short thread on any entry ("was this the big shop?"). The partner is notified.
+- ACT-5 Either person can edit any entry. Edits are visible, logged and reversible; nothing needs approval except the items in 6.3.
 
-- **Balance** = for every live expense, the payer is owed the other person's share; settlements reduce it. With two people this is one signed number. Formula and worked example: `docs/DATA_MODEL.md` §4.
-- **Home shows it in words** with the avatars (`docs/DESIGN.md` §4): "All square", or "[Name] owes [Name] £24.50".
-- **Settle up.** One tap from home: prefilled with the full balance, editable for a part payment, with date and an optional note. Recorded as a settlement, shown in history. smsm does not move money; it records that money moved.
-- A settlement can be edited or deleted like an expense (soft delete, logged).
+## 4. Features: beyond the daily loop
 
-### 3.5 Recurring expenses
+### 4.1 Recurring and bills [REC]
+- REC-1 Weekly, monthly or yearly, every N, with a start date and optional end date, and all the usual fields.
+- REC-2 Occurrences post on their date, by the database, once only, whichever phone opens first or neither (a nightly job). Monthly dates anchor to the start date (31 Jan → 28/29 Feb → 31 Mar).
+- REC-3 **Amount varies** (energy, water): on the date the bill appears in the Inbox as "Energy is due: how much was it?" with the usual amount offered. It is not money until answered.
+- REC-4 **Always home.** Recurring entries are tagged to the home country and to no chapter, even when you are away.
+- REC-5 **Suggested.** When the same description has appeared three times at a steady interval with similar amounts, the app offers once to make it recurring.
+- REC-6 Editing a template changes future occurrences only; a price change is noted in its history ("Rent £1,450 → £1,500 from March").
+- REC-7 **Bills** tab: this month as a calendar (posted and upcoming, with the month's total), the next 30 days as a list, and **Subscriptions**: every active subscription with its monthly and yearly cost and a yearly total.
+- REC-8 **What home costs:** the sum of active recurring items as "£2,140 a month to run", shown on Bills.
 
-- Weekly, monthly or yearly, every N periods, a start date, an optional end date, and all the normal expense fields including split.
-- Occurrences post automatically on their date. Posting is done by the database (`post_due_recurring`), called when either app opens and nightly by a scheduled job, and can never post the same occurrence twice.
-- Monthly dates are anchored to the start date (a bill starting 31 Jan posts on 28/29 Feb, then 31 Mar).
-- Posted occurrences are normal expenses (editable; editing one does not change the template). Pausing or ending a template stops future posts.
-- A template can be flagged **subscription** (default on for the Subscriptions category).
+### 4.2 Chapters [CHP]
+A chapter is a named run of spending kept apart from everyday life: a holiday, the wedding, moving house. It replaces "make a separate group".
+- CHP-1 A chapter has a name, emoji, kind (trip or project), optional dates and, for trips, a country. Create from Settings, from the add form, or from a trip suggestion (4.3).
+- CHP-2 An entry belongs to one chapter or to none ("everyday"). While a chapter is set as current, new manual entries go into it; a chip on the add form shows it and one tap changes it.
+- CHP-3 A chapter page shows its total, days, cost per day (trips), spending by category, who paid, places, photos and its entries; and "close chapter" when it's done.
+- CHP-4 **One balance.** Chapters separate totals, never debts.
+- CHP-5 **Your usual month is protected.** Monthly comparisons, "usual" figures and unusual-spend notes use everyday spending only, so a wedding doesn't make every month look alarming. Totals can be viewed with chapters included.
+- CHP-6 Either approach works for a holiday: a chapter, or simply everyday entries tagged with the country (4.3); both can be totalled afterwards.
 
-### 3.6 Bills and subscriptions
+### 4.3 Places and trips [PLC]
+- PLC-1 Every entry has a country (default the home country, GB). Entries can also carry a place name ("Kyoto") and a rough position (rounded to about 100 m).
+- PLC-2 With location allowed, an entry dated today picks up the phone's country and town when it is added. The place shows as a chip and can be edited or removed. Location is asked for once, with the reason, and the app works fully without it.
+- PLC-3 **Current country.** Each phone keeps a current country. It can be set by hand at any time ("We're in Japan") and is the default for new manual entries on that phone.
+- PLC-4 **Trips suggest themselves.** If the phone finds itself in another country, Home offers "Looks like you're in Japan. Start a trip?" One tap creates the chapter and sets the country. When the phone is home again: "Welcome home. Close Japan? 9 days, £1,840."
+- PLC-5 Recurring entries ignore all of this (REC-4).
+- PLC-6 **Paid in another currency.** In another country the amount field offers that country's currency with the day's rate filled in and editable; the entry stores pounds, and keeps the original amount and rate for reference. Card payments already in pounds are entered as normal. There is one currency of account: GBP.
+- PLC-7 Filters and Insights can total by country and by place.
 
-A **Bills** tab with three views:
-- **This month:** a calendar of recurring occurrences, each marked posted or upcoming, with the month's total.
-- **Upcoming:** the next 30 days as a list.
-- **Subscriptions:** every active subscription template with its monthly and yearly cost, the combined yearly total, and the date it was started. Sorting by yearly cost. This is the "subscription audit": seeing the yearly figure is the point.
+### 4.4 Inbox [INB]
+One place for things that need a decision before they count.
+- INB-1 Holds: variable bills awaiting an amount (REC-3), receipts saved to sort later (5.1), things shared into the app while offline, import rows being reviewed (8.1), and later Monzo transactions (9).
+- INB-2 Each item: **Keep** (opens prefilled; saving makes it an entry) or **Not ours** (dismissed). Home shows a count when it isn't empty; the app icon shows a badge.
+- INB-3 Inbox items are never counted in the balance or any figure.
 
-### 3.7 Categories, tags, notes, receipts, itemising
+### 4.5 Insights and the monthly recap [INS]
+All figures cover shared spending: live entries in `ratio`, `exact` and `treat`, less money back. `for_other` and settle-ups are excluded. Every figure can be tapped for a one-line definition (`docs/DATA_MODEL.md` §5).
 
-- 12 default categories (in `supabase/schema.sql`), each with emoji and colour. Rename, recolour, re-emoji, reorder, archive, add. Archived categories keep their history.
-- **Tags:** free text, autocomplete from past tags (e.g. `#paris2026`). Filterable.
-- **Notes:** free text.
-- **Receipt photo:** optional attachment for reference (warranties, disputes). Compressed on the phone to ≤ 1600 px long side, JPEG ~0.8, stored in a private Supabase Storage bucket readable only by the household. No text recognition.
-- **Itemise:** an expense can be entered as lines (label, amount, shared yes/no). Only shared lines make up the expense amount; unshared lines are kept only as labels and amounts inside that expense so the receipt makes sense later, never counted anywhere. The whole-bill total is shown for reference.
+- INS-1 **The month so far** on Home: one line ("£1,240 so far · about £80 under your usual pace") and at most one note.
+- INS-2 **The recap.** On the 1st (or on settle day) each month gets a recap: one screen, five parts, nothing more.
+  1. A headline sentence: "November cost £2,340 together, about £120 less than usual."
+  2. One picture: a single bar showing where it went (top four categories and the rest).
+  3. Up to three notes on what changed, chosen by size ("Eating out was up £85", "Energy came in at £96").
+  4. Between you: what each paid, and the balance, with Settle up.
+  5. One moment: the month's biggest or most-commented entry, with its photo if it has one.
 
-### 3.8 Analytics
+  The figures are computed; with smart features on, the two sentences of wording are written from those figures (`docs/AI.md` §3.4); otherwise a template writes them. Past recaps live under Insights.
+- INS-3 **Notes** are rule-based and each states its rule: a category at least 30% and £20 above its usual; an entry at least 3× its category's median; a subscription whose price changed; a new recurring cost. "Usual" is the median of the previous three to six everyday months.
+- INS-4 **Insights tab:** period selector (month, 3 months, 12 months, year, a chapter); total and comparison; by category; trend over 12 months; who paid; by country; recaps.
+- INS-5 **Fairness.** Over 3 and 12 months: each person's share of what was paid, beside your agreed split. Plain words, no judgement.
+- INS-6 **Standing-order hint.** If the same person has owed at the end of each of the last three months, by £50 or more on average, a note suggests the monthly amount that would keep you about square.
+- INS-7 **Year in review** for any calendar year, as a short set of cards; offered through January.
+- INS-8 **On this day.** Occasionally, a card for an entry from a year ago that has a photo, a comment or a chapter ("A year ago: Dishoom, £86, in London").
+- INS-9 **Ask smsm.** A question box in Insights: "how much did we spend on eating out in Japan?", "what did the wedding cost so far?". AI turns the question into a filter; code runs it and shows the figure with the filter as editable chips and the matching entries beneath (`docs/AI.md` §3.5).
 
-All analytics cover **shared spending only**: live expenses in modes `ratio`, `exact` and `treat`. `for_other` and settlements are excluded. Every figure has a one-line definition reachable by tapping it.
+## 5. Smart features (Gemini)
 
-- **Overview:** this month's shared total, vs the average of the previous 3 months; spend by category (bar list, sorted); monthly trend (12 months, stacked by top 5 categories + Other).
-- **Who paid:** for any period, how much each person paid out and how much each person's share was.
-- **Fairness tracker:** over the last 3 and 12 months, each person's share of shared spending vs the default ratio. Plain words: "Over the last 3 months Jae paid 58% of shared costs; your split is 50/50." Purely informational; the balance already settles the debts.
-- **Insights** (computed, never AI): up to 3 cards on the home and Insights screens, each with its definition:
-  - a category this month is ≥ 30% and ≥ £20 above its 3-month average
-  - an expense is ≥ 3× the median expense in its category over 6 months (needs ≥ 5 past expenses in that category)
-  - cost per day of shared living this month vs last
-  - a subscription's amount changed
-- **Year in review:** for any calendar year: total shared spend, by category, biggest month, biggest single expense, most frequent place (description), number of expenses, the fairness figure, subscriptions total. Shown as a swipeable card set; offered on the home screen through January.
+All optional, all behind one switch in Settings, all with a non-AI fallback. Contracts, limits, privacy and tests are in `docs/AI.md`.
 
-### 3.9 Trips and foreign currency
+### 5.1 Scan a receipt [SCAN]
+- SCAN-1 From the add form or the app-icon shortcut: take or choose a photo. Within a few seconds the form fills with place, date, total and suggested category; the photo is kept as the attachment.
+- SCAN-2 **Itemise.** The receipt's lines appear as a list, all ticked as shared. Untick the ones that are just one person's; the amount updates. This is where scanning beats typing.
+- SCAN-3 If the lines don't add up to the total, the form says so and trusts neither: the person sets the amount.
+- SCAN-4 "Sort it later" puts the photo in the Inbox.
+- SCAN-5 Nothing is saved until the person taps Save. If AI is off, slow or over its daily limit, the photo is attached and the form is filled by hand.
 
-An expense can be entered in another currency with a rate (GBP per unit), prefilled with the last rate used for that currency. The GBP amount is stored and used everywhere; the original amount, currency and rate are shown on the expense. Rates are manual; no rate feed.
+### 5.2 Understanding loose wording
+ADD-9, CAT-2 step 4, INS-2 wording, INS-9.
 
-### 3.10 Search, filters, history
+### 5.3 Shared into the app
+A screenshot of an order confirmation or a photo of a bill shared from another app goes through the same reading as a receipt.
 
-- **Activity tab:** all expenses and settlements, newest first, grouped by day, with search (description, notes, tags, merchant) and filters (who paid, category, date range, tag, mode, source).
-- **Change history:** every create, edit, delete and restore of an expense, settlement or recurring template is logged by the database with who and when (`activity` table). An expense's detail view shows its history ("Sam changed £42.50 → £45.20, yesterday 18:02"). There is also a household-wide history view in Settings.
-- Delete is soft with Undo; deleted items can be restored from history.
+## 6. People, settings, approvals
 
-### 3.11 Import (CSV)
+### 6.1 Setup [PPL]
+- PPL-1 Sign in with an emailed 6-digit code. The first person starts the household and picks a name and animal; Settings shows a 6-character join code with a share button.
+- PPL-2 The second person signs in, enters the code, and picks a name and the remaining animal. A third person is refused.
 
-- Import a Monzo CSV statement (and a generic CSV with a column-mapping step). The file is parsed **on the phone**; nothing is uploaded until kept.
-- Rows appear in an **inbox**, one card each: swipe or tap **Keep** (becomes an expense, with split and category guessed and editable) or **Not shared** (discarded).
-- Discarded rows are never stored. Only a SHA-256 hash of the bank's transaction ID goes into `import_ignores`, so a re-import does not show them again. Kept rows store `source='csv'` and `external_id` = the transaction ID, so a re-import can't duplicate them.
-- Rules: "always keep Tesco as Groceries 50/50" and "always skip Pret" can be saved from a card and pre-apply next time (stored per household; rules hold merchant text and a decision only).
-- Monzo CSV columns must be checked against a real export before the mapping is finalised (record in `docs/DECISIONS.md`).
+### 6.2 Identity
+- PPL-3 A name (1–24 characters, any script) and an animal, cat or dog; the two people differ.
+- PPL-4 Once saved, both are locked. A change, including swapping animals, is a request the partner must approve. The database enforces this.
 
-### 3.12 Export
+### 6.3 Changes that need both people
+- PPL-5 Identity and the household default split. A pending request shows as a banner for the partner (Approve / Decline) and as "Waiting for Sam" for the requester, who can cancel.
 
-- **CSV:** expenses and settlements for any date range.
-- **PDF:** a monthly statement (totals, by category, who paid, balance at month end, list of expenses), generated on the phone.
-- **Full backup:** everything as JSON, from Settings. Also the migration path if the app ever moves.
+### 6.4 Settings
+Names and animals; default split; joint account (on/off, funding ratio); monzo.me name; settle day; home country and current country; location on/off; smart features on/off; categories; chapters; recurring; import rules; notifications; join code (until full); export and backup; history; theme; report a problem; version.
 
-## 4. Features: people, settings, notifications
+## 7. Notifications and the phone [NOT]
+- NOT-1 Web push, each type its own switch: a shared bill posts tomorrow (on); partner added, changed or commented, bundled at most hourly (on); recap ready or settle day (on); balance above a chosen amount for 30 days (off); an approval is waiting (always on).
+- NOT-2 Tapping a notification opens the thing it is about.
+- NOT-3 App-icon shortcuts (Add expense, Scan receipt, Settle up); share target; icon badge for Inbox and approvals.
 
-### 4.1 Setup
+## 8. Import, export, backup
+### 8.1 Import [IMP]
+- IMP-1 CSV import with presets for **Splitwise** (bring your history across), **Monzo** statements, and a generic column-mapping step. The file is read on the phone.
+- IMP-2 Splitwise import maps payers and shares into entries and settle-ups, and shows the resulting balance beside Splitwise's own before anything is saved.
+- IMP-3 Bank rows go through the Inbox one card at a time: Keep or Not ours, with "always do this for Tesco". Discarded rows are never stored; only a hash of the bank's id is kept so they don't reappear. Kept rows can't be imported twice.
+### 8.2 Export and backup [EXP]
+- EXP-1 CSV of entries and settle-ups for any range; a monthly PDF statement; a full JSON backup that can be restored.
+- EXP-2 A nightly automatic backup of the household's data is kept for 14 days in the household's own storage.
 
-1. First person signs in (email → 6-digit code), taps **Start a household**, picks name and animal.
-2. Settings shows a **join code** (6 characters) and a share button that sends the app link plus the code.
-3. Second person installs, signs in, taps **Join**, enters the code, picks name and the remaining animal.
-4. Until the second person joins, the first can add expenses; balance shows "Waiting for [partner] to join".
+## 9. Later: Monzo, live (not in v1)
 
-### 4.2 Identity: name and animal
+What Monzo's developer API allows (checked November 2026): reading accounts including joint ones, balances and transactions; webhooks when a transaction is created; attaching receipts to transactions; moving money to and from the user's own pots. It does **not** allow sending a payment to another person, so in-app payments are not possible through it; the monzo.me handoff (SET-2) is the route, and v1 already has it. Access is for personal use by a few named users, which fits. Full history is only readable in the first five minutes after approval (90 days after that), and spending from pot-linked virtual cards is not exposed.
 
-- Each person picks a display name (1–24 characters) and an animal: **cat** or **dog**. The two must differ.
-- Once saved, both are **locked**. A change (including swapping animals) is a **change request** that the partner must approve in the app. The requester can cancel. Enforced by the database, not just the UI.
+Plan:
+- Each person connects their Monzo account in Settings (approved in the Monzo app). Tokens are held server-side only.
+- A webhook delivers each new transaction within seconds to the Inbox, with a notification: "Tesco £42.50. Ours?" Keep / Not ours. Rules keep or skip the obvious ones automatically. Undecided items expire after 14 days, leaving only a hash.
+- Kept transactions carry Monzo's merchant name, category, address and position, so place and category need no typing. Joint-account transactions arrive as paid from joint.
+- A transfer between the two of you is recognised and offered as a settle-up, which closes the loop on SET-2 without the "did it go through?" question.
+- Optional: push the itemised receipt back onto the Monzo transaction.
+- v1 already contains the fields, the Inbox, the rules and the ignore-hashes this needs. v1 must not add anything that assumes typing is the only source of entries.
 
-### 4.3 Changes that need both people
+## 10. Not doing
+Groups of more than two; balances in several currencies; bank linking in v1; budgets, savings goals, personal spending, incomes; moving money inside the app; maps; ads; accounts for anyone else.
 
-Approval requests use one mechanism (`change_requests`): identity changes and the household default ratio. A pending request shows as a banner for the partner with Approve / Decline, and as "Waiting for [name]" for the requester. One pending request per kind at a time.
-
-### 4.4 Settings
-
-Names and animals (locked, "Request a change"); default split (needs approval); categories; recurring templates; import rules; notifications; join code (until full); export and backup; history; theme (system / light / dark); sign out; app version and build.
-
-### 4.5 Notifications (web push)
-
-Per person, each toggle independent:
-- **Bills tomorrow:** a recurring shared bill posts tomorrow (one bundled notification per day). Default on.
-- **Partner activity:** partner added, edited or deleted something, bundled at most hourly. Default on.
-- **Settle-up nudge:** balance has been above a chosen amount for 30 days. Default off.
-- **Approval waiting:** partner requested a change. Always on.
-
-Delivered by a Supabase Edge Function on a cron, as in MacroPy (`docs/DEPLOY.md`).
-
-## 5. Later: live Monzo sync (not in v1)
-
-Monzo's developer API is for personal use with a small number of allowed users, which fits two people. Plan:
-- Each person registers an OAuth client in the Monzo developer portal and connects their own account in Settings (a separate approval in the Monzo app).
-- A Supabase Edge Function holds the tokens (server-side only), refreshes them, and every few hours fetches new transactions.
-- New transactions go to a **staging** table that holds rows only until a decision: Keep → expense with `source='monzo'` and `external_id`; Not shared → staging row deleted, hash kept in `import_ignores`. The same inbox and rules as CSV import (§3.11).
-- v1 already has: `source`, `external_id`, `merchant`, `external_category`, `account_id`, the `accounts` table, `import_ignores`, and the inbox UI. v1 must not add anything that assumes manual entry is the only source.
-
-## 6. Non-functional requirements
-
-- **Phone first.** Designed for a 390×800 phone; works from 320 px wide; usable on desktop.
-- **Installable PWA**, offline-capable: the app shell and the household's data are cached on the phone (IndexedDB). Adding, editing and settling work offline and sync when back online, via an outbox with retries. The balance shown offline is computed from local data and says "offline" discreetly.
-- **Sync model:** pull changes since last sync (`updated_at`), push outbox; on conflict, the server row wins and the user's change is kept in history (rare for two people). Realtime (Supabase Realtime) updates the partner's screen within seconds when online.
-- **Fast:** home interactive in < 1 s on a mid-range Android from cache; every local action responds instantly.
-- **Accessible:** WCAG AA contrast in both themes, tap targets ≥ 44 px, screen-reader labels, reduced motion respected.
-- **Private and secure:** row-level security on every table; no secrets in the repo; Supabase anon key only in the client.
-- **Exact money:** integer pence everywhere; no floating-point money anywhere in code.
+## 11. Quality bar
+- Designed for a 390×800 Android phone in Chrome and as an installed app; works from 320 px; usable on a desktop.
+- Home is usable in under a second from a cold start with cached data on a mid-range phone; every tap responds at once.
+- Everything in §3 works offline.
+- WCAG AA in both themes; targets at least 44 px; screen-reader labels; reduced motion respected; system text size respected.
+- Row-level security on every table; no secrets in the repo; integer pence everywhere.
