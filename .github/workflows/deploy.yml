@@ -55,9 +55,9 @@ jobs:
       - name: Build
         run: npm run build && npm run build:demo
       - name: Deploy the app
-        run: npx wrangler deploy 2>&1 | tee deploy-app.log
+        run: set -o pipefail; npx wrangler deploy 2>&1 | tee deploy-app.log
       - name: Deploy the demo and gallery
-        run: npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | tee deploy-demo.log
+        run: set -o pipefail; npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | tee deploy-demo.log
       - name: Smoke test
         run: |
           app=$(grep -oE 'https://smsm\.[a-z0-9-]+\.workers\.dev' deploy-app.log | head -1)

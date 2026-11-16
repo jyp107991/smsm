@@ -124,8 +124,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -o pipefail
           alias=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-30 | sed 's/-*$//')
-          npx wrangler versions upload -c wrangler.demo.jsonc --preview-alias "$alias" --message "${GITHUB_SHA::7}" 2>&1 | tee upload.log
+          if ! npx wrangler versions upload -c wrangler.demo.jsonc --preview-alias "$alias" --message "${GITHUB_SHA::7}" 2>&1 | tee upload.log; then
+            if grep -q 'does not yet exist' upload.log; then
+              echo "smsm-demo has not been deployed from main yet; previews start after the first deploy." | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            exit 1
+          fi
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' upload.log | grep -- "$alias" | head -1 || true)
           echo "### Preview" >> "$GITHUB_STEP_SUMMARY"
           echo "${url:-see log}" >> "$GITHUB_STEP_SUMMARY"
