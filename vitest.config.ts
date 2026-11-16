@@ -18,7 +18,6 @@ export default defineConfig({
       },
       {
         define,
-        plugins: [react()],
         test: {
           name: 'ui',
           environment: 'jsdom',
