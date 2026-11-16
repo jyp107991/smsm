@@ -25,7 +25,7 @@ OUT=$(mktemp -d)
 } > "$OUT/schema.sql"
 
 HOST=${PGHOST:-127.0.0.1}; case "$HOST" in /*) HOST=127.0.0.1;; esac
-URL="postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@${HOST}:${PGPORT:-5432}/$DB"
+URL="postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@${HOST}:${PGPORT:-5432}/$DB?sslmode=disable"
 npx --no-install supabase gen types --remote="$URL" --schema public > "$OUT/database.types.ts" 2>"$OUT/gen.err" \
   || { echo "type generation failed:"; cat "$OUT/gen.err"; exit 1; }
 
