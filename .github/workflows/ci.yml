@@ -93,8 +93,14 @@ jobs:
         run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
       - name: Database password (dry run, changes nothing)
         run: npx supabase db push --remote --dry-run --password "$SUPABASE_DB_PASSWORD" --yes
-      - name: Cloudflare token
-        run: npx wrangler whoami
+      - name: Cloudflare token (prints only whether it is active; logs are public)
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          status=$(curl -fsS https://api.cloudflare.com/client/v4/user/tokens/verify -H "Authorization: Bearer $TOKEN" \
+            | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p')
+          echo "Cloudflare token status: ${status:-unknown}"
+          [ "$status" = "active" ] || { echo "CLOUDFLARE_API_TOKEN is not active: create a new one (DEPLOY §2) and replace the GitHub secret."; exit 1; }
 
   # A preview of the demo build for each branch, so interface changes can be seen on a phone before merging.
   preview:
