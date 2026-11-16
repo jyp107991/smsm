@@ -26,12 +26,13 @@ OUT=$(mktemp -d)
 
 HOST=${PGHOST:-127.0.0.1}; case "$HOST" in /*) HOST=127.0.0.1;; esac
 URL="postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@${HOST}:${PGPORT:-5432}/$DB"
-npx --no-install supabase gen types --remote="$URL" --schema public > "$OUT/database.types.ts" 2>/dev/null
+npx --no-install supabase gen types --remote="$URL" --schema public > "$OUT/database.types.ts" 2>"$OUT/gen.err" \
+  || { echo "type generation failed:"; cat "$OUT/gen.err"; exit 1; }
 
 if [ "${1:-}" = "--check" ]; then
   ok=1
   diff -q "$OUT/schema.sql" supabase/schema.sql >/dev/null || { echo "supabase/schema.sql is stale: run npm run db:generate"; diff "$OUT/schema.sql" supabase/schema.sql | head -40; ok=0; }
-  diff -q "$OUT/database.types.ts" src/data/database.types.ts >/dev/null || { echo "src/data/database.types.ts is stale: run npm run db:generate"; ok=0; }
+  diff -q "$OUT/database.types.ts" src/data/database.types.ts >/dev/null || { echo "src/data/database.types.ts is stale: run npm run db:generate"; diff "$OUT/database.types.ts" src/data/database.types.ts | head -40; ok=0; }
   [ $ok = 1 ] && echo "generated files up to date"
   [ $ok = 1 ]
 else
