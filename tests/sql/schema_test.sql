@@ -1,8 +1,7 @@
 -- Run after tests/sql/auth_stub.sql and supabase/schema.sql on a scratch PostgreSQL 16 database:
 --   psql -f tests/sql/schema_test.sql
 -- Every check prints ok_* = t. Lines tagged as expected errors must print an ERROR. scripts/test-sql.sh counts both.
-grant all on all tables in schema public to authenticated;
-grant usage on all sequences in schema public to authenticated;
+-- No extra grants here: the schema's own grants are what is tested.
 set role authenticated;
 \set A '11111111-1111-1111-1111-111111111111'
 \set B '22222222-2222-2222-2222-222222222222'
@@ -26,7 +25,7 @@ set request.jwt.claim.sub = :'B';
 select set_identity('Sam', 'dog');                                     -- expect error: partner has the dog
 select set_identity('Sam', 'cat');
 select set_identity('Samantha', 'cat');                                -- expect error: already set
-update members set display_name = 'X' where user_id = :'B';            -- no policy: updates 0 rows
+update members set display_name = 'X' where user_id = :'B';            -- expect error: no update privilege
 select display_name = 'Sam' as ok_direct_edit_blocked from members where user_id = :'B';
 select set_monzo_me('sam-b');
 select set_monzo_me('not a name!');                                    -- expect error: bad monzo.me name
@@ -64,7 +63,6 @@ insert into expenses(household_id, description, amount_pence, paid, split_mode, 
 values (my_household(), 'Dinner treat', 6000, jsonb_build_object(:'B', 6000), 'treat', jsonb_build_object(:'B', 6000));
 insert into expenses(household_id, description, amount_pence, paid, split_mode, shares)
 values (my_household(), 'Bad treat', 6000, jsonb_build_object(:'B', 6000), 'treat', jsonb_build_object(:'A', 6000));  -- expect error
-delete from expenses where id = :'e1';                                 -- no delete policy: 0 rows
 select count(*) = 1 as ok_hard_delete_blocked from expenses where id = :'e1';
 update expenses set amount_pence = 4400, paid = jsonb_build_object(:'A', 4400), shares = jsonb_build_object(:'A', 2200, :'B', 2200) where id = :'e1';
 update expenses set deleted_at = now() where id = :'e1';
@@ -116,13 +114,19 @@ select count(*) = 1 as ok_comment from comments;
 select count(*) filter (where action = 'edited') >= 1 and count(*) filter (where action = 'deleted') = 1
    and count(*) filter (where action = 'restored') = 1 and count(*) filter (where action = 'approved') = 2 as ok_activity
 from activity;
-insert into activity(household_id, entity, action) values (my_household(), 'expense', 'forged');   -- expect error: no policy
+insert into activity(household_id, entity, action) values (my_household(), 'expense', 'forged');   -- expect error: read-only
 
 -- operations tables
 insert into client_errors(message, app_version) values ('boom', '0.1.0');
-select count(*) = 0 as ok_errors_write_only from client_errors;
+select count(*) from client_errors;                                    -- expect error: write-only
 select value = '"0.0.0"'::jsonb as ok_config_readable from app_config where key = 'min_client_version';
-insert into ai_usage(household_id, day, kind, calls) values (my_household(), current_date, 'scan', 1);   -- expect error: no policy
+insert into ai_usage(household_id, day, kind, calls) values (my_household(), current_date, 'scan', 1);   -- expect error: read-only
+
+-- privileges: deletes of money rows are not even granted; anon can read nothing
+delete from expenses where id = :'e1';                                 -- expect error: no delete privilege
+reset role; set role anon;
+select count(*) from categories;                                       -- expect error: anon has no access
+reset role; set role authenticated;
 
 -- outsider sees nothing
 set request.jwt.claim.sub = :'C';

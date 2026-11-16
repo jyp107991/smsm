@@ -3,7 +3,7 @@
 GitHub (`jyp107991/smsm`) → GitHub Actions runs the checks → Supabase (database, sign-in, functions) and Cloudflare Workers (the app). The owner does the one-time setup in §1–3; after that every merge to `main` deploys itself. Claude Code writes the workflow files in S0 and should replace this outline with exact, phone-friendly steps once they are proven.
 
 ## 1. Supabase (a new project, separate from MacroPy's)
-1. supabase.com → New project `smsm`, region London. Save the database password.
+1. supabase.com → New project `smsm`, region West Europe (London). Leave GitHub blank. Generate the database password and save it. Under Security: **Enable Data API** on; **Automatically expose new tables** off (the schema grants exactly what the app needs); **Enable automatic RLS** on (a second safety net; the schema turns it on for every table anyway).
 2. Auth → Providers → Email: on; "Confirm email" off. Auth → Email Templates → Magic Link: the body must contain `{{ .Token }}` (sign-in is by 6-digit code).
 3. **Email delivery to the partner.** Supabase's built-in email only reaches members of the Supabase organisation. Either invite the partner's email to the organisation, or set custom SMTP (Auth → SMTP; for example Resend's free tier). Without one of these the partner never receives a code.
 4. Database → Extensions: enable `pg_cron` and `pg_net`.

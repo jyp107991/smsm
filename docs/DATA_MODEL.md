@@ -1,6 +1,6 @@
 # smsm: data model and money rules (v2)
 
-`supabase/schema.sql` is the tested baseline: `scripts/test-sql.sh` applies it twice to a scratch PostgreSQL 16 database with an auth stub and runs `tests/sql/schema_test.sql` (24 checks pass, 15 forbidden actions are refused). Until the schema is first applied to the live project it may be edited in place, with the tests; after that, every change is a numbered file in `supabase/migrations/` with tests added in the same commit.
+`supabase/schema.sql` is the tested baseline: `scripts/test-sql.sh` applies it twice to a scratch PostgreSQL 16 database with an auth stub and runs `tests/sql/schema_test.sql` (all checks pass and every forbidden action is refused; run it to see the counts). Until the schema is first applied to the live project it may be edited in place, with the tests; after that, every change is a numbered file in `supabase/migrations/` with tests added in the same commit.
 
 ## 1. Tables
 

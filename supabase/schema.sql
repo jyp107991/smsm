@@ -491,6 +491,18 @@ create policy config_read on app_config for select using (true);
 drop policy if exists errors_ins on client_errors;
 create policy errors_ins on client_errors for insert with check (user_id = auth.uid());
 
+-- ───────────────────────── table privileges ─────────────────────────
+-- The project is created with "automatically expose new tables" OFF, so nothing is reachable until granted here.
+-- Grants say which operations exist at all; row-level security above says which rows. anon gets nothing.
+revoke all on all tables in schema public from anon, authenticated;
+grant select, update                 on households to authenticated;
+grant select                         on members to authenticated;
+grant select, insert, update, delete on categories, chapters, accounts, recurring, inbox_items, category_memory,
+                                        import_rules, import_ignores to authenticated;
+grant select, insert, update         on expenses, settlements, comments to authenticated;
+grant select                         on recaps, change_requests, activity, ai_usage, app_config, member_net to authenticated;
+grant insert                         on client_errors to authenticated;
+
 -- ───────────────────────── RPCs ─────────────────────────
 
 create or replace function create_household() returns uuid
