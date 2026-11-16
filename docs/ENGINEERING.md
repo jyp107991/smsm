@@ -79,7 +79,8 @@ Independent slices or modules (for example the pure core modules in S1, or the a
 - **Pull request:** typecheck, lint, unit, property, trace, SQL, build, end-to-end, snapshots, axe. A preview of the built app in demo mode (seeded data, no backend) is uploaded as a Cloudflare preview URL so the owner can look at interface changes on a phone before they merge.
 - **Main:** the same checks; then database migrations (`supabase db push`), Edge Functions, build, `wrangler deploy`; then a smoke test of the live URL (app shell loads, version matches the commit, service worker registers, the health RPC answers). Any failure stops the line; nothing half-deploys because migrations are backward-compatible (§6).
 - **Rollback:** `wrangler rollback` restores the previous app in seconds; because of expand-then-contract it still works with the newer database.
-- **Backups:** nightly JSON export of each household to private Storage, 14 kept (EXP-2); before any migration that rewrites data, the deploy job triggers an extra one.
+- **Backups:** nightly JSON export to encrypted GitHub Actions artifacts, 30 kept (EXP-2); before any migration that rewrites data, the deploy job triggers an extra one. A restore drill runs in CI monthly against a scratch database.
+- **Keep-alive:** a scheduled workflow touches the project every 2 days so the free plan never pauses it (DEPLOY §1).
 - **Demo mode** (`?demo` or the preview build): the whole app running on an in-memory copy of a seeded, realistic 18-month household (`tests/fixtures/household.ts`). Used by previews, snapshots, the design gallery and the owner's review. It shares all code above `src/data`.
 
 ## 8. Definition of done (every slice)

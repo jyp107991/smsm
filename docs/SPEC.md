@@ -193,7 +193,8 @@ Names and animals; default split; monzo.me name; settle day; home country and cu
 - IMP-3 Bank rows go through the Inbox one card at a time: Keep or Not ours, with "always do this for Tesco". Discarded rows are never stored; only a hash of the bank's id is kept so they don't reappear. Kept rows can't be imported twice.
 ### 8.2 Export and backup [EXP]
 - EXP-1 CSV of entries and settle-ups for any range; a monthly PDF statement; a full JSON backup that can be restored.
-- EXP-2 A nightly automatic backup of the household's data is kept for 14 days in the household's own storage.
+- EXP-2 A nightly automatic backup of the household's data is kept for 30 days outside Supabase (encrypted, in GitHub), so losing the database never loses the history.
+- EXP-3 Settings shows storage used against the free plan's limit, warning at 80%.
 
 ## 9. Later: Monzo, live (not in v1)
 

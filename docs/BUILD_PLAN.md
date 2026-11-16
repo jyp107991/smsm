@@ -25,7 +25,7 @@ Pure `src/core`: money, split (all modes; `paid` as a map so a joint payer can b
 - Activity with search and basic filters.
 - Settle up, with the Monzo handoff and the all-square moment.
 - Persisted cache, optimistic writes, offline queue, realtime, stale-app check.
-- Full JSON backup download and the nightly backup (so real data is safe from the first day).
+- Full JSON backup download, the nightly off-site backup and the keep-alive job (so real data is safe from the first day).
 - Two-user end-to-end suite.
 - ★ Owner and partner install it and start using it. From here, a short "what annoyed us this week" note from the owner goes into `OPEN_ITEMS.md` and is triaged at the start of each slice.
 

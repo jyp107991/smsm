@@ -10,7 +10,10 @@ GitHub (`jyp107991/smsm`) → GitHub Actions runs the checks → Supabase (datab
 5. Account → Access Tokens: create one for the pipeline.
 6. Note the project ref, the project URL and the **publishable key** (Settings → API Keys; it starts `sb_publishable_`). Supabase is retiring the older `anon` and `service_role` keys at the end of 2026, so smsm uses the publishable key in the app and a secret key (`sb_secret_`) only inside Edge Functions.
 
-Free Supabase projects can be paused after a period with no activity (check the current policy). Daily use and the nightly jobs normally prevent it; if the app ever says it can't reach the server after a long gap, un-pause the project in the dashboard. Entries made meanwhile wait on the phones and sync afterwards.
+**Staying on the free plan.** Supabase's free plan (checked November 2026: 500 MB database, 1 GB file storage, 5 GB transfer a month, two active projects) is far more than two people need: years of entries take a few tens of megabytes. Two things are handled by the pipeline so the plan never gets in the way:
+- **Pausing.** Free projects pause after 7 days without activity. A scheduled GitHub Actions job (`keepalive.yml`) makes a small authenticated request every 2 days, so the project never goes quiet, even if you're both away. If it ever does pause, the phones keep working offline and sync once it is un-paused from the dashboard.
+- **No built-in backups on free.** A nightly GitHub Actions job exports the household's data and keeps the last 30 copies as encrypted files in the private repo's Actions artifacts (or a private `smsm-backups` repo), outside Supabase. Restoring is a documented script.
+Receipt photos are compressed to about 200 KB each, so 1 GB holds roughly 5,000; the Settings screen shows storage used, and a warning appears at 80%.
 
 The schema, migrations, storage buckets, scheduled jobs and functions are applied by the pipeline, not by hand.
 
