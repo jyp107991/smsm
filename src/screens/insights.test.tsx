@@ -331,9 +331,9 @@ describe('"What\'s this?" (INS-4, DATA_MODEL §5)', () => {
     await goInsights();
     await waitFor(() => { expect(text(region('Total'))).toContain('£1,170.00'); });
     for (const name of ['Total', 'Where it went', 'Trend', 'Who paid', 'Fairness']) {
-      expect(within(region(name)).getAllByRole('button', { name: "What's this?" }).length, name).toBeGreaterThan(0);
+      expect(within(region(name)).getAllByRole('button', { name: /^What[’']s this\?$/ }).length, name).toBeGreaterThan(0);
     }
-    fireEvent.click(within(region('Total')).getAllByRole('button', { name: "What's this?" })[0] as HTMLElement);
+    fireEvent.click(within(region('Total')).getAllByRole('button', { name: /^What[’']s this\?$/ })[0] as HTMLElement);
     const sheet = await screen.findByRole('dialog');
     expect(sheet.getAttribute('aria-label') ?? sheet.getAttribute('aria-labelledby')).toBeTruthy();
     expect(text(sheet).length).toBeGreaterThan(20);

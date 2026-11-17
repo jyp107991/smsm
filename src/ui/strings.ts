@@ -574,8 +574,9 @@ export const strings = {
     months12: 'Last 12 months',
     year: 'This year',
     chapter: 'Chapter',
+    noChapter: 'No chapter (the periods above)',
     includeChapters: 'Include chapters',
-    includeChaptersHint: 'Off: everyday spending only, as your usual is worked out.',
+    includeChaptersHint: 'Off: everyday spending only, without trips and projects.',
     total: 'Total',
     totalThisMonth: (amount: string) => `${amount} this month`,
     totalIn: (amount: string) => `${amount} in all`,
@@ -594,7 +595,7 @@ export const strings = {
     fairness12: 'Last 12 months',
     byCountry: 'By country',
     notes: 'Notes',
-    noNotes: 'Nothing unusual this month.',
+    noNotes: 'No notes this month.',
     nothing: 'Nothing spent in this period yet.',
     uncategorised: 'No category',
     whatsThis: 'What’s this?',
@@ -618,8 +619,8 @@ export const strings = {
     noteEntry: (description: string, amount: string, times: number, category: string) => `${description} ${amount} is about ${String(times)}× a usual ${category} entry`,
     notePrice: (description: string, before: string, after: string) => `${description} went from ${before} to ${after}`,
     noteNew: (description: string, perMonth: string) => `New regular payment: ${description} ${perMonth} a month`,
-    standingOrder: (debtor: string, creditor: string, mean: string, amount: string) =>
-      `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${mean} on average. A standing order of ${amount} a month would keep you about square.`,
+    standingOrder: (debtor: string, creditor: string, amount: string) =>
+      `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${amount} on average. A standing order of ${amount} a month would keep you about square.`,
   },
   settings: {
     title: 'Settings',

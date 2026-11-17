@@ -1,156 +1,210 @@
 /**
- * Insights (S5a; INS-1, INS-3…INS-6, CHP-5, PLC-7): every figure is worked out here, exactly, in integer pence,
- * by the definitions in docs/DATA_MODEL.md §3 and §5 and docs/slices/S5.md. Pure: no I/O, no clock.
+ * Insights (S5a; INS-1, INS-3…INS-6, CHP-5, PLC-7): every figure, exactly, in integer pence, by the definitions in
+ * docs/DATA_MODEL.md §3 and §5 and docs/slices/S5.md (the interface is pinned by src/core/insights.test.ts). Pure.
  *
- * Shared spend: live expenses split ratio/exact/treat at their full amount, minus live money back, in the period.
- * for_other and settle-ups never count. "Everyday": in no chapter; usual, pace and notes use everyday only.
+ * Shared spend: live expenses split ratio/exact/treat at their full amount, minus live money back (not for_other),
+ * dated in the period (a chapter period: that chapter's entries, whatever their dates). Settle-ups never count.
+ * Everyday: in no chapter. Usual, pace and notes use everyday only.
  */
-import { addDays, addMonths, daysBetween, daysInMonth, startOfMonth, type IsoDate } from './dates';
-import { pence, type Pence } from './money';
-import type { UserId } from './split';
+import { addMonths, daysInMonth, startOfMonth, type IsoDate } from './dates';
+import { formatPence, pence, type Pence } from './money';
+import { monthlyCost } from './recurring';
+import type { PenceMap, SplitMode, UserId } from './split';
+
+export type Month = string; // 'YYYY-MM'
 
 export interface InsightEntry {
-  id: string;
-  kind: 'expense' | 'money_back';
-  splitMode: string;
-  amount: Pence;
-  date: IsoDate;
-  categoryId: string | null;
-  chapterId: string | null;
-  country: string;
-  description: string;
-  paid: Readonly<Record<UserId, number>>;
-  deleted: boolean;
+  id: string; kind: 'expense' | 'money_back'; description: string; amount: Pence; paid: PenceMap; shares: PenceMap;
+  splitMode: SplitMode; date: IsoDate; categoryId: string | null; chapterId: string | null; country: string | null;
+  recurringId: string | null; deleted: boolean;
 }
-
-export interface Period { from: IsoDate; to: IsoDate }
+export interface InsightSettlement { from: UserId; to: UserId; amount: Pence; date: IsoDate; deleted: boolean }
+export type PeriodChoice = 'month' | '3months' | '12months' | 'year' | 'chapter';
+export interface Period { kind: PeriodChoice; from: IsoDate | null; to: IsoDate | null; chapterId: string | null }
+export interface PeriodChapter { id: string; startDate: IsoDate | null; endDate: IsoDate | null }
 export interface SpendOptions { everydayOnly?: boolean }
+export interface Pace { soFar: Pence; usual: Pence | null; direction: 'under' | 'over' | 'on' | null; amount: Pence | null; ratio: number | null }
+export interface NoteTemplate {
+  id: string; description: string; amount: Pence; frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate;
+  isSubscription: boolean; active: boolean;
+}
+export interface Note { kind: 'category' | 'entry' | 'price' | 'new-regular'; text: string; weight: Pence }
+export interface Fairness { percents: Record<UserId, number>; split: Record<UserId, number>; total: Pence }
 
-const COUNTED = new Set(['ratio', 'exact', 'treat']);
+const COUNTED = new Set<string>(['ratio', 'exact', 'treat']);
+const month = (d: IsoDate): Month => d.slice(0, 7);
+const firstOf = (m: Month): IsoDate => `${m}-01`;
+const lastOf = (m: Month): IsoDate => `${m}-${String(daysInMonth(Number(m.slice(0, 4)), Number(m.slice(5, 7)))).padStart(2, '0')}`;
+const shiftMonth = (m: Month, k: number): Month => addMonths(firstOf(m), k).slice(0, 7);
 
-/** +amount for a counted expense, −amount for money back, 0 for anything that isn't shared spending. */
-export function signedAmount(e: InsightEntry, opts: SpendOptions = {}): number {
-  if (e.deleted) return 0;
-  if (opts.everydayOnly && e.chapterId !== null) return 0;
-  if (e.kind === 'money_back') return e.splitMode === 'for_other' ? 0 : 0 - e.amount;
-  return COUNTED.has(e.splitMode) ? e.amount : 0;
+/** Shared spending at all (the period aside): counted expenses and money back that isn't for the other. */
+function counts(e: InsightEntry): boolean {
+  if (e.deleted) return false;
+  return e.kind === 'expense' ? COUNTED.has(e.splitMode) : e.splitMode !== 'for_other';
+}
+const sign = (e: InsightEntry) => (e.kind === 'money_back' ? -1 : 1);
+
+function inPeriod(e: InsightEntry, p: Period): boolean {
+  if (p.kind === 'chapter') return e.chapterId === p.chapterId;
+  return (p.from === null || e.date >= p.from) && (p.to === null || e.date <= p.to);
 }
 
-function within(e: InsightEntry, p: Period): boolean {
-  return e.date >= p.from && e.date <= p.to;
+function selected(entries: readonly InsightEntry[], p: Period, opts: SpendOptions = {}): InsightEntry[] {
+  return entries.filter((e) => counts(e) && inPeriod(e, p) && (!opts.everydayOnly || p.kind === 'chapter' || e.chapterId === null));
+}
+
+function sum(entries: readonly InsightEntry[]): number {
+  let t = 0;
+  for (const e of entries) t += sign(e) * e.amount;
+  return t;
+}
+
+export function periodOf(choice: PeriodChoice, today: IsoDate, chapter?: PeriodChapter): Period {
+  const first = startOfMonth(today);
+  switch (choice) {
+    case 'month': return { kind: choice, from: first, to: today, chapterId: null };
+    case '3months': return { kind: choice, from: addMonths(first, -2), to: today, chapterId: null };
+    case '12months': return { kind: choice, from: addMonths(first, -11), to: today, chapterId: null };
+    case 'year': return { kind: choice, from: `${today.slice(0, 4)}-01-01`, to: today, chapterId: null };
+    case 'chapter': return { kind: choice, from: chapter?.startDate ?? null, to: chapter?.endDate ?? null, chapterId: chapter?.id ?? null };
+  }
+}
+
+/** The same-length period just before: each end moved back 1, 3 or 12 months (clamped to the month's end). */
+export function previousPeriod(p: Period): Period | null {
+  if (p.kind === 'chapter' || p.from === null || p.to === null) return null;
+  const k = p.kind === 'month' ? 1 : p.kind === '3months' ? 3 : 12;
+  return { ...p, from: addMonths(p.from, -k), to: addMonths(p.to, -k) };
 }
 
 export function sharedSpend(entries: readonly InsightEntry[], period: Period, opts: SpendOptions = {}): Pence {
-  let t = 0;
-  for (const e of entries) if (within(e, period)) t += signedAmount(e, opts);
-  return pence(t);
+  return pence(sum(selected(entries, period, opts)));
 }
 
-function group<K>(entries: readonly InsightEntry[], period: Period, opts: SpendOptions, key: (e: InsightEntry) => K): Map<K, number> {
+function grouped<K>(entries: readonly InsightEntry[], key: (e: InsightEntry) => K): [K, number][] {
   const m = new Map<K, number>();
-  for (const e of entries) {
-    if (!within(e, period)) continue;
-    const v = signedAmount(e, opts);
-    if (v === 0) continue;
-    m.set(key(e), (m.get(key(e)) ?? 0) + v);
-  }
-  return m;
+  for (const e of entries) m.set(key(e), (m.get(key(e)) ?? 0) + sign(e) * e.amount);
+  return [...m].filter(([, v]) => v !== 0).sort((a, b) => b[1] - a[1]);
 }
 
-const desc = <T extends { total: Pence }>(a: T, b: T) => b.total - a.total;
-
-/** Where it went: per category, largest first (money back counts against its own category). */
 export function byCategory(entries: readonly InsightEntry[], period: Period, opts: SpendOptions = {}): { categoryId: string | null; total: Pence }[] {
-  return [...group(entries, period, opts, (e) => e.categoryId)].map(([categoryId, t]) => ({ categoryId, total: pence(t) }))
-    .filter((c) => c.total !== 0).sort(desc);
+  return grouped(selected(entries, period, opts), (e) => e.categoryId).map(([categoryId, t]) => ({ categoryId, total: pence(t) }));
 }
 
-/** PLC-7: per country, largest first. */
-export function byCountry(entries: readonly InsightEntry[], period: Period, opts: SpendOptions = {}): { country: string; total: Pence }[] {
-  return [...group(entries, period, opts, (e) => e.country)].map(([country, t]) => ({ country, total: pence(t) }))
-    .filter((c) => c.total !== 0).sort(desc);
+export function byCountry(entries: readonly InsightEntry[], period: Period, opts: SpendOptions = {}): { country: string | null; total: Pence }[] {
+  return grouped(selected(entries, period, opts), (e) => e.country).map(([country, t]) => ({ country, total: pence(t) }));
 }
 
-/** Who paid: Σ paid[person] over shared spending (money back: minus what each received). Both people always. */
-export function whoPaid(entries: readonly InsightEntry[], period: Period, people: readonly UserId[], opts: SpendOptions = {}): Record<UserId, Pence> {
-  const out = new Map<UserId, number>(people.map((p) => [p, 0]));
-  for (const e of entries) {
-    if (!within(e, period) || signedAmount(e, opts) === 0) continue;
-    const sign = e.kind === 'money_back' ? -1 : 1;
-    for (const [p, v] of Object.entries(e.paid)) out.set(p, (out.get(p) ?? 0) + sign * v);
-  }
-  return Object.fromEntries([...out].map(([p, v]) => [p, pence(v)]));
+export function whoPaid(entries: readonly InsightEntry[], period: Period, people: readonly [UserId, UserId], opts: SpendOptions = {}): Record<UserId, Pence> {
+  const out: Record<UserId, number> = { [people[0]]: 0, [people[1]]: 0 };
+  for (const e of selected(entries, period, opts)) for (const p of people) out[p] = (out[p] ?? 0) + sign(e) * (e.paid[p] ?? 0);
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, pence(v)]));
 }
 
-export function monthPeriod(month: IsoDate): Period {
-  const from = startOfMonth(month);
-  return { from, to: addDays(addMonths(from, 1), -1) };
-}
+const monthPeriod = (m: Month): Period => ({ kind: 'month', from: firstOf(m), to: lastOf(m), chapterId: null });
 
-/** The `count` calendar months ending with `month`, oldest first, each with its shared spend. */
-export function monthlyTotals(entries: readonly InsightEntry[], month: IsoDate, count: number, opts: SpendOptions = {}): { month: IsoDate; total: Pence }[] {
-  const out: { month: IsoDate; total: Pence }[] = [];
-  for (let i = count - 1; i >= 0; i -= 1) {
-    const m = startOfMonth(addMonths(startOfMonth(month), -i));
-    out.push({ month: m, total: sharedSpend(entries, monthPeriod(m), opts) });
-  }
-  return out;
+export function monthlyTotals(entries: readonly InsightEntry[], months: readonly Month[], opts: SpendOptions = {}): { month: Month; total: Pence }[] {
+  return months.map((m) => ({ month: m, total: sharedSpend(entries, monthPeriod(m), opts) }));
 }
 
 function median(xs: readonly number[]): number {
   const s = [...xs].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 === 1 ? (s[mid] ?? 0) : Math.floor(((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2);
+  const n = s.length;
+  return n % 2 === 1 ? (s[(n - 1) / 2] ?? 0) : Math.floor(((s[n / 2 - 1] ?? 0) + (s[n / 2] ?? 0)) / 2);
 }
 
-/**
- * Usual (DATA_MODEL §5): the median of the previous 3–6 full calendar months of everyday shared spend before
- * `month`. A full month is one after the month of the first entry. Fewer than 3: null.
- */
-export function usual(entries: readonly InsightEntry[], month: IsoDate, value: (p: Period) => number = (p) => sharedSpend(entries, p, { everydayOnly: true })): Pence | null {
-  const live = entries.filter((e) => !e.deleted);
-  if (live.length === 0) return null;
-  const first = startOfMonth(live.reduce((m, e) => (e.date < m ? e.date : m), live[0]?.date ?? month));
-  const months: number[] = [];
-  for (let i = 1; i <= 6; i += 1) {
-    const m = addMonths(startOfMonth(month), -i);
-    if (m <= first) break;
-    months.push(value(monthPeriod(m)));
+/** The full months before `m` (after the month of the first live entry), most recent first, at most 6. */
+function fullMonths(entries: readonly InsightEntry[], m: Month): Month[] {
+  let first: Month | null = null;
+  for (const e of entries) if (!e.deleted && (first === null || month(e.date) < first)) first = month(e.date);
+  if (first === null) return [];
+  const out: Month[] = [];
+  for (let k = 1; k <= 6; k += 1) {
+    const x = shiftMonth(m, -k);
+    if (x <= first) break;
+    out.push(x);
   }
-  return months.length >= 3 ? pence(median(months)) : null;
+  return out;
 }
 
-/** £ rounded to the nearest £10, halves up, in pence. */
-function nearestTen(p: number): number {
-  return Math.floor((p + 500) / 1000) * 1000;
+/** Usual (everyday): the median of the previous 3–6 full months; fewer than 3 → null. With categoryId: that category's. */
+export function usual(entries: readonly InsightEntry[], m: Month, opts: { categoryId?: string | null } = {}): Pence | null {
+  const months = fullMonths(entries, m);
+  if (months.length < 3) return null;
+  const everyday = entries.filter((e) => e.chapterId === null && (opts.categoryId === undefined || e.categoryId === opts.categoryId));
+  return pence(median(months.map((x) => sharedSpend(everyday, monthPeriod(x)))));
 }
 
-export interface Pace { soFar: Pence; usual: Pence | null; direction: 'under' | 'over' | 'on' | null; amount: Pence | null }
-
-/** INS-1: this month's everyday spend so far against the usual pace. */
+/** INS-1: everyday spending so far this month against the usual pace; |difference| to the nearest £10, halves up. */
 export function pace(entries: readonly InsightEntry[], today: IsoDate): Pace {
-  const month = startOfMonth(today);
-  const soFar = sharedSpend(entries, { from: month, to: today }, { everydayOnly: true });
-  const u = usual(entries, today);
-  if (u === null) return { soFar, usual: null, direction: null, amount: null };
-  const [y, m] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
-  const elapsed = daysBetween(month, today) + 1;
-  // Expected so far = usual × elapsed ÷ days in month, exactly (compared in scaled integers).
-  const dim = daysInMonth(y, m);
-  const diffScaled = soFar * dim - u * elapsed; // = (soFar − expected) × dim
-  const amount = nearestTen(Math.abs(diffScaled) / dim);
-  const direction = amount < 1000 ? 'on' : diffScaled < 0 ? 'under' : 'over';
-  return { soFar, usual: u, direction, amount: pence(direction === 'on' ? 0 : amount) };
+  const soFar = sharedSpend(entries, periodOf('month', today), { everydayOnly: true });
+  const u = usual(entries, month(today));
+  if (u === null) return { soFar, usual: null, direction: null, amount: null, ratio: null };
+  const elapsed = Number(today.slice(8, 10));
+  const days = daysInMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
+  const scaled = soFar * days - u * elapsed; // (soFar − expected) × days, exact
+  const abs = Math.abs(scaled);
+  const direction = abs <= 1000 * days ? 'on' : scaled < 0 ? 'under' : 'over';
+  const amount = Math.floor((abs + 500 * days) / (1000 * days)) * 1000;
+  const expected = (u * elapsed) / days;
+  return { soFar, usual: u, direction, amount: pence(amount), ratio: expected > 0 ? soFar / expected - 1 : null };
 }
 
-/** Whole percentages that add up to 100 (largest remainder, ties to the earlier person). */
-export function percentages(values: readonly number[]): number[] {
+const wholePounds = (p: number): string => `£${Math.round(p / 100).toLocaleString('en-GB')}`;
+
+/** INS-3: this month's notes (everyday only), each by its stated rule, by weight, largest first. */
+export function notes(input: { entries: readonly InsightEntry[]; templates: readonly NoteTemplate[]; categories: readonly { id: string; name: string }[] }, today: IsoDate): Note[] {
+  const { entries, templates, categories } = input;
+  const m = month(today);
+  const thisMonth = periodOf('month', today);
+  const everyday = entries.filter((e) => e.chapterId === null);
+  const nameOf = (id: string | null) => categories.find((c) => c.id === id)?.name ?? '';
+  const out: Note[] = [];
+  // A category at least 30% and £20 above its usual (both inclusive, exact).
+  for (const c of categories) {
+    const u = usual(entries, m, { categoryId: c.id });
+    if (u === null) continue;
+    const now = sum(selected(everyday.filter((e) => e.categoryId === c.id), thisMonth));
+    if (now * 10 >= u * 13 && now - u >= 2000) {
+      out.push({ kind: 'category', text: `${c.name} is ${wholePounds(now - u)} over its usual (${wholePounds(now)} so far, usually ${wholePounds(u)})`, weight: pence(now - u) });
+    }
+  }
+  // An entry at least 3× its category's median over the 6 full months before this one, with at least 5 of those.
+  const six: Period = { kind: 'month', from: firstOf(shiftMonth(m, -6)), to: lastOf(shiftMonth(m, -1)), chapterId: null };
+  for (const e of selected(everyday, thisMonth)) {
+    if (e.kind !== 'expense') continue;
+    const earlier = selected(everyday, six).filter((x) => x.kind === 'expense' && x.categoryId === e.categoryId).map((x) => x.amount);
+    if (earlier.length < 5) continue;
+    const med = median(earlier);
+    if (med > 0 && e.amount >= 3 * med) {
+      out.push({ kind: 'entry', text: `${e.description} ${wholePounds(e.amount)} is about ${String(Math.round(e.amount / med))}× a usual ${nameOf(e.categoryId)} entry`, weight: e.amount });
+    }
+  }
+  for (const t of templates) {
+    // A subscription whose entry posted this month differs from the one before.
+    if (t.isSubscription) {
+      const posted = entries.filter((e) => !e.deleted && e.recurringId === t.id).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      const last = posted[posted.length - 1];
+      const before = posted[posted.length - 2];
+      if (last && before && month(last.date) === m && last.date <= today && last.amount !== before.amount) {
+        out.push({ kind: 'price', text: `${t.description} went from ${formatPence(before.amount)} to ${formatPence(last.amount)}`, weight: pence(Math.abs(last.amount - before.amount)) });
+      }
+    }
+    // A regular payment started this month.
+    if (t.active && t.startDate >= firstOf(m) && t.startDate <= today) {
+      const perMonth = monthlyCost({ frequency: t.frequency, every: t.every }, t.amount);
+      out.push({ kind: 'new-regular', text: `New regular payment: ${t.description} ${formatPence(perMonth)} a month`, weight: t.amount });
+    }
+  }
+  return out.sort((a, b) => b.weight - a.weight);
+}
+
+/** Whole percentages summing to 100: largest remainder, a tie to the first. */
+function percentages(values: readonly number[]): number[] {
   const total = values.reduce((a, b) => a + b, 0);
-  if (total <= 0) return values.map(() => 0);
-  const raw = values.map((v) => (v * 100) / total);
-  const floors = raw.map((r) => Math.floor(r));
+  const floors = values.map((v) => Math.floor((v * 100) / total));
   let left = 100 - floors.reduce((a, b) => a + b, 0);
-  const order = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const order = values.map((v, i) => ({ i, rem: (v * 100) % total })).sort((a, b) => b.rem - a.rem || a.i - b.i);
   for (const o of order) {
     if (left <= 0) break;
     floors[o.i] = (floors[o.i] ?? 0) + 1;
@@ -159,110 +213,29 @@ export function percentages(values: readonly number[]): number[] {
   return floors;
 }
 
-/** INS-5: each person's share of what was paid in the period, as whole percentages summing to 100. */
-export function fairness(entries: readonly InsightEntry[], people: readonly UserId[], period: Period): { paid: Record<UserId, Pence>; percent: Record<UserId, number> } {
+/** INS-5: each person's share of what was paid, beside the agreed split; null when nothing was paid. */
+export function fairness(entries: readonly InsightEntry[], people: readonly [UserId, UserId], period: Period, split: Record<UserId, number>): Fairness | null {
   const paid = whoPaid(entries, period, people);
-  const pct = percentages(people.map((p) => Math.max(0, paid[p] ?? 0)));
-  return { paid, percent: Object.fromEntries(people.map((p, i) => [p, pct[i] ?? 0])) };
-}
-
-export type PeriodChoice = 'month' | '3months' | '12months' | 'year';
-
-/** The period for a choice, ending today. */
-export function periodOf(choice: PeriodChoice, today: IsoDate): Period {
-  const month = startOfMonth(today);
-  switch (choice) {
-    case 'month': return { from: month, to: today };
-    case '3months': return { from: addMonths(month, -2), to: today };
-    case '12months': return { from: addMonths(month, -11), to: today };
-    case 'year': return { from: `${today.slice(0, 4)}-01-01`, to: today };
-  }
+  const values: number[] = people.map((p) => paid[p] ?? 0);
+  const total = values.reduce((a, b) => a + b, 0);
+  if (total <= 0) return null;
+  const pct = percentages(values.map((v) => Math.max(0, v)));
+  return { percents: { [people[0]]: pct[0] ?? 0, [people[1]]: pct[1] ?? 0 }, split, total: pence(total) };
 }
 
 /**
- * The period to compare with: the same days `monthsBack` months earlier (this month so far → the same days of last
- * month; the last 3 months → the 3 before; this year → the same days last year). Without `monthsBack`, the
- * same number of days just before.
+ * INS-6: the net balance at the end of each of the 3 full months before today's month; the same person owing at all
+ * three with a mean of at least £50 → the standing order (the mean rounded down to £10).
  */
-export function previousPeriod(p: Period, monthsBack?: number): Period {
-  if (monthsBack !== undefined) return { from: addMonths(p.from, -monthsBack), to: addMonths(p.to, -monthsBack) };
-  const days = daysBetween(p.from, p.to) + 1;
-  return { from: addDays(p.from, -days), to: addDays(p.from, -1) };
-}
-
-/** How far back a choice's comparison goes. */
-export function monthsBackOf(choice: PeriodChoice): number {
-  return choice === 'month' ? 1 : choice === '3months' ? 3 : 12;
-}
-
-/** £ figures for the notes and sentences: pence → whole pounds, rounded to the nearest pound, halves up. */
-function wholePounds(p: number): number {
-  return Math.floor((Math.abs(p) + 50) / 100) * Math.sign(p);
-}
-
-export type Note =
-  | { kind: 'category'; categoryId: string | null; soFar: Pence; usual: Pence; over: Pence }
-  | { kind: 'entry'; id: string; description: string; categoryId: string | null; amount: Pence; times: number }
-  | { kind: 'price'; description: string; before: Pence; after: Pence }
-  | { kind: 'new-recurring'; description: string; perMonth: Pence };
-
-export interface NoteInput {
-  entries: readonly InsightEntry[];
-  today: IsoDate;
-  /** Subscription price changes made this month, from the templates' history. */
-  priceChanges?: readonly { description: string; before: Pence; after: Pence; on: IsoDate }[];
-  /** Regular payments that started this month, with their cost a month. */
-  newRecurring?: readonly { description: string; perMonth: Pence; start: IsoDate }[];
-}
-
-/** INS-3: the notes for this month, each by its stated rule, largest money first. */
-export function notes(input: NoteInput): Note[] {
-  const { entries, today } = input;
-  const month = startOfMonth(today);
-  const thisMonth: Period = { from: month, to: today };
-  const out: { money: number; note: Note }[] = [];
-  // A category at least 30% and £20 above its usual (everyday).
-  const now = byCategory(entries, thisMonth, { everydayOnly: true });
-  for (const c of now) {
-    const u = usual(entries, today, (p) => entries.reduce((t, e) => t + (e.categoryId === c.categoryId && within(e, p) ? signedAmount(e, { everydayOnly: true }) : 0), 0));
-    if (u === null || u <= 0) continue;
-    if (c.total * 10 >= u * 13 && c.total - u >= 2000) out.push({ money: c.total - u, note: { kind: 'category', categoryId: c.categoryId, soFar: c.total, usual: u, over: pence(c.total - u) } });
-  }
-  // An entry at least 3× its category's median over the previous 6 months, with at least 5 earlier entries.
-  const sixAgo = addMonths(month, -6);
-  for (const e of entries) {
-    if (e.deleted || e.kind !== 'expense' || !COUNTED.has(e.splitMode) || e.chapterId !== null || !within(e, thisMonth)) continue;
-    const earlier = entries.filter((x) => !x.deleted && x.kind === 'expense' && COUNTED.has(x.splitMode) && x.categoryId === e.categoryId
-      && x.date >= sixAgo && x.date < month).map((x) => x.amount);
-    if (earlier.length < 5) continue;
-    const med = median(earlier);
-    if (med > 0 && e.amount >= 3 * med) out.push({ money: e.amount - med, note: { kind: 'entry', id: e.id, description: e.description, categoryId: e.categoryId, amount: e.amount, times: Math.floor(e.amount / med) } });
-  }
-  for (const c of input.priceChanges ?? []) {
-    if (c.on >= month && c.on <= today && c.before !== c.after) out.push({ money: Math.abs(c.after - c.before) * 12, note: { kind: 'price', description: c.description, before: c.before, after: c.after } });
-  }
-  for (const r of input.newRecurring ?? []) {
-    if (r.start >= month && r.start <= today) out.push({ money: r.perMonth, note: { kind: 'new-recurring', description: r.description, perMonth: r.perMonth } });
-  }
-  return out.sort((a, b) => b.money - a.money).map((x) => x.note);
-}
-
-export interface Settle { from: UserId; to: UserId; amount: Pence; date: IsoDate; deleted: boolean }
-
-/**
- * INS-6: if the same person owed at the end of each of the last 3 full months and the mean is ≥ £50, the
- * standing order (rounded down to £10) that would keep you about square.
- */
-export function standingOrder(entries: readonly InsightEntry[], settlements: readonly Settle[], people: readonly [UserId, UserId], today: IsoDate, shares: (e: InsightEntry) => Readonly<Record<UserId, number>>): { debtor: UserId; creditor: UserId; amount: Pence; mean: Pence } | null {
+export function standingOrder(entries: readonly InsightEntry[], settlements: readonly InsightSettlement[], people: readonly [UserId, UserId], today: IsoDate): { debtor: UserId; creditor: UserId; amount: Pence } | null {
   const [a, b] = people;
   const ends: number[] = [];
-  for (let i = 1; i <= 3; i += 1) {
-    const end = addDays(startOfMonth(addMonths(startOfMonth(today), -i + 1)), -1);
-    let net = 0; // a's net position at that month end
+  for (let k = 1; k <= 3; k += 1) {
+    const end = lastOf(shiftMonth(month(today), -k));
+    let net = 0; // a's position: positive = a is owed
     for (const e of entries) {
       if (e.deleted || e.date > end) continue;
-      const sign = e.kind === 'money_back' ? -1 : 1;
-      net += sign * ((e.paid[a] ?? 0) - (shares(e)[a] ?? 0));
+      net += sign(e) * ((e.paid[a] ?? 0) - (e.shares[a] ?? 0));
     }
     for (const s of settlements) {
       if (s.deleted || s.date > end) continue;
@@ -271,12 +244,10 @@ export function standingOrder(entries: readonly InsightEntry[], settlements: rea
     }
     ends.push(net);
   }
-  const allOwedToA = ends.every((n) => n > 0);
-  const allOwedToB = ends.every((n) => n < 0);
-  if (!allOwedToA && !allOwedToB) return null;
+  const owedToA = ends.every((n) => n > 0);
+  const owedToB = ends.every((n) => n < 0);
+  if (!owedToA && !owedToB) return null;
   const mean = Math.floor(ends.reduce((t, n) => t + Math.abs(n), 0) / 3);
   if (mean < 5000) return null;
-  return { debtor: allOwedToA ? b : a, creditor: allOwedToA ? a : b, amount: pence(Math.floor(mean / 1000) * 1000), mean: pence(mean) };
+  return owedToA ? { debtor: b, creditor: a, amount: pence(Math.floor(mean / 1000) * 1000) } : { debtor: a, creditor: b, amount: pence(Math.floor(mean / 1000) * 1000) };
 }
-
-export { wholePounds };
