@@ -22,6 +22,7 @@ function keysFor(uid: string, table: WatchedTable): (readonly unknown[])[] {
     case 'households': return [keys.household(uid)];
     case 'members': return [keys.members(uid), keys.membership(uid)];
     case 'categories': return [keys.categories(uid)];
+    case 'chapters': return [keys.chapters(uid)];
     case 'expenses': return [keys.expenses(uid), keys.activityAll(uid)];
     case 'settlements': return [keys.settlements(uid), keys.activityAll(uid)];
     case 'change_requests': return [keys.changes(uid), keys.members(uid), keys.household(uid)];

@@ -8,15 +8,16 @@ import { useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
 import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ChapterRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
 import { activeDataLayer, DataContext } from './context';
 import type { Memory } from '../core/categorise';
 import { MEMORY_KEY, MONEY_KEY } from './keys';
 import type { WriteProblem } from './problems';
 import {
-  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
+  activityQuery, categoriesQuery, changesQuery, chaptersQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
   settlementsQuery,
 } from './queries';
+import { currentChapterId, subscribeCurrentChapter } from './mutations';
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
@@ -103,6 +104,23 @@ export function useCategories(): DataResult<CategoryRow[]> {
   // CAT-1: a category added, edited, archived or moved on this phone shows at once, offline too.
   const data = useMemo(() => q.data && overlay(q.data, ops, 'categories').sort((a, b) => a.sort - b.sort), [q.data, ops]);
   return result(q, data);
+}
+
+/** S4a: every chapter (closed ones too), oldest first, with the waiting changes applied (CHP-1). */
+export function useChapters(): DataResult<ChapterRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(chaptersQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(() => q.data && overlay(q.data, ops, 'chapters'), [q.data, ops]);
+  return result(q, data);
+}
+
+/** CHP-2: this phone's current chapter, when it is still there and open. */
+export function useCurrentChapter(): ChapterRow | null {
+  const id = useSyncExternalStore(subscribeCurrentChapter, currentChapterId, () => null);
+  const chapters = useChapters().data;
+  return useMemo(() => chapters?.find((c) => c.id === id && !c.closed) ?? null, [chapters, id]);
 }
 
 /** S3: every regular payment (paused and ended ones too), with the waiting changes applied (REC-1). */

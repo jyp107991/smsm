@@ -94,6 +94,8 @@ export const strings = {
     ratio100: 'The split must add up to 100%.',
     schedule: 'Check how often it repeats, and that it ends after it starts.',
     colour: 'Pick one of the colours shown.',
+    chapterName: 'Give it a name of up to 40 characters.',
+    chapterDates: 'It can’t end before it starts.',
   },
 
   // ───────────── S2: the daily loop ─────────────

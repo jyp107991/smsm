@@ -11,7 +11,7 @@ import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
-  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
+  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterRow, type ChapterWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
   type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
@@ -28,6 +28,8 @@ export interface ExpenseDraft {
   tags?: readonly string[];
   /** MB-2: the expense this money back refunds. */
   refundOf?: string | null;
+  /** CHP-2: the chapter it belongs to (null: everyday); left out, an edit keeps the entry's own. */
+  chapterId?: string | null;
 }
 
 export interface SettlementDraft {
@@ -46,7 +48,7 @@ export interface SettlementDraft {
 export type InvalidReason =
   | EntryIssue
   | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100'
-  | 'schedule' | 'colour';
+  | 'schedule' | 'colour' | 'chapterName' | 'chapterDates';
 
 /** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
@@ -94,6 +96,8 @@ export type MoneyOp = OpBase & (
   | { table: 'inbox_items'; op: 'patch'; id: string; patch: InboxPatch; label: string }
   /** S3: a category added, edited, archived or moved (CAT-1). */
   | { table: 'categories'; op: 'upsert'; isNew: boolean; row: CategoryRow; input: null }
+  /** S4a: a chapter started, edited, closed or reopened (CHP-1, CHP-3); never deleted. */
+  | { table: 'chapters'; op: 'upsert'; isNew: boolean; row: ChapterRow; input: null }
 );
 
 export function newId(): string {
@@ -152,6 +156,7 @@ export function buildProvisionalExpense(ctx: { householdId: string; userId: User
     notes: draft.notes === undefined ? fresh.notes : draft.notes,
     tags: draft.tags === undefined ? fresh.tags : [...draft.tags],
     refund_of: draft.refundOf === undefined ? fresh.refund_of : draft.refundOf,
+    chapter_id: draft.chapterId === undefined ? fresh.chapter_id : draft.chapterId,
     updated_by: ctx.userId,
     updated_at: stamp,
   };
@@ -282,6 +287,7 @@ export function inputFromRow(row: ExpenseRow, members: readonly UserId[]): { dra
       notes: row.notes,
       tags: row.tags,
       refundOf: row.refund_of,
+      chapterId: row.chapter_id,
     },
     split,
   };
@@ -302,6 +308,7 @@ export function withDetails(row: ExpenseRow, patch: Partial<ExpenseDraft>, ctx: 
     notes: patch.notes === undefined ? row.notes : patch.notes,
     tags: patch.tags === undefined ? row.tags : [...patch.tags],
     refund_of: patch.refundOf === undefined ? row.refund_of : patch.refundOf,
+    chapter_id: patch.chapterId === undefined ? row.chapter_id : patch.chapterId,
     updated_by: ctx.userId,
     updated_at: ctx.now.toISOString(),
   };
@@ -341,6 +348,7 @@ export function buildExpense(ctx: WriteContext, draft: ExpenseDraft, base?: Expe
     notes: draft.notes === undefined ? fresh.notes : draft.notes,
     tags: draft.tags === undefined ? fresh.tags : [...draft.tags],
     refund_of: draft.refundOf === undefined ? fresh.refund_of : draft.refundOf,
+    chapter_id: draft.chapterId === undefined ? fresh.chapter_id : draft.chapterId,
     updated_by: ctx.userId,
     updated_at: stamp,
   };
@@ -457,10 +465,16 @@ export function recurringWrite(row: RecurringRow): RecurringWrite {
 }
 
 /** The columns of a category the phone sends. */
+/** The columns of a chapter the phone sends. */
+export function chapterWrite(row: ChapterRow): ChapterWrite {
+  const { id, household_id, name, emoji, kind, country, start_date, end_date, closed } = row;
+  return { id, household_id, name, emoji, kind, country, start_date, end_date, closed };
+}
+
 export function categoryWrite(row: CategoryRow): CategoryWrite {
   const { id, household_id, name, emoji, colour, archived, sort, default_ratio } = row;
   return { id, household_id, name, emoji, colour, archived, sort, default_ratio };
 }
 
 /** Whatever a queued write gets back from the server. */
-export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow;
+export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow | ChapterRow;
