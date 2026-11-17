@@ -25,14 +25,21 @@ import type { Database } from './database.types';
 import { createSessionKeeper } from './session';
 import { FakeNetwork, FakeServer, FakeStorage, type FakePhone, type FakeUser } from '../../tests/fixtures/fake-supabase';
 
-type Keeper = ReturnType<typeof createSessionKeeper>;
+/** The contract above as a type: createSessionKeeper's result must be assignable to it. */
+type SessionState = { status: 'signed-in'; userId: string; refreshPending: boolean } | { status: 'signed-out' };
+interface Keeper {
+  ready: Promise<void>;
+  state(): SessionState;
+  subscribe(listener: () => void): () => void;
+  dispose(): void;
+}
 const keepers: Keeper[] = [];
 afterEach(() => {
   for (const k of keepers.splice(0)) k.dispose();
 });
 
 function keeper(phone: FakePhone, storage: FakeStorage): Keeper {
-  const k = createSessionKeeper({ client: phone.client as SupabaseClient<Database>, storage, network: phone.network });
+  const k: Keeper = createSessionKeeper({ client: phone.client as SupabaseClient<Database>, storage, network: phone.network });
   keepers.push(k);
   return k;
 }

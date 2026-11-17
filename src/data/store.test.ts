@@ -40,11 +40,44 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { netPositions } from '../core/balance';
-import { pence } from '../core/money';
+import { pence, type Pence } from '../core/money';
+import type { SplitParams } from '../core/split';
 import type { Database } from './database.types';
 import { expenseToLedger, settlementToLedger, type ExpenseRow, type SettlementRow } from './rows';
-import { createStore, type Store } from './store';
+import { createStore } from './store';
 import { FakeNetwork, FakeServer, FakeStorage, type FakeUser, type Household, type LogEntry, type Row } from '../../tests/fixtures/fake-supabase';
+
+/** The contract above as a type: createStore's result must be assignable to it. */
+interface ExpenseInput {
+  kind?: 'expense' | 'money_back';
+  description: string;
+  amount: Pence;
+  date: string;
+  categoryId: string | null;
+  payer: string;
+  split: SplitParams;
+  notes?: string | null;
+  tags?: string[];
+  refundOf?: string | null;
+}
+interface Store {
+  ready: Promise<void>;
+  idle(): Promise<void>;
+  refresh(): Promise<void>;
+  dispose(): Promise<void>;
+  me(): string | null;
+  householdId(): string | null;
+  entries(): ExpenseRow[];
+  settlements(): SettlementRow[];
+  balance(): Record<string, Pence>;
+  pendingCount(): number;
+  refused(): { id: string; message: string; input: unknown }[];
+  addExpense(input: ExpenseInput): string;
+  editExpense(id: string, patch: Partial<ExpenseInput>): void;
+  deleteExpense(id: string): void;
+  restoreExpense(id: string): void;
+  addSettlement(input: { from: string; to: string; amount: Pence; date: string; note?: string | null; method?: 'monzo' | 'other' }): string;
+}
 
 const TODAY = '2026-11-14';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -64,7 +97,7 @@ function openStore(server: FakeServer, user: FakeUser, opts: { storage?: FakeSto
   const storage = opts.storage ?? new FakeStorage();
   const network = opts.network ?? new FakeNetwork(true);
   const phone = server.phone(user.email, user, network);
-  const store = createStore({
+  const store: Store = createStore({
     client: phone.client as SupabaseClient<Database>,
     storage,
     network,
