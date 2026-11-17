@@ -2,6 +2,11 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~18:15 UTC: S3 built (Bills, regular payments, Inbox, categories)
+- Built directly (no agents), after the owner's instruction. Database: post_due_recurring by the UK date with row locks, varying bills to the Inbox, nightly job 01:17, no deletes; SQL 91/91, refused 30/30. Core: costs a month/year, upcoming, looks-monthly. Data: regular payments, Inbox decisions and categories through the offline queue.
+- Screens: **Bills tab** (what home costs; this month as a calendar with its total; next 30 days; subscriptions with a year's total; paused or ended at the bottom); **regular payment sheet** (How often, Every, **Starts on the day you pick**, Ends, Amount varies, Subscription; Pause, Resume, End; history with price changes); **Repeat** in the Add sheet; **Inbox** on Home; **"looks monthly"** suggestion; **Settings → Categories** (rename, emoji, colour, order, archive, add).
+- Tests: all 24 S3 screen tests, the full suite (1,356) and the 6 S3 browser tests (320/390 px, light and dark, accessibility-clean) pass. Next: full browser suite, CI, review of the money parts, screenshots to the owner, release.
+
 ## 2026-11-17 ~18:00 UTC: S3 builder had died at 15:48 — restarted as two builders with a stall watch
 - The S3 builder stopped at 15:48 (its task vanished, likely a container restart) with only two draft migrations written; the idle check-ins didn't catch it. Owner was (rightly) frustrated at the wait.
 - Salvaged its drafts as commit 09a913e on its worktree branch. Restarted as two builders in parallel: data (migrations, core, data layer, demo seed) and screens (Bills tab, regular payment sheet, Inbox, looks-monthly, categories), each committing every 15 min; a Monitor alerts on 25 min without a commit.

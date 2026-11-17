@@ -35,7 +35,7 @@ export function Bills() {
 
       <section aria-labelledby={costsId} className="flex flex-col gap-3">
         <h2 id={costsId} className="text-subtitle text-ink-2 m-0">{strings.bills.costs}</h2>
-        <p className="text-amount nums-list m-0">{strings.bills.perMonth(formatPence(perMonth))}</p>
+        <p className="text-sentence nums-list m-0">{strings.bills.perMonth(formatPence(perMonth))}</p>
         {templates.length === 0 ? <p className="text-secondary text-ink-2 m-0">{strings.bills.none}</p> : null}
         <div>
           <Button onClick={() => { sheets.openEntry({ mode: 'recurring' }); }}>{strings.bills.add}</Button>
@@ -133,9 +133,12 @@ function ThisMonth({ templates, today }: { templates: readonly RecurringRow[]; t
                   role="gridcell"
                   aria-label={what ? strings.bills.dayLabel(name, what) : name}
                   aria-current={day === today ? 'date' : undefined}
-                  className="flex h-12 flex-col items-center justify-center gap-1"
+                  className="flex h-12 flex-col items-center justify-center gap-0.5"
                 >
-                  <span aria-hidden="true" className={cx('text-body nums-list leading-none', day === today ? 'text-forest font-semibold' : 'text-ink', day < today && !posted && 'text-ink-2')}>
+                  <span aria-hidden="true" className={cx(
+                      'text-body nums-list inline-flex size-8 items-center justify-center rounded-full leading-none',
+                      day === today ? 'bg-forest-tint text-forest font-semibold' : day < today ? 'text-ink-2' : 'text-ink',
+                    )}>
                     {Number(day.slice(8, 10))}
                   </span>
                   <span aria-hidden="true" className="flex h-1.5 items-center gap-0.5">

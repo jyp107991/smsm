@@ -17,6 +17,7 @@ export type ChapterRow = Tables['chapters']['Row'];
 export type RecurringRow = Tables['recurring']['Row'];
 export type ExpenseRow = Tables['expenses']['Row'];
 export type SettlementRow = Tables['settlements']['Row'];
+export type InboxItemRow = Tables['inbox_items']['Row'];
 
 export interface DemoHousehold {
   household: HouseholdRow;
@@ -24,6 +25,8 @@ export interface DemoHousehold {
   categories: CategoryRow[];
   chapters: ChapterRow[];
   recurring: RecurringRow[];
+  /** S3: the open Inbox bill (the latest energy bill, asking for its amount). */
+  inboxItems: InboxItemRow[];
   expenses: ExpenseRow[];
   settlements: SettlementRow[];
 }
@@ -133,6 +136,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     tmpl('Community Fibre', 2500, 'Utilities', JAE, { start_date: addDays(start, 20) }),
   ];
 
+  const inboxItems: InboxItemRow[] = [];
   const groceries = ['Tesco', 'Sainsbury’s', 'Lidl', 'Waitrose', 'Tesco Express', '이마트', 'Big shop', 'Ocado'];
   const eatingOut = ['Dishoom', 'Pret', 'Wagamama', 'Franco Manca', 'Ramen', 'Pho', 'Honest Burgers', 'Deliveroo'];
   const goingOut = ['Cinema', 'The Royal Oak', 'Barbican', 'Gig tickets', 'Cocktails'];
@@ -143,10 +147,23 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   for (const r of recurring) {
     const payer = Object.entries(r.paid as Record<string, number>).find(([, v]) => v > 0)?.[0] ?? JAE;
     const category = r.description === 'Rent' ? 'Rent & bills' : r.is_subscription ? 'Subscriptions' : 'Utilities';
-    for (const date of dueOccurrences({ frequency: 'monthly', every: 1, startDate: r.start_date, endDate: null }, 0, today)) {
-      add({ date, description: r.description, amount: r.amount_varies ? between(6200, 13800) : r.amount_pence, category, payer, source: 'recurring', recurringId: r.id });
+    const due = dueOccurrences({ frequency: 'monthly', every: 1, startDate: r.start_date, endDate: null }, 0, today);
+    due.forEach((date, i) => {
       r.posted_count += 1;
-    }
+      // Drawn either way, so the rest of the demo's figures stay as they were.
+      const amount = r.amount_varies ? between(6200, 13800) : r.amount_pence;
+      // S3 (REC-3): the latest bill whose amount varies waits in the Inbox for its amount, as the database leaves it.
+      if (r.amount_varies && i === due.length - 1) {
+        inboxItems.push({
+          id: newId(), household_id: DEMO_HOUSEHOLD_ID, source: 'bill', status: 'open', receipt_path: null,
+          payload: { description: r.description, estimate_pence: r.amount_pence, date, category_id: r.category_id },
+          recurring_id: r.id, occurrence_date: date, external_id: null, expense_id: null, created_by: null,
+          created_at: `${date}T00:05:00.000Z`, updated_at: `${date}T00:05:00.000Z`,
+        });
+        return;
+      }
+      add({ date, description: r.description, amount, category, payer, source: 'recurring', recurringId: r.id });
+    });
   }
 
   const totalDays = daysBetween(start, today);
@@ -200,5 +217,5 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   }
   expenses.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
-  return { household, members, categories, chapters: [japan], recurring, expenses, settlements };
+  return { household, members, categories, chapters: [japan], recurring, inboxItems, expenses, settlements };
 }
