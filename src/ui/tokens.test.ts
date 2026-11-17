@@ -290,7 +290,7 @@ describe('CATEGORY_COLOURS (DESIGN §3.1)', () => {
         const a = CATEGORY_ORDER[i]!;
         const b = CATEGORY_ORDER[i + 1]!;
         const d = deltaEOk(colours[a]![theme], colours[b]![theme]);
-        expect(d, `${a} vs ${b} (${theme}): ΔE ${d.toFixed(3)}`).toBeGreaterThanOrEqual(MIN_DELTA_E_OK);
+        expect(d, `${a} vs ${b} (${theme}): ΔE ${String(Math.round(d * 1000) / 1000)}`).toBeGreaterThanOrEqual(MIN_DELTA_E_OK);
       }
     });
   }

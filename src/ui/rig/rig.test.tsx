@@ -17,15 +17,16 @@ const ALL_PARTS = ['head', 'ear-left', 'ear-right', 'eyes', 'brows', 'mouth', 'c
 const HEAD_PARTS = ['head', 'ear-left', 'ear-right', 'eyes', 'brows', 'mouth', 'cheeks'];
 const MOOD_PARTS = ['eyes', 'brows', 'mouth'];
 
-const originalMatchMedia = window.matchMedia;
+const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
 afterEach(() => {
-  window.matchMedia = originalMatchMedia;
+  if (originalMatchMedia) Object.defineProperty(window, 'matchMedia', originalMatchMedia);
 });
 
 /** Make `(prefers-reduced-motion: reduce)` match (and `no-preference` not). */
 function preferReducedMotion(): void {
-  window.matchMedia = (query: string) =>
-    ({
+  const fake = (query: string) => {
+    // Includes the old addListener/removeListener pair too, for code that falls back to them.
+    const mql = {
       matches: query.includes('prefers-reduced-motion') && !query.includes('no-preference'),
       media: query,
       onchange: null,
@@ -34,7 +35,10 @@ function preferReducedMotion(): void {
       addListener: () => undefined,
       removeListener: () => undefined,
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    };
+    return mql as unknown as MediaQueryList;
+  };
+  Object.defineProperty(window, 'matchMedia', { writable: true, configurable: true, value: fake });
 }
 
 function onlySvg(container: HTMLElement): SVGSVGElement {
