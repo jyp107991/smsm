@@ -9,15 +9,16 @@ export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
   useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {
   addExpense, editExpense, deleteExpense, restoreExpense, addSettlement, editSettlement, deleteSettlement, restoreSettlement,
   dismissProblem, sendCode, verifyCode, signOut, createHousehold, joinHousehold, setIdentity, setMonzoMe, requestChange,
   decideChange, OfflineError, NotSignedInError, NotInHouseholdError, NotReadyError, EntryNotFoundError, ChangesWaitingError,
-  NAME_MAX, type ChangeRequest,
+  NAME_MAX, OtherWindowError, JOINT_MONEY_EDIT, SPLIT_AGAIN, type ChangeRequest,
 } from './mutations';
+export type { WindowRole } from './windows';
 export { EntryInvalidError, PartnerNotJoinedError, type ExpenseDraft, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,

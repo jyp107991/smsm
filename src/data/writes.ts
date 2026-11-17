@@ -11,7 +11,7 @@ import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
   EXPENSE_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
-  type ExpenseRow, type ExpenseWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch,
+  type ExpenseRow, type ExpenseWrite, type HouseholdRow, type SettlementRow, type SettlementWrite, type SoftDeletePatch,
 } from './api';
 import type { Json } from './database.types';
 
@@ -64,12 +64,17 @@ export interface WriteContext {
 
 /** `opId` names this one write; `by` is the person who made it (a write is only ever sent as them). */
 interface OpBase { opId: string; by: string }
+export type ExpenseUpsert = OpBase & (
+  | { table: 'expenses'; op: 'upsert'; isNew: boolean; row: ExpenseRow; input: ExpenseDraft; awaitingPartner: true }
+  | { table: 'expenses'; op: 'upsert'; isNew: boolean; row: ExpenseRow; input: ExpenseDraft | null; awaitingPartner?: false }
+);
 export type MoneyOp = OpBase & (
   /**
-   * `input` is what the person entered (kept so a refused write can be fixed, OFF-5). `awaitingPartner`: made
-   * before the partner joined (BAL-6); the shares are worked out when it is sent, once both people exist.
+   * `input` is what the person entered (kept so a refused write can be fixed, OFF-5); null when only details
+   * were changed and the money is kept exactly as stored (`row` is then the whole truth). `awaitingPartner`:
+   * made before the partner joined (BAL-6); the shares are worked out once both people exist.
    */
-  | { table: 'expenses'; op: 'upsert'; isNew: boolean; row: ExpenseRow; input: ExpenseDraft; awaitingPartner?: boolean }
+  | ExpenseUpsert
   | { table: 'expenses'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   | { table: 'settlements'; op: 'upsert'; isNew: boolean; row: SettlementRow; input: SettlementDraft }
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
@@ -148,6 +153,44 @@ export function completeSplit(split: SplitParams, members: readonly [UserId, Use
   return { mode: 'ratio', ratio };
 }
 
+/** The household's default split (approved by both, PPL-5), or null for 50/50. */
+export function defaultRatioOf(household: Pick<HouseholdRow, 'default_ratio'> | null | undefined): Readonly<Record<UserId, number>> | null {
+  return numberMap(household?.default_ratio ?? null);
+}
+
+/**
+ * BAL-6: the shared entry an entry made before the partner joined becomes, once both people are known. The
+ * same completion is used for what is shown and for what is sent, so the balance never disagrees with it.
+ */
+export function completedRow(
+  op: ExpenseUpsert & { awaitingPartner: true },
+  members: readonly [UserId, UserId],
+  householdDefault: Readonly<Record<UserId, number>> | null,
+  now: Date,
+): ExpenseRow {
+  const input = { ...op.input, split: completeSplit(op.input.split, members, householdDefault) };
+  return buildExpense({ householdId: op.row.household_id, userId: op.by, members, now }, input, op.row);
+}
+
+/** For `overlay`: shows each entry made before the partner joined as its completed shared entry. */
+export function partnerCompleter(
+  members: readonly { user_id: string }[],
+  household: Pick<HouseholdRow, 'default_ratio'> | null | undefined,
+): ((op: MoneyOp) => ExpenseRow | null) | undefined {
+  const [a, b] = members;
+  if (!a || !b) return undefined;
+  const pair = [a.user_id, b.user_id] as const;
+  const ratio = defaultRatioOf(household);
+  return (op) => {
+    if (op.table !== 'expenses' || op.op !== 'upsert' || op.awaitingPartner !== true) return null;
+    try {
+      return completedRow(op, pair, ratio, new Date(op.row.updated_at));
+    } catch {
+      return null; // shown as held; the send says why it can't be saved
+    }
+  };
+}
+
 function numberMap(j: Json | null): Record<string, number> | null {
   if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
   const out: Record<string, number> = {};
@@ -158,14 +201,31 @@ function numberMap(j: Json | null): Record<string, number> | null {
   return out;
 }
 
-/** What the person would have entered to get this row: the starting point for an edit of only some fields. */
-export function inputFromRow(row: ExpenseRow, members: readonly UserId[]): ExpenseDraft {
+function sameMap(x: Readonly<Record<string, number>>, y: Readonly<Record<string, number>>): boolean {
+  const kx = Object.keys(x).filter((k) => x[k] !== 0);
+  const ky = Object.keys(y).filter((k) => y[k] !== 0);
+  return kx.length === ky.length && kx.every((k) => x[k] === y[k]);
+}
+
+/** The fields of an entry that move money: an edit that touches none of them keeps the money as stored. */
+export const MONEY_FIELDS = ['amount', 'payer', 'split', 'kind'] as const satisfies readonly (keyof ExpenseDraft)[];
+
+export function touchesMoney(patch: Partial<ExpenseDraft>): boolean {
+  return MONEY_FIELDS.some((k) => patch[k] !== undefined);
+}
+
+/**
+ * What the person would have entered to get this row: the starting point for an edit of some fields.
+ * `split` is null when it can't be read back exactly: a ratio row stored without its percentages whose
+ * shares no whole-number percentage reproduces (percentages are never guessed from rounded pence).
+ */
+export function inputFromRow(row: ExpenseRow, members: readonly UserId[]): { draft: Omit<ExpenseDraft, 'split'>; split: SplitParams | null } {
   const paid = numberMap(row.paid) ?? {};
   const shares = numberMap(row.shares) ?? {};
   const payer = Object.entries(paid).sort((x, y) => y[1] - x[1])[0]?.[0] ?? row.created_by ?? members[0] ?? '';
-  const amount = row.amount_pence;
-  let split: SplitParams;
+  const amount = row.amount_pence as Pence;
   const params = numberMap(row.split_params);
+  let split: SplitParams | null;
   switch (row.split_mode) {
     case 'for_other':
       split = { mode: 'for_other' };
@@ -174,34 +234,60 @@ export function inputFromRow(row: ExpenseRow, members: readonly UserId[]): Expen
       split = { mode: 'treat' };
       break;
     case 'exact': {
-      const m = params ?? shares;
       const amounts: Record<UserId, Pence> = {};
-      for (const [k, v] of Object.entries(m)) amounts[k] = v as Pence;
+      for (const [k, v] of Object.entries(params ?? shares)) amounts[k] = v as Pence;
       split = { mode: 'exact', amounts };
       break;
     }
     default: {
-      let ratio = params;
-      if (!ratio) {
-        // Rows written elsewhere may carry no parameters: read the percentages back from the shares.
-        const derived: Record<string, number> = {};
-        for (const m of members) derived[m] = amount > 0 ? Math.round(((shares[m] ?? 0) * 100) / amount) : 50;
-        ratio = Object.values(derived).reduce((t, v) => t + v, 0) === 100 ? derived : Object.fromEntries(members.map((m) => [m, 50]));
+      split = params ? { mode: 'ratio', ratio: params } : null;
+      const [a, b] = members;
+      if (!params && a !== undefined && b !== undefined && amount > 0) {
+        // Rows written elsewhere may carry no percentages: a whole-number reading is accepted only if it
+        // gives back exactly the stored shares.
+        const pa = Math.round(((shares[a] ?? 0) * 100) / amount);
+        const guess: SplitParams = { mode: 'ratio', ratio: { [a]: pa, [b]: 100 - pa } };
+        try {
+          if (sameMap(computeEntry({ amount, payer, members: [a, b], split: guess }).shares, shares)) split = guess;
+        } catch {
+          /* not readable */
+        }
       }
-      split = { mode: 'ratio', ratio };
     }
   }
   return {
-    kind: row.kind === 'money_back' ? 'money_back' : 'expense',
-    description: row.description,
-    amount: amount as Pence,
-    date: row.date,
-    categoryId: row.category_id,
-    payer,
+    draft: {
+      kind: row.kind === 'money_back' ? 'money_back' : 'expense',
+      description: row.description,
+      amount,
+      date: row.date,
+      categoryId: row.category_id,
+      payer,
+      notes: row.notes,
+      tags: row.tags,
+      refundOf: row.refund_of,
+    },
     split,
-    notes: row.notes,
-    tags: row.tags,
-    refundOf: row.refund_of,
+  };
+}
+
+/** An edit of details only (description, date, category, notes, tags, refund link): the money stays as stored. */
+export function withDetails(row: ExpenseRow, patch: Partial<ExpenseDraft>, ctx: { userId: UserId; now: Date }): ExpenseRow {
+  const description = patch.description ?? row.description;
+  const date = patch.date ?? row.date;
+  const reasons: string[] = [];
+  checkCommon(description, date, reasons);
+  if (reasons.length > 0) throw new EntryInvalidError(reasons);
+  return {
+    ...row,
+    description: description.trim(),
+    date,
+    category_id: patch.categoryId === undefined ? row.category_id : patch.categoryId,
+    notes: patch.notes === undefined ? row.notes : patch.notes,
+    tags: patch.tags === undefined ? row.tags : [...patch.tags],
+    refund_of: patch.refundOf === undefined ? row.refund_of : patch.refundOf,
+    updated_by: ctx.userId,
+    updated_at: ctx.now.toISOString(),
   };
 }
 
@@ -275,17 +361,16 @@ function pick<T extends object, K extends keyof T>(row: T, keys: readonly K[]): 
   return out;
 }
 
-/** What an upsert sends: the phone's own columns; `created_by` only when the row is new. */
-export function expenseWrite(row: ExpenseRow, isNew: boolean): ExpenseWrite {
-  const w: ExpenseWrite = pick(row, EXPENSE_WRITE_COLUMNS);
-  if (isNew && row.created_by) w.created_by = row.created_by;
-  return w;
+/**
+ * What an upsert sends: the phone's own columns. Never who made the row: the database records the person
+ * signed in (migration 5, ACT-2), so a phone can't write a row as the other person.
+ */
+export function expenseWrite(row: ExpenseRow): ExpenseWrite {
+  return pick(row, EXPENSE_WRITE_COLUMNS);
 }
 
-export function settlementWrite(row: SettlementRow, isNew: boolean): SettlementWrite {
-  const w: SettlementWrite = pick(row, SETTLEMENT_WRITE_COLUMNS);
-  if (isNew && row.created_by) w.created_by = row.created_by;
-  return w;
+export function settlementWrite(row: SettlementRow): SettlementWrite {
+  return pick(row, SETTLEMENT_WRITE_COLUMNS);
 }
 
 /** "Tesco £42.50": how a kept-back write is named to the person. */
@@ -315,13 +400,15 @@ export function overlay<R extends { id: string }>(
   rows: readonly R[],
   ops: readonly MoneyOp[],
   table: MoneyOp['table'],
+  /** BAL-6: the completed row for an entry made before the partner joined (see `partnerCompleter`). */
+  complete?: (op: MoneyOp) => ExpenseRow | null,
 ): R[] {
   const relevant = ops.filter((o) => o.table === table);
   if (relevant.length === 0) return [...rows];
   const byId = new Map<string, R>(rows.map((r) => [r.id, r]));
   for (const op of relevant) {
     if (op.op === 'upsert') {
-      byId.set(op.row.id, op.row as unknown as R);
+      byId.set(op.row.id, (complete?.(op) ?? op.row) as unknown as R);
     } else {
       const base = byId.get(op.id);
       if (base) byId.set(op.id, { ...base, ...op.patch });

@@ -14,7 +14,7 @@ import type { Database } from './database.types';
 import { DataProvider } from './DataProvider';
 import { useBalance, useEntries, useSession, useSyncStatus } from './hooks';
 import { ChangesWaitingError, OfflineError, createHousehold, signOut } from './mutations';
-import { CACHE_KEY } from './queryClient';
+import { QUEUE_KEY } from './queryClient';
 import { createAppUpdater } from './staleApp';
 import { createStore, type Store } from './store';
 import { requestPersistentStorage } from './storage';
@@ -74,14 +74,14 @@ describe('order and durability', () => {
     expect(order.indexOf(a)).toBeLessThan(order.indexOf(b));
   });
 
-  it('OFF-5 a waiting change is in storage the moment it is made, before any idle or close', async () => {
+  it('OFF-5 a waiting change is in storage (under the queue’s own key) the moment it is made, before any idle or close', async () => {
     const server = new FakeServer();
     const h = server.seedHousehold();
     const { store, storage, network } = openStore(server, h.members[0]);
     await store.ready;
     network.set(false);
     const id = store.addExpense(tesco(h));
-    await vi.waitFor(() => { expect(storage.map.get(CACHE_KEY) ?? '').toContain(id); }, { timeout: 100 });
+    await vi.waitFor(() => { expect(storage.map.get(QUEUE_KEY) ?? '').toContain(id); }, { timeout: 100 });
   });
 
   it('OFF-5 OFF-7 a write still being retried when the app closes is sent once after the restart', async () => {

@@ -12,6 +12,7 @@ import { createAppUpdater } from './staleApp';
 import { idbStorage, requestPersistentStorage } from './storage';
 import { createStore } from './store';
 import { supabase } from './supabase';
+import { browserLocks } from './windows';
 
 /** The phone's own calendar date, in its own time zone (DAT-2). */
 export function phoneToday(): string {
@@ -41,6 +42,8 @@ export async function createAppDataLayer(): Promise<DataLayer | null> {
     report: (err, context) => void reporter.report(err, location.pathname, context),
     // Crash reports queued before sign-in or offline are sent once someone is signed in.
     onSignedIn: () => void reporter.flush(),
+    // Only one window on the phone owns the queue (OFF-5, OFF-7).
+    locks: browserLocks(),
   });
   layer = store.layer;
   return layer;

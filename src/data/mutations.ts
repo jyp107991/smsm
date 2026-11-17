@@ -14,12 +14,13 @@ import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
 import type { DataLayer } from './queryClient';
+import { OtherWindowError } from './windows';
 import {
-  buildExpense, buildProvisionalExpense, buildSettlement, completeSplit, EntryInvalidError, expenseLabel, inputFromRow, newId,
-  PartnerNotJoinedError, settlementLabel, type ExpenseDraft, type MoneyOp, type SettlementDraft,
+  buildExpense, buildProvisionalExpense, buildSettlement, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
+  newId, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type MoneyOp, type SettlementDraft,
 } from './writes';
 
-export { EntryInvalidError, PartnerNotJoinedError };
+export { EntryInvalidError, OtherWindowError, PartnerNotJoinedError };
 export type { ExpenseDraft, SettlementDraft };
 
 /** Needs a connection (OFF-4). */
@@ -59,13 +60,22 @@ export class EntryNotFoundError extends Error {
   }
 }
 
-/** Signing out would lose changes that haven't reached the server yet. */
+/** Signing out would lose changes that haven't reached the server yet, or refused ones kept to fix (OFF-5). */
 export class ChangesWaitingError extends Error {
-  constructor(public readonly count: number) {
-    super(`${String(count)} changes are still waiting to sync.`);
+  constructor(public readonly count: number, public readonly refused = 0) {
+    super(
+      refused > 0
+        ? `${String(count)} changes haven’t been saved yet (${String(refused)} need fixing).`
+        : `${String(count)} changes are still waiting to sync.`,
+    );
     this.name = 'ChangesWaitingError';
   }
 }
+
+/** ACT-5 (S2 review): the joint account isn't in the app yet (SPL-4), so its rows' money can't be rebuilt. */
+export const JOINT_MONEY_EDIT = 'This entry was paid from the joint account. Its amount, payer and split can’t be changed in the app yet.';
+/** A split stored without its percentages, that no whole-number split reproduces: it is never guessed. */
+export const SPLIT_AGAIN = 'Choose the split again to change the amount or who paid.';
 
 interface Ctx { uid: string; hid: string; memberIds: string[]; pair: readonly [UserId, UserId] | null; layer: DataLayer }
 
@@ -80,19 +90,16 @@ function context(layer: DataLayer): Ctx {
   return { uid, hid, memberIds, pair: a && b ? [a, b] : null, layer };
 }
 
-function householdRatio(layer: DataLayer): Readonly<Record<UserId, number>> | null {
-  const dr = layer.household()?.default_ratio;
-  return dr && typeof dr === 'object' && !Array.isArray(dr) ? (dr as Record<string, number>) : null;
-}
+type ExpenseBuilt = { row: ExpenseRow; input: ExpenseDraft; awaitingPartner: true } | { row: ExpenseRow; input: ExpenseDraft; awaitingPartner: false };
 
 /** The row for an entry as entered: a full one, or one held until the partner joins (BAL-6). */
-function expenseRowFor(ctx: Ctx, input: ExpenseDraft, base?: ExpenseRow): { row: ExpenseRow; input: ExpenseDraft; awaitingPartner: boolean } {
+function expenseRowFor(ctx: Ctx, input: ExpenseDraft, base?: ExpenseRow): ExpenseBuilt {
   const now = ctx.layer.now();
   if (!ctx.pair) {
     if (!ctx.memberIds.includes(input.payer)) throw new EntryInvalidError(['Check who paid and the split.']);
     return { row: buildProvisionalExpense({ householdId: ctx.hid, userId: ctx.uid, now }, input, base), input, awaitingPartner: true };
   }
-  const full = { ...input, split: completeSplit(input.split, ctx.pair, householdRatio(ctx.layer)) };
+  const full = { ...input, split: completeSplit(input.split, ctx.pair, defaultRatioOf(ctx.layer.household())) };
   return { row: buildExpense({ householdId: ctx.hid, userId: ctx.uid, members: ctx.pair, now }, full, base), input: full, awaitingPartner: false };
 }
 
@@ -111,15 +118,20 @@ function kept(layer: DataLayer, table: 'expenses' | 'settlements', id: string) {
   return [...layer.problems.list()].reverse().find((p) => p.table === table && p.rowId === id && p.row !== null);
 }
 
+/**
+ * Where an edit starts: the latest waiting write of this entry; else a refused write kept to fix (what the
+ * person entered, OFF-5); else the stored row. `input` is null when there is no entry as entered to start
+ * from (the row came from the server, or only its details were changed).
+ */
 function currentExpense(layer: DataLayer, id: string): { row: ExpenseRow; onServer: boolean; input: ExpenseDraft | null } {
   const onServer = serverRows<ExpenseRow>(layer, 'expenses').some((r) => r.id === id);
   const op = latestUpsert(layer, 'expenses', id);
   const shown = layer.entries().find((r) => r.id === id);
+  if (op?.table === 'expenses' && op.op === 'upsert') return { row: shown ?? op.row, onServer, input: op.input };
   const problem = kept(layer, 'expenses', id);
-  const row = shown ?? (problem?.row as ExpenseRow | undefined);
-  if (!row) throw new EntryNotFoundError(id);
-  const input = op?.table === 'expenses' && op.op === 'upsert' ? op.input : shown ? null : ((problem?.input as ExpenseDraft | undefined) ?? null);
-  return { row, onServer, input };
+  if (problem?.row) return { row: problem.row as ExpenseRow, onServer, input: (problem.input as ExpenseDraft | null | undefined) ?? null };
+  if (!shown) throw new EntryNotFoundError(id);
+  return { row: shown, onServer, input: null };
 }
 
 function currentSettlement(layer: DataLayer, id: string): { row: SettlementRow; onServer: boolean } {
@@ -146,15 +158,36 @@ export function addExpense(input: ExpenseDraft, layer = activeDataLayer()): stri
 export function editExpense(id: string, patch: Partial<ExpenseDraft>, layer = activeDataLayer()): void {
   const ctx = context(layer);
   const current = currentExpense(layer, id);
-  const startFrom = current.input ?? inputFromRow(current.row, ctx.memberIds);
-  const built = expenseRowFor(ctx, { ...startFrom, ...patch }, current.row);
-  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: !current.onServer, ...built });
+  const base = { opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: !current.onServer } as const;
+  if (current.input) {
+    // The entry as the person entered it (still waiting, or kept to fix): rebuilt exactly from that.
+    layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...current.input, ...patch }, current.row) });
+    return;
+  }
+  if (!touchesMoney(patch)) {
+    // A new description, date, category, note or tag never rebuilds the money: kept exactly as stored.
+    layer.enqueue({ ...base, row: withDetails(current.row, patch, { userId: ctx.uid, now: layer.now() }), input: null });
+    return;
+  }
+  if (current.row.paid_via === 'joint') throw new EntryInvalidError([JOINT_MONEY_EDIT]);
+  const read = inputFromRow(current.row, ctx.memberIds);
+  const split = patch.split ?? read.split;
+  if (!split) throw new EntryInvalidError([SPLIT_AGAIN]);
+  layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...read.draft, split, ...patch }, current.row) });
+}
+
+/** A refused new entry that never reached the server: deleting it (or Undo) just lets the problem go. */
+function dropRefusedNew(layer: DataLayer, table: 'expenses' | 'settlements', id: string, onServer: boolean): boolean {
+  if (onServer || latestUpsert(layer, table, id) || !kept(layer, table, id)) return false;
+  dismissProblem(id, layer);
+  return true;
 }
 
 /** ACT-3: soft delete; the entry stays in the database and can be restored. Also Undo of a save (ADD-6). */
 export function deleteExpense(id: string, layer = activeDataLayer()): void {
   const ctx = context(layer);
-  const { row } = currentExpense(layer, id);
+  const { row, onServer } = currentExpense(layer, id);
+  if (dropRefusedNew(layer, 'expenses', id, onServer)) return;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: expenseLabel(row) });
 }
 
@@ -192,7 +225,8 @@ export function editSettlement(id: string, patch: Partial<SettlementDraft>, laye
 
 export function deleteSettlement(id: string, layer = activeDataLayer()): void {
   const ctx = context(layer);
-  const { row } = currentSettlement(layer, id);
+  const { row, onServer } = currentSettlement(layer, id);
+  if (dropRefusedNew(layer, 'settlements', id, onServer)) return;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: settlementLabel(row) });
 }
 
@@ -204,7 +238,15 @@ export function restoreSettlement(id: string, layer = activeDataLayer()): void {
 
 /** The person has seen a refused write and doesn't want to fix it. `id` is the entry's id. */
 export function dismissProblem(id: string, layer = activeDataLayer()): void {
+  // Kept-back writes are saved by the window that owns the queue.
+  if (layer.role() === 'follower') throw new OtherWindowError();
   for (const p of layer.problems.list()) if (p.rowId === id || p.id === id) layer.problems.dismiss(p.id);
+}
+
+/** The refused writes kept to fix for the person signed in (OFF-5). */
+export function refusedFor(layer: DataLayer) {
+  const me = layer.me();
+  return layer.problems.list().filter((p) => p.by === undefined || me === null || p.by === me);
 }
 
 // ───────────── setup, identity, approvals: need a connection ─────────────
@@ -225,10 +267,14 @@ export function verifyCode(email: string, code: string, layer = activeDataLayer(
   return online(layer, () => layer.api.auth.verifyCode(email.trim(), code.replace(/\s+/g, '')));
 }
 
-/** Signs out and clears this phone's copy. Refuses while changes are waiting, unless told to discard them. */
+/**
+ * Signs out and clears this phone's copy. Refuses while changes are waiting, or refused ones are kept to fix
+ * (OFF-5: nothing is dropped silently), unless told to discard them.
+ */
 export async function signOut(opts: { discardWaiting?: boolean } = {}, layer = activeDataLayer()): Promise<void> {
-  const count = layer.waiting().length;
-  if (count > 0 && !opts.discardWaiting) throw new ChangesWaitingError(count);
+  const refused = refusedFor(layer).length;
+  const count = layer.waiting().length + refused;
+  if (count > 0 && !opts.discardWaiting) throw new ChangesWaitingError(count, refused);
   await online(layer, () => layer.signOut());
 }
 

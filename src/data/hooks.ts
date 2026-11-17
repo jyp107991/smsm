@@ -18,7 +18,8 @@ import {
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
-import { overlay, type MoneyOp } from './writes';
+import type { WindowRole } from './windows';
+import { overlay, partnerCompleter, type MoneyOp } from './writes';
 
 export interface DataResult<T> {
   /** Undefined until the first copy is on the phone. */
@@ -63,13 +64,14 @@ function useHid(): { uid: string | null; hid: string | null | undefined; q: UseQ
   return { uid, hid: q.data === undefined ? undefined : (q.data?.household_id ?? null), q };
 }
 
-/** The writes still waiting to be sent, oldest first. */
+/** The signed-in person's writes still waiting to be sent, oldest first (everyone's when signed out). */
 function useWaitingOps(): MoneyOp[] {
+  const uid = useUid();
   const ops = useMutationState({
     filters: { mutationKey: MONEY_KEY, status: 'pending' },
     select: (m) => m.state.variables as MoneyOp | undefined,
   });
-  return useMemo(() => ops.filter((o): o is MoneyOp => o !== undefined), [ops]);
+  return useMemo(() => ops.filter((o): o is MoneyOp => o !== undefined && (uid === null || o.by === uid)), [ops, uid]);
 }
 
 /** The household, or null when this person isn't in one yet (setup: start or join). */
@@ -105,13 +107,21 @@ function newestFirst<R extends { date: string; created_at: string; id: string }>
   return a.id < b.id ? 1 : -1;
 }
 
-/** Every expense and money-back entry, newest first, deleted ones included (`deleted_at` set; ACT-3). */
+/**
+ * Every expense and money-back entry, newest first, deleted ones included (`deleted_at` set; ACT-3). An
+ * entry made before the partner joined shows its shares as soon as both people are known (BAL-6).
+ */
 export function useEntries(): DataResult<ExpenseRow[]> {
   const { api } = useDataLayer();
   const { uid, hid } = useHid();
   const q = useQuery(expensesQuery(api, uid, hid));
+  const members = useQuery(membersQuery(api, uid, hid)).data;
+  const household = useQuery(householdQuery(api, uid, hid)).data;
   const ops = useWaitingOps();
-  const data = useMemo(() => q.data && overlay(q.data, ops, 'expenses').sort(newestFirst), [q.data, ops]);
+  const data = useMemo(
+    () => q.data && overlay(q.data, ops, 'expenses', partnerCompleter(members ?? [], household)).sort(newestFirst),
+    [q.data, ops, members, household],
+  );
   return result(q, data);
 }
 
@@ -199,16 +209,32 @@ export interface SyncStatus {
   problems: readonly WriteProblem[];
   /** This app is too old to write and is updating; writes are waiting for the new version. */
   updating: boolean;
+  /**
+   * smsm is open in another window on this phone, which saves the changes; this one only shows them
+   * (strings.windows.otherWindow). Money writes here throw OtherWindowError.
+   */
+  otherWindow: boolean;
+}
+
+/** Whether this window owns the queue, or another window does (read-only here). */
+export function useWindowRole(): WindowRole {
+  const layer = useDataLayer();
+  const subscribe = useCallback((cb: () => void) => layer.subscribeRole(cb), [layer]);
+  const get = useCallback(() => layer.role(), [layer]);
+  return useSyncExternalStore(subscribe, get, get);
 }
 
 export function useSyncStatus(): SyncStatus {
   const layer = useDataLayer();
   const online = useOnline();
   const ops = useWaitingOps();
-  const problems = useSyncExternalStore(layer.problems.subscribe, layer.problems.list, layer.problems.list);
+  const uid = useUid();
+  const all = useSyncExternalStore(layer.problems.subscribe, layer.problems.list, layer.problems.list);
+  const problems = useMemo(() => all.filter((p) => p.by === undefined || uid === null || p.by === uid), [all, uid]);
   const subscribeStale = useCallback((cb: () => void) => layer.subscribeStale(cb), [layer]);
   const isStale = useCallback(() => layer.stale(), [layer]);
   const updating = useSyncExternalStore(subscribeStale, isStale, isStale);
+  const otherWindow = useWindowRole() === 'follower';
   const pendingIds = useMemo(() => new Set(ops.map((o) => (o.op === 'upsert' ? o.row.id : o.id))), [ops]);
-  return { online, waiting: ops.length, pendingIds, problems, updating };
+  return { online, waiting: ops.length, pendingIds, problems, updating, otherWindow };
 }

@@ -15,6 +15,10 @@ export const strings = {
     later: 'Later',
     offlineReady: 'Ready to work offline',
   },
+  /** smsm open twice on one phone: only one window saves (src/data/windows.ts). */
+  windows: {
+    otherWindow: 'smsm is open in another window. Make changes there; this one only shows them.',
+  },
   rig: {
     kind: { cat: 'the cat', dog: 'the dog' },
     plank: (left: string, right: string, higher: 'left' | 'right' | 'level') =>
