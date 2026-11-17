@@ -49,6 +49,19 @@ jobs:
         run: |
           npx supabase db push --remote --dry-run --password "$SUPABASE_DB_PASSWORD" --yes
           npx supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
+      - name: Smart features key (only when the owner has added it; never printed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            printf 'GEMINI_API_KEY=%s\nGEMINI_MODEL=%s\n' "$GEMINI_API_KEY" "${GEMINI_MODEL:-gemini-3.5-flash-lite}" > "$RUNNER_TEMP/ai.env"
+            npx supabase secrets set --env-file "$RUNNER_TEMP/ai.env" > /dev/null
+            rm -f "$RUNNER_TEMP/ai.env"
+            echo "Smart features key set."
+          else
+            echo "No smart features key yet: the ai function answers 'off' and the app works by hand."
+          fi
       - name: Edge Functions
         run: |
           if ls -d supabase/functions/*/ >/dev/null 2>&1; then

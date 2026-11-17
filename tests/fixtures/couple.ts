@@ -58,7 +58,7 @@ export function storedExpense(over: Partial<ExpenseRow> = {}): ExpenseRow {
     id: '00000000-0000-4000-8000-00000000e001', household_id: HID, kind: 'expense', description: 'Lamp', amount_pence: 4000, date: TODAY,
     category_id: categoryId('Household'), paid: { [JAE_ID]: 4000 }, paid_via: 'person', split_mode: 'ratio', split_params: { [JAE_ID]: 50, [SAM_ID]: 50 },
     shares: { [JAE_ID]: 2000, [SAM_ID]: 2000 }, chapter_id: null, country: 'GB', place: null, lat: null, lng: null, original_amount: null,
-    original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, source: 'manual', external_id: null, merchant: null,
+    original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, category_guess: false, source: 'manual', external_id: null, merchant: null,
     external_category: null, account_id: null, recurring_id: null, occurrence_date: null, refund_of: null, created_by: JAE_ID,
     created_at: '2026-11-10T12:00:00.000Z', updated_by: JAE_ID, updated_at: '2026-11-10T12:00:00.000Z', deleted_at: null, bill_total_pence: null, items: null,
     ...over,

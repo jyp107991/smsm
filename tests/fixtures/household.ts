@@ -111,7 +111,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
       split_params: split.mode === 'ratio' ? { ...split.ratio } : split.mode === 'exact' ? { ...split.amounts } : null,
       shares: { ...shares }, items: null, bill_total_pence: null, country: o.country ?? 'GB', place: o.place ?? null,
       lat: null, lng: null, original_amount: o.original?.amount ?? null, original_currency: o.original?.currency ?? null,
-      fx_rate: o.original?.rate ?? null, notes: o.notes ?? null, tags: o.tags ?? [], receipt_path: null,
+      fx_rate: o.original?.rate ?? null, notes: o.notes ?? null, tags: o.tags ?? [], receipt_path: null, category_guess: false,
       source: o.source ?? 'manual', external_id: null, merchant: null, external_category: null, account_id: null,
       recurring_id: o.recurringId ?? null, occurrence_date: o.recurringId ? o.date : null, refund_of: o.refundOf ?? null,
       created_by: o.payer, created_at: stamp(o.date), updated_by: o.payer, updated_at: stamp(o.date), deleted_at: null,

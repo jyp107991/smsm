@@ -282,7 +282,7 @@ export function createMemoryApi(
             category_id: r.category_id, chapter_id: null, paid: r.paid, paid_via: r.paid_via, split_mode: r.split_mode,
             split_params: r.split_params, shares: r.shares, notes: r.notes, tags: [], country: home, refund_of: null, source: 'recurring',
             items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
-            fx_rate: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
+            fx_rate: null, receipt_path: null, category_guess: false, external_id: null, merchant: null, external_category: null, account_id: null,
             recurring_id: r.id, occurrence_date: d, created_by: r.created_by, created_at: stamp, updated_by: r.created_by,
             updated_at: stamp, deleted_at: null,
           });
@@ -332,7 +332,7 @@ export function createMemoryApi(
     upsertExpense: (row: ExpenseWrite) =>
       call('upsertExpense', row, () =>
         writeRow(tables.expenses, row, 'expense', (w) => ({
-          items: null, bill_total_pence: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
+          items: null, bill_total_pence: null, receipt_path: null, category_guess: false, external_id: null, merchant: null, external_category: null, account_id: null,
           created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
         }), (r) => {

@@ -13,7 +13,7 @@ export default defineConfig({
         test: {
           name: 'core',
           environment: 'node',
-          include: ['src/core/**/*.test.ts', 'scripts/**/*.test.ts', 'tests/unit/**/*.test.ts'],
+          include: ['src/core/**/*.test.ts', 'scripts/**/*.test.ts', 'tests/unit/**/*.test.ts', 'supabase/functions/**/*.test.ts'],
         },
       },
       {
