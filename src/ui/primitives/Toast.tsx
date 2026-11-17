@@ -23,6 +23,11 @@ export interface ToastOptions {
    * it for its few seconds; when that one goes, this one comes back. A new sticky toast replaces the old one.
    */
   sticky?: boolean;
+  /**
+   * The id of the row this toast reports (S2 polish Q-U8): the toast keeps clear of that row (`data-row`) as it
+   * does of the tab bar, so "Saved Tesco £42.50" never covers the new Tesco line.
+   */
+  about?: string;
 }
 
 export interface ToastApi {
@@ -110,7 +115,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
   const reduce = useReducedMotion() ?? false;
   const current = showing(toasts);
   const layer = useRef<HTMLDivElement>(null);
-  const place = useClearPlace(layer, current !== undefined);
+  const place = useClearPlace(layer, current !== undefined, current?.about);
   // Toasts already read out: the update prompt coming back after a passing toast isn't read again.
   const [announced] = useState(() => new Set<number>());
   return (
@@ -148,7 +153,7 @@ const SETTLE_MS = 700;
  * change it follows every frame for a short while (sheets slide), then stops, so a toast that stays (the
  * update prompt) costs nothing while nothing moves.
  */
-function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean): { bottom: number; top: number | null } {
+function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean, about: string | undefined): { bottom: number; top: number | null } {
   const [place, setPlace] = useState<{ bottom: number; top: number | null }>({ bottom: EDGE, top: null });
   useLayoutEffect(() => {
     if (!active) return;
@@ -157,7 +162,7 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean)
     const measure = () => {
       const card = layer.current?.firstElementChild;
       if (card instanceof HTMLElement) {
-        const next = clearPlace(card.getBoundingClientRect());
+        const next = clearPlace(card.getBoundingClientRect(), about);
         setPlace((was) => (was.bottom === next.bottom && was.top === next.top ? was : next));
       }
     };
@@ -184,7 +189,7 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean)
       changed();
     });
     // Sheets coming and going (their state and their marks), the tab bar hiding for the keyboard.
-    mutated.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state', 'data-toast-avoid', 'hidden'] });
+    mutated.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state', 'data-toast-avoid', 'data-row', 'hidden'] });
     const viewport = window.visualViewport;
     window.addEventListener('resize', changed);
     window.addEventListener('scroll', changed, { capture: true, passive: true });
@@ -203,7 +208,7 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean)
       viewport?.removeEventListener('resize', changed);
       viewport?.removeEventListener('scroll', changed);
     };
-  }, [layer, active]);
+  }, [layer, active, about]);
   return place;
 }
 
@@ -216,11 +221,13 @@ function visibleBottom(): number {
   return viewport ? Math.min(window.innerHeight, viewport.offsetTop + viewport.height) : window.innerHeight;
 }
 
-function clearPlace(card: DOMRect): { bottom: number; top: number | null } {
+function clearPlace(card: DOMRect, about: string | undefined): { bottom: number; top: number | null } {
   const page = window.innerHeight;
   const height = visibleBottom();
   const tall = card.height || 64;
-  const marked = [...document.querySelectorAll<HTMLElement>('[data-toast-avoid]')];
+  // Row ids are uuids; anything else is not looked for.
+  const row = about !== undefined && /^[\w-]+$/.test(about) ? `, [data-row="${about}"]` : '';
+  const marked = [...document.querySelectorAll<HTMLElement>(`[data-toast-avoid]${row}`)];
   // Only an open sheet's marks; a sheet sliding away (data-state="closed") counts for nothing.
   const inOpenSheet = marked.filter((m) => m.closest('[role="dialog"][data-state="open"]'));
   const onPage = marked.filter((m) => !m.closest('[role="dialog"]'));

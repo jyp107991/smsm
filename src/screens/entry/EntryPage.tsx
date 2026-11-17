@@ -4,7 +4,7 @@
  * the database's log. A deleted entry says so and offers Restore. Settle-ups open here too.
  */
 import { ArrowLeft } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import {
@@ -13,13 +13,14 @@ import {
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { goBackOrTo } from '../../ui/history';
+import { go, pathOf } from '../../ui/router';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { CategoryMark } from '../shared/CategoryMark';
 import { Head } from '../shared/Head';
 import { useTapAction } from '../shared/once';
 import { usePeople } from '../shared/people';
-import { entrySentence, historyLine, payerOf } from '../shared/words';
+import { entrySentence, historyLine, owesForThis, payerOf } from '../shared/words';
 import { useSheets } from '../sheets';
 import { duplicateDraft } from './form';
 
@@ -70,6 +71,9 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const category = categories.find((c) => c.id === row.category_id);
   const payer = people.list.find((p) => p.id === payerOf(row.paid, people.list));
   const original = row.refund_of ? entries.find((e) => e.id === row.refund_of) : undefined;
+  // Q-U9: money that came back for this entry, each linking to its own page.
+  const cameBack = row.kind === 'money_back' ? [] : entries.filter((e) => e.kind === 'money_back' && e.refund_of === row.id && e.deleted_at === null);
+  const owes = owesForThis(row, people.list);
   const deleted = row.deleted_at !== null;
   const back = row.kind === 'money_back';
   const label = row.description;
@@ -82,10 +86,11 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
       if (!draft) return;
       const copyId = addExpense({ ...draft, id: rowId });
       tickSaved();
+      // Q-U8: the copy is made for today; Open goes to it (to change what differs this time).
       toast.show({
-        message: strings.entry.saved,
+        message: strings.entry.copied,
         ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
-        action: { label: strings.entry.undo, onAction: () => { deleteExpense(copyId); } },
+        action: { label: strings.entry.open, onAction: () => { go({ name: 'entry', id: copyId }); } },
         duration: 5000,
       });
     });
@@ -101,6 +106,21 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
           {payer ? <Head animal={payer.animal} size={28} /> : null}
           <span>{entrySentence(row, people.list)}</span>
         </p>
+        {owes ? <p className="text-secondary text-ink-2 m-0">{owes}</p> : null}
+        {cameBack.map((m) => (
+          <a
+            key={m.id}
+            href={pathOf({ name: 'entry', id: m.id })}
+            onClick={(e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              go({ name: 'entry', id: m.id });
+            }}
+            className="text-forest text-secondary -mx-1 inline-flex min-h-11 items-center self-start rounded-[8px] px-1 underline underline-offset-4"
+          >
+            {strings.entry.cameBack(formatPence(pence(m.amount_pence)), formatDay(m.date, today))}
+          </a>
+        ))}
         {pendingIds.has(row.id) ? <p className="text-caption text-ink-2 m-0">{strings.entry.notSynced}</p> : null}
         {deleted ? <p className="text-secondary text-berry m-0">{strings.entry.wasDeleted}</p> : null}
       </div>
@@ -218,7 +238,11 @@ function History({ id }: { id: string }) {
   const online = useOnline();
   const history = useHistory(id);
   const today = layer.today();
-  const rows = history.data;
+  // Q-U9: oldest first, so the story starts with who added it.
+  const rows = useMemo(
+    () => (history.data ? [...history.data].sort((a, b) => (a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.id - b.id)) : undefined),
+    [history.data],
+  );
   return (
     <section aria-labelledby="entry-history" className="flex flex-col">
       <h2 id="entry-history" className="text-subtitle rule-ledger m-0">{strings.entry.history}</h2>

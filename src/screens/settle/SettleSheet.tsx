@@ -11,7 +11,7 @@ import {
 } from '../../data';
 import { tickSettled } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
-import { Button, Chip, Field, Sheet, useToast } from '../../ui/primitives';
+import { Button, Chip, Disclosure, Field, Sheet, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
@@ -67,6 +67,8 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
   const editing = request.mode === 'edit';
   // SET-2: Monzo is how the person who owes pays, so only they are offered it (from their own phone).
   const payer = people.me?.id === start.from;
+  // Q-U11: opened by the person owed (or to correct one already made), it records what the other has paid.
+  const recordsTheirs = editing || people.me?.id === start.to;
   const monzoName = payer ? (people.rows.find((m) => m.user_id === start.to)?.monzo_me ?? null) : null;
   // SET-1: a part payment is fine; more than is owed gets a quiet line (it would turn the debt round).
   const owed = balance.status === 'ready' && balance.state.kind === 'owes' && balance.state.debtor === start.from ? balance.state.amount : null;
@@ -191,7 +193,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
     <Sheet
       open={open}
       onOpenChange={(next) => { if (!next) onDone(); }}
-      title={strings.settle.title}
+      title={editing ? strings.settle.editTitle : strings.settle.title}
       footer={
         <div className="flex flex-col gap-2">
           {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
@@ -203,7 +205,9 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
               <Button className="flex-auto" onClick={payWithMonzo}>{strings.settle.payWithMonzo}</Button>
             </div>
           ) : (
-            <Button type="submit" form="settle-form" block>{strings.settle.recordIt}</Button>
+            <Button type="submit" form="settle-form" block>
+              {recordsTheirs ? strings.settle.recordTheirs(from?.name ?? '') : strings.settle.recordIt}
+            </Button>
           )}
         </div>
       }
@@ -211,7 +215,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
       <form id="settle-form" onSubmit={submit} noValidate className="flex flex-col gap-5">
         <p className="text-note m-0 flex items-center gap-2">
           {from ? <Head animal={from.animal} size={32} mood="sheepish" /> : null}
-          <span className="min-w-0 break-words">{strings.settle.who(from?.name ?? '', to?.name ?? '')}</span>
+          <span className="min-w-0 break-words">{(recordsTheirs ? strings.settle.paid : strings.settle.who)(from?.name ?? '', to?.name ?? '')}</span>
           {to ? <Head animal={to.animal} size={32} mood="pleased" /> : null}
         </p>
         <Field
@@ -225,19 +229,16 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
         {/* A fixed place for the line, so it never moves what is under it. */}
         {!editing ? <p className="text-secondary text-ink-2 m-0 -mt-3 min-h-[1.4rem]" aria-live="polite">{overLine}</p> : null}
         {!editing && payer && !monzoName && to ? <p className="text-secondary text-ink-2 m-0">{strings.settle.noMonzo(to.name)}</p> : null}
-        <div>
-          <Button variant="plain" aria-expanded={more} onClick={() => { setMore(!more); }}>{strings.entry.more}</Button>
-          {more ? (
-            <div className="mt-3 flex flex-col gap-4">
-              <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
-                <Chip selected={date === today} onSelectedChange={() => { setDate(today); }}>{strings.entry.today}</Chip>
-                <Chip selected={date === yesterdayOf(today)} onSelectedChange={() => { setDate(yesterdayOf(today)); }}>{strings.entry.yesterday}</Chip>
-                {date !== today && date !== yesterdayOf(today) ? <Chip selected>{formatDay(date, today)}</Chip> : null}
-              </div>
-              <Field label={strings.settle.note} value={note} onChange={(e) => { setNote(e.target.value); }} onKeyDown={holdEnterWhileComposing} enterKeyHint="done" />
+        <Disclosure label={strings.entry.moreDetails} open={more} onOpenChange={setMore}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
+              <Chip selected={date === today} onSelectedChange={() => { setDate(today); }}>{strings.entry.today}</Chip>
+              <Chip selected={date === yesterdayOf(today)} onSelectedChange={() => { setDate(yesterdayOf(today)); }}>{strings.entry.yesterday}</Chip>
+              {date !== today && date !== yesterdayOf(today) ? <Chip selected>{formatDay(date, today)}</Chip> : null}
             </div>
-          ) : null}
-        </div>
+            <Field label={strings.settle.note} value={note} onChange={(e) => { setNote(e.target.value); }} onKeyDown={holdEnterWhileComposing} enterKeyHint="done" />
+          </div>
+        </Disclosure>
       </form>
     </Sheet>
   );

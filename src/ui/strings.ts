@@ -23,6 +23,10 @@ export const strings = {
       higher === 'level'
         ? `The plank is level between ${left} and ${right}`
         : `The plank tilts: ${higher === 'left' ? left : right} sits higher than ${higher === 'left' ? right : left}`,
+    /** S2 polish Q-L15: the plank named with people ("Jae, the cat"). */
+    person: (name: string, animal: string) => `${name}, ${animal}`,
+    plankOwed: (owed: string, owes: string) => `${owed}, is owed; ${owes}, owes`,
+    plankLevel: (a: string, b: string) => `The plank is level between ${a}, and ${b}`,
   },
   /** Shared primitives in src/ui/primitives. */
   ui: {
@@ -143,14 +147,20 @@ export const strings = {
     addExpense: 'Add expense',
     sameAsLast: 'Same as last time',
     addMenu: 'Add',
-    today: 'Today',
-    nothingToday: 'Nothing today yet.',
+    /** S2 polish Q-U7: the last few entries and settle-ups, by day. */
+    recent: 'Recent',
+    nothingYet: 'Nothing yet. Add your first shared expense above.',
+    settledToday: 'Settled up today',
     seeAll: 'See all',
     balanceHidden: 'An entry on this phone can’t be read, so the balance isn’t shown.',
   },
   reading: {
     paid: (name: string) => `${name} paid`,
+    gotBack: (name: string) => `${name} got it back`,
     ratio: (payerPct: number, otherPct: number) => `${String(payerPct)}/${String(otherPct)}`,
+    /** S2 polish Q-U5: a split names each person's own share ("Jae 60 · Sam 40"); an even one stays "50/50". */
+    shares: (a: string, ap: number, b: string, bp: number) => `${a} ${String(ap)} · ${b} ${String(bp)}`,
+    even: '50/50',
     treat: (name: string) => `${name}’s treat`,
     forOther: (name: string) => `for ${name}`,
     exact: 'exact amounts',
@@ -180,6 +190,7 @@ export const strings = {
     moneyBack: 'Money back',
     editMoneyBack: 'Edit money back',
     amount: 'Amount',
+    amountPlaceholder: '0.00',
     sum: (total: string) => `= ${total}`,
     description: 'Description',
     descriptionPlaceholder: 'Tesco, the energy bill…',
@@ -187,14 +198,17 @@ export const strings = {
     category: 'Category',
     whoPaid: 'Who paid',
     whoGotIt: 'Who got it back',
-    split: 'Split',
+    /** S2 polish Q-U5: one row of choices that name people. */
+    shared: 'How it’s shared',
+    other: 'Other',
+    lessFor: (name: string) => `Less for ${name}`,
+    moreFor: (name: string) => `More for ${name}`,
     exact: 'Exact',
     forOther: (name: string) => `For ${name}`,
     myTreat: 'My treat',
     theirTreat: (name: string) => `${name}’s treat`,
-    ratioPresets: 'How it’s split',
-    percent: (name: string) => `${name}’s percentage`,
-    ratioLine: (a: string, ap: number, b: string, bp: number) => `${a} ${String(ap)}% · ${b} ${String(bp)}%`,
+    /** Money back: whose money it is. */
+    allOf: (name: string) => `All ${name}’s`,
     share: (name: string) => `${name}'s share`,
     left: (amount: string) => `${amount} left to share`,
     over: (amount: string) => `${amount} more than the amount`,
@@ -203,11 +217,16 @@ export const strings = {
     today: 'Today',
     yesterday: 'Yesterday',
     pickDate: 'Pick a date',
-    dateField: 'The date',
-    more: 'More',
+    moreDetails: 'More details',
     notes: 'Notes',
     save: 'Save',
     saved: 'Saved',
+    /** S2 polish Q-U8: toasts say what happened. */
+    savedWhat: (description: string, amount: string) => `Saved ${description} ${amount}`,
+    removed: (description: string) => `Removed ${description}`,
+    moneyBackSaved: 'Money back saved',
+    copied: 'Copied to today',
+    open: 'Open',
     undo: 'Undo',
     deleted: (label: string) => `Deleted ${label}`,
     restored: (label: string) => `Restored ${label}`,
@@ -225,6 +244,9 @@ export const strings = {
     gotBackSentence: (who: string, shares: string) => `${who} got it back. ${shares}`,
     forSentence: (payer: string, other: string) => `${payer} paid, all of it for ${other}.`,
     treatSentence: (payer: string) => `${payer} paid. ${payer}’s treat.`,
+    /** S2 polish Q-U9. */
+    owesForThis: (debtor: string, creditor: string, amount: string) => `${debtor} owes ${creditor} ${amount} for this`,
+    cameBack: (amount: string, day: string) => `${amount} came back · ${day}`,
     editButton: 'Edit',
     duplicate: 'Duplicate',
     refund: 'Refund this',
@@ -244,8 +266,17 @@ export const strings = {
     historyLoading: 'Fetching the history…',
     historyEmpty: 'No changes yet.',
   },
+  /** S2 polish Q-L13: the in-app month grid. */
+  datePicker: {
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
+    month: (month: string, year: number) => `${month} ${String(year)}`,
+    months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    /** Monday first (DAT-3): the letter shown, and the name read out. */
+    weekdays: [['M', 'Monday'], ['T', 'Tuesday'], ['W', 'Wednesday'], ['T', 'Thursday'], ['F', 'Friday'], ['S', 'Saturday'], ['S', 'Sunday']],
+  },
   history: {
-    added: (who: string) => `${who} added it`,
+    added: (who: string) => `${who} added this`,
     deleted: (who: string) => `${who} deleted it`,
     restored: (who: string) => `${who} restored it`,
     changed: (who: string, what: string) => `${who} changed ${what}`,
@@ -289,6 +320,16 @@ export const strings = {
     settleUps: 'Settle-ups',
     deleted: 'Deleted',
     clear: 'Clear',
+    /** S2 polish Q-L13, Q-U10. */
+    clearSearch: 'Clear search',
+    clearAll: 'Clear all',
+    clearFilters: 'Clear filters',
+    last7: 'Last 7 days',
+    pickDates: 'Pick dates',
+    pickDatesLine: 'Tap the first day, then the last.',
+    showDates: 'Show these days',
+    range: (from: string, to: string) => `${from} – ${to}`,
+    row: (parts: readonly string[]) => parts.join(', '),
     empty: 'Nothing yet. Add your first shared expense from Home.',
     noMatch: 'Nothing matches that.',
     settled: (from: string, to: string, amount: string) => `${from} paid ${to} ${amount}`,
@@ -297,7 +338,11 @@ export const strings = {
   },
   settle: {
     title: 'Settle up',
+    editTitle: 'Edit settle-up',
     who: (from: string, to: string) => `${from} pays ${to}`,
+    /** S2 polish Q-U11: opened by the person owed, it records what the other paid. */
+    paid: (from: string, to: string) => `${from} paid ${to}`,
+    recordTheirs: (name: string) => `Record ${name}’s payment`,
     amount: 'Amount',
     note: 'Note',
     payWithMonzo: 'Pay with Monzo',
@@ -345,6 +390,9 @@ export const strings = {
     paying: 'Paying each other',
     monzo: 'monzo.me name',
     monzoHint: (partner: string) => `So ${partner} can pay you from Monzo with the amount filled in.`,
+    /** S2 polish Q-U11: what the name will do, as it is typed. */
+    monzoCheck: (partner: string, name: string) => `${partner} will pay you at monzo.me/${name}`,
+    monzoAddress: (name: string) => `monzo.me/${name}`,
     monzoSaved: 'Saved',
     usualSplit: 'Usual split',
     usualSplitLine: (split: string) => `New entries are split ${split} unless you choose otherwise.`,

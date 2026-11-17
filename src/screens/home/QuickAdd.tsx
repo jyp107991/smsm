@@ -5,13 +5,19 @@
  *
  * The one way to add (owner's choice, Q-L4): the box carries "Add expense" at its right end, which opens the
  * full form (prefilled from the reading when there is one). Toasts stay clear of the box (`data-toast-avoid`).
+ *
+ * While typing (S2 polish Q-U6): with the keyboard up, the box scrolls near the top so the reading stays in
+ * view; once the reading is complete a small Save sits inside the box (Enter still saves); the reading keeps
+ * two lines' room, so nothing below moves as it appears or wraps; the amount is in ink, the rest in ink-2;
+ * the description is read and saved tidy ("tesco" → "Tesco", the merchant list's "IKEA").
  */
-import { useMemo, useRef, useState, type SyntheticEvent } from 'react';
-import { formatPlainPounds } from '../../core/money';
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
+import { formatPence, formatPlainPounds } from '../../core/money';
 import {
   addExpense, deleteExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
+import { useKeyboardOpen } from '../../ui/keyboard';
 import { holdEnterWhileComposing } from '../../ui/keys';
 import { useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
@@ -23,6 +29,9 @@ import { usePeople } from '../shared/people';
 import { readingWords, readQuickAdd, type Reading } from '../shared/suggest';
 import { useSheets } from '../sheets';
 import { AddButton } from './AddButton';
+
+/** Q-U6: where the box sits while typing with the keyboard up, from the top of what the keyboard leaves (px). */
+const NEAR_TOP = 16;
 
 export function QuickAdd() {
   const layer = useDataLayer();
@@ -39,6 +48,8 @@ export function QuickAdd() {
   // Q-F1: the text just saved; a second Enter on it before the box clears (Enter held) saves nothing more.
   const savedText = useRef<string | null>(null);
   const { otherWindow } = useSyncStatus();
+  const keyboard = useKeyboardOpen();
+  const box = useRef<HTMLDivElement>(null);
   const today = layer.today();
   const me = people.me;
 
@@ -47,6 +58,15 @@ export function QuickAdd() {
     return readQuickAdd(text, { today, me, partner: people.partner, categories, memory, entries, householdRatio: household?.default_ratio });
   }, [text, today, me, people.partner, categories, memory, entries, household]);
   const words = reading ? readingWords(reading, { categories, people: people.list.length > 0 ? people.list : me ? [me] : [], today }) : null;
+  const complete = reading !== null && reading.confident && reading.saveAs.trim() !== '';
+
+  // Q-U6: with the keyboard up, typing keeps the box near the top, so the reading under it stays in view.
+  useEffect(() => {
+    const el = box.current;
+    if (!keyboard || text === '' || !el || document.activeElement?.closest('[data-quick-add]') !== el) return;
+    const top = el.getBoundingClientRect().top - (window.visualViewport?.offsetTop ?? 0);
+    if (Math.abs(top - NEAR_TOP) > 4) window.scrollBy({ top: top - NEAR_TOP, behavior: 'instant' });
+  }, [keyboard, text]);
 
   const openForm = (r: Reading) => {
     if (!me) return;
@@ -70,7 +90,7 @@ export function QuickAdd() {
       if (text.trim() !== '') setNeedsAmount(true);
       return;
     }
-    if (!reading.confident || reading.saveAs.trim() === '') {
+    if (!complete) {
       openForm(reading);
       return;
     }
@@ -98,22 +118,31 @@ export function QuickAdd() {
     }
     tickSaved();
     const payer = people.list.find((p) => p.id === reading.payer) ?? me;
+    const label = reading.saveAs;
+    // Q-U8: the toast says what was saved, keeps clear of its row, and Undo says what it took away.
     toast.show({
-      message: strings.entry.saved,
+      message: strings.entry.savedWhat(label, formatPence(reading.amount)),
       ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
-      action: { label: strings.entry.undo, onAction: () => { deleteExpense(id); } },
+      action: { label: strings.entry.undo, onAction: () => { if (deleteExpense(id)) toast.show({ message: strings.entry.removed(label) }); } },
       duration: 5000,
+      about: id,
     });
     setText('');
   };
 
+  // The reading, the amount in ink and the rest in ink-2 (its words are also the button's name).
+  const amountWords = reading ? formatPence(reading.amount) : '';
+  const restWords = words !== null && words.startsWith(amountWords) ? words.slice(amountWords.length) : words;
+
   return (
     <form onSubmit={save} className="flex flex-col gap-1.5" autoComplete="off">
       <div
+        ref={box}
+        data-quick-add=""
         data-toast-avoid=""
         className={cx(
-          'bg-sunk flex min-h-14 items-center gap-1 rounded-[12px] pr-2 pl-4',
-          // The ring is the typing's; the button inside draws its own.
+          'bg-sunk flex min-h-14 scroll-mt-4 items-center gap-1 rounded-[12px] pr-2 pl-4',
+          // The ring is the typing's; the buttons inside draw their own.
           'has-[input:focus-visible]:outline-forest has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-solid',
         )}
       >
@@ -131,25 +160,40 @@ export function QuickAdd() {
           spellCheck={false}
           className="text-body text-ink placeholder:text-ink-2 w-full min-w-0 flex-1 bg-transparent py-3 outline-none"
         />
+        {/* Q-U6: once the reading is complete, a small Save in the box (Enter does the same). */}
+        {complete && !otherWindow ? (
+          <button
+            type="submit"
+            className="bg-forest text-on-forest press text-secondary inline-flex h-11 shrink-0 items-center rounded-full px-4 font-semibold active:scale-[0.97]"
+          >
+            {strings.entry.save}
+          </button>
+        ) : null}
         {/* A read-only window (smsm open in another) adds nothing. */}
         {otherWindow ? null : <AddButton onAdd={() => { if (reading) openForm(reading); else sheets.openEntry({ mode: 'add' }); }} />}
       </div>
-      {/* The reading's place is kept whether or not there is one, so nothing below moves as you type. */}
-      <div className="min-h-11">
+      {/* The reading's two lines are kept whether or not there is one, so nothing below moves as you type. */}
+      <div className="h-[calc(2*1.4*var(--size-secondary)+1rem)] overflow-hidden">
         {reading && words ? (
-          <button
-            type="button"
-            onClick={() => { openForm(reading); }}
-            className="text-secondary text-ink-2 nums-list press min-h-11 w-full rounded-[12px] px-1 py-2 text-left break-words"
-          >
-            {words}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => { openForm(reading); }}
+              className={cx('text-secondary text-ink-2 nums-list press block w-full rounded-[12px] px-1 pt-2 text-left break-words', reading.confident && 'pb-2')}
+            >
+              {/* An unsure reading gives its second line to the note that says so. */}
+              <span className={reading.confident ? 'line-clamp-2' : 'line-clamp-1'}>
+                <span className="text-ink">{amountWords}</span>
+                {restWords}
+              </span>
+            </button>
+            {!reading.confident ? <p className="text-caption text-ink-2 m-0 truncate px-1">{strings.home.checkReading}</p> : null}
+          </>
         ) : needsAmount ? (
           <p className="text-secondary text-ink m-0 px-1 py-2" role="status">{strings.home.quickAddNeedsAmount}</p>
         ) : (
-          <p className="text-secondary text-ink-2 m-0 px-1 py-2">{strings.home.quickAddHint}</p>
+          <p className="text-secondary text-ink-2 m-0 line-clamp-2 px-1 py-2">{strings.home.quickAddHint}</p>
         )}
-        {reading && !reading.confident ? <p className="text-caption text-ink-2 m-0 px-1">{strings.home.checkReading}</p> : null}
       </div>
     </form>
   );

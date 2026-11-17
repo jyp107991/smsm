@@ -192,6 +192,6 @@ describe('Q-F1: a deliberate second action still records', () => {
       fireEvent.submit(box.closest('form') as HTMLFormElement);
       await settle(layer);
     }
-    expect(controls.tables.expenses.filter((e) => e.description === 'milk')).toHaveLength(2);
+    expect(controls.tables.expenses.filter((e) => e.description === 'Milk')).toHaveLength(2); // S2 polish Q-U6: saved tidy (was 'milk')
   });
 });

@@ -6,11 +6,11 @@
 import { ArrowLeft } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
-  backupJson, build, ChangesWaitingError, requestChange, setMonzoMe, signOut, useChangeRequests,
+  backupJson, build, ChangesWaitingError, monzoNameOf, requestChange, setMonzoMe, signOut, useChangeRequests,
   useHousehold, useSyncStatus,
 } from '../../data';
 import { holdEnterWhileComposing } from '../../ui/keys';
-import { Button, Chip, Field, ICON, Segmented, Sheet, useToast } from '../../ui/primitives';
+import { Button, Choices, Field, ICON, Segmented, Sheet, useToast } from '../../ui/primitives';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
 import { setTheme, useTheme, type ThemeChoice } from '../../ui/theme';
@@ -88,20 +88,21 @@ export function Settings() {
 
       <Section title={strings.settings.paying}>
         <MonzoName />
-        {full ? (
-          <div className="flex flex-col gap-2">
-            <p className="m-0">
-              <span className="text-secondary text-ink-2 block">{strings.settings.usualSplit}</span>
-              {strings.settings.usualSplitLine(household?.default_ratio ? ratioWords(household.default_ratio, people.list) : '50/50')}
-            </p>
-            {!splitPending ? (
-              <div>
-                <Button variant="plain" onClick={() => { setSplitSheet(true); }}>{strings.settings.changeSplit}</Button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </Section>
+
+      {/* Q-U11: the usual split is how new entries are shared, not a way of paying: a section of its own. */}
+      {full ? (
+        <Section title={strings.settings.usualSplit}>
+          <p className="m-0">
+            {strings.settings.usualSplitLine(household?.default_ratio ? ratioWords(household.default_ratio, people.list) : strings.reading.even)}
+          </p>
+          {!splitPending ? (
+            <div>
+              <Button variant="plain" onClick={() => { setSplitSheet(true); }}>{strings.settings.changeSplit}</Button>
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
 
       {!full && household ? (
         <Section title={strings.settings.invite}>
@@ -156,9 +157,13 @@ function download() {
   setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
 }
 
-/** SET-2: the monzo.me name; saved on Enter or when the field is left. */
+/**
+ * SET-2: the monzo.me name; saved on Enter or when the field is left. Q-U11: an "@name" is accepted, and a check
+ * line says, as it is typed, where the partner will pay ("Sam will pay you at monzo.me/jaepark").
+ */
 function MonzoName() {
   const people = usePeople();
+  const toast = useToast();
   const saved = people.myRow?.monzo_me ?? '';
   const [value, setValue] = useState(saved);
   const [state, setState] = useState<{ kind: 'idle' | 'saved' } | { kind: 'error'; message: string }>({ kind: 'idle' });
@@ -168,16 +173,20 @@ function MonzoName() {
     setLastSaved(saved);
     if (value === lastSaved) setValue(saved);
   }
+  const name = monzoNameOf(value);
   const save = async () => {
-    if (value.trim() === (people.myRow?.monzo_me ?? '')) return;
+    if (name === (people.myRow?.monzo_me ?? '')) return;
     try {
-      await setMonzoMe(value.trim() === '' ? null : value);
+      await setMonzoMe(name === '' ? null : value);
       setState({ kind: 'saved' });
+      toast.show({ message: strings.settings.monzoSaved });
     } catch (err) {
       setState({ kind: 'error', message: plainError(err) });
     }
   };
-  const hint = state.kind === 'saved' ? strings.settings.monzoSaved : strings.settings.monzoHint(people.partner?.name ?? '');
+  const partner = people.partner?.name;
+  const hint = name === null || name === '' ? strings.settings.monzoHint(partner ?? '')
+    : partner ? strings.settings.monzoCheck(partner, name) : strings.settings.monzoAddress(name);
   return (
     <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <Field
@@ -319,11 +328,12 @@ function RequestSheet({ open, onClose }: { open: boolean; onClose: () => void })
   );
 }
 
-/** PPL-5, SPL-2: ask the partner to approve a new usual split for new entries. */
+/** PPL-5, SPL-2: ask the partner to approve a new usual split for new entries (named shares, Q-U5). */
 function SplitSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const people = usePeople();
   const [a, b] = people.list;
-  const [mine, setMine] = useState(50);
+  /** The first person's share. */
+  const [first, setFirst] = useState(50);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -333,7 +343,7 @@ function SplitSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const send = async () => {
     setBusy(true);
     try {
-      await requestChange({ kind: 'default_ratio', ratio: { [me.id]: mine, [other.id]: 100 - mine } });
+      await requestChange({ kind: 'default_ratio', ratio: { [a.id]: first, [b.id]: 100 - first } });
       toast.show({ message: strings.settings.requestSent });
       onClose();
     } catch (err) {
@@ -355,16 +365,12 @@ function SplitSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
       }
     >
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.ratioPresets}>
-          {RATIO_PRESETS.map((p) => (
-            <Chip key={p} selected={mine === p} onSelectedChange={() => { setMine(p); }}>
-              <span className="nums-list">{strings.reading.ratio(p, 100 - p)}</span>
-            </Chip>
-          ))}
-        </div>
-        <p className="text-secondary text-ink-2 m-0">{strings.entry.ratioLine(me.name, mine, other.name, 100 - mine)}</p>
-      </div>
+      <Choices
+        label={strings.entry.shared}
+        options={RATIO_PRESETS.map((p) => ({ value: String(p), label: p === 50 ? strings.reading.even : strings.reading.shares(a.name, p, b.name, 100 - p) }))}
+        value={String(first)}
+        onValueChange={(v) => { setFirst(Number(v)); }}
+      />
     </Sheet>
   );
 }

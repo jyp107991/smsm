@@ -2,33 +2,48 @@
  * Add expense / Edit expense / Money back (DESIGN §4.2; ADD-3…ADD-7, SPL-1…SPL-5, MB-1, MB-2, CAT-3, CAT-4).
  * Amount first and largest with the numeric keypad open at once; description with earlier ones offered;
  * category chips with the household's guess marked; who paid as the two heads; the split; the date; notes
- * under More. Save is instant and works offline; its toast offers Undo for 5 seconds.
+ * under More details. Save is instant and works offline; its toast offers Undo for 5 seconds.
+ *
+ * S2 polish wave 2: the amount is the hero (the display serif on a hairline, a sum's result inside the line,
+ * Q-L12) and recent descriptions are offered before anything is typed; the split is one row of choices that
+ * name each person's own share, "How it’s shared", with a 5 % stepper for Other (Q-U5); the date is the app's
+ * own month grid in a small sheet (Q-L13); "More details" is a disclosure row (Q-L14); the toast says what was
+ * saved, and Undo what was removed (Q-U8).
  */
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
+import { Minus, Plus } from 'lucide-react';
 import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
+import { formatPence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
   useEntries, useHousehold, type ExpenseDraft, type ExpenseRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { enterMovesTo, enterSavesOnce } from '../../ui/keys';
-import { Button, Chip, Field, Segmented, Sheet, useToast } from '../../ui/primitives';
+import { Button, Chip, Choices, Disclosure, Field, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
 import { categoryColour } from '../../ui/tokens';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { isPlaceholderEmoji } from '../shared/CategoryMark';
 import { Head } from '../shared/Head';
+import { DateSheet } from '../shared/MonthGrid';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
 import {
-  blankForm, draftOf, followExact, formFromRow, RATIO_PRESETS, refundForm, remainderWords, setPayerShare, sumWords, summaryWords,
+  blankForm, draftOf, followExact, formFromRow, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, sumWords, summaryWords,
   withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
 } from './form';
+
+/**
+ * A choice in "How it’s shared" (Q-U5): a preset as the first person's share, Other (the stepper), Exact, and
+ * for an expense "For Sam" / "My treat"; for money back, whose money it all is ("All Jae’s").
+ */
+type SplitValue = `ratio:${string}` | 'other' | `all:${string}` | SplitChoice;
 
 export function EntrySheet({ request, onClose }: { request: EntryRequest | null; onClose: () => void }) {
   // A new key per request, so every opening starts from its own prefill; the last one stays while closing.
@@ -65,7 +80,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [s, setS] = useState<FormState>(initial);
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
-  const [picking, setPicking] = useState(initial.date !== today && initial.date !== yesterdayOf(today));
+  const [pickingDate, setPickingDate] = useState(false);
+  // Q-U5: "Other" stays chosen once picked, even when its stepper passes a preset.
+  const [otherChosen, setOtherChosen] = useState(false);
   // What the person chose themselves (taught to the app on Save, CAT-3, CAT-4).
   const picked = useRef({
     category: request.mode === 'add' && request.fromQuickAdd?.typedCategory === true,
@@ -74,6 +91,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
   const guess = useMemo(() => guessFor(s.description, { categories, memory, entries }), [s.description, categories, memory, entries]);
   const suggestions = useMemo(() => descriptionSuggestions(s.description, entries), [s.description, entries]);
+  // The row is kept only when there is history to offer, so it is never an empty gap (Q-L12).
+  const hasHistory = useMemo(() => entries.some((e) => e.deleted_at === null && e.kind === 'expense'), [entries]);
 
   // Q-F1: one row id for this form, and nothing after the first save (a double tap, Enter held).
   const [rowId] = useState(newId);
@@ -155,7 +174,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         };
       } else {
         id = addExpense({ ...draft, id: rowId });
-        undo = () => { deleteExpense(id); };
+        // Q-U8: Undo says what it took away.
+        undo = () => {
+          if (deleteExpense(id)) toast.show({ message: strings.entry.removed(draft.description) });
+        };
       }
     } catch (err) {
       setErrors([plainError(err)]);
@@ -174,25 +196,58 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       }
     }
     tickSaved();
+    // Q-U8: the toast says what happened, and keeps clear of the row it reports.
     toast.show({
-      message: strings.entry.saved,
+      message: isBack ? strings.entry.moneyBackSaved : strings.entry.savedWhat(draft.description, formatPence(draft.amount)),
       icon: <Head animal={payerPerson.animal} size={24} nod />,
       action: { label: strings.entry.undo, onAction: undo },
       duration: 5000,
+      about: id,
     });
     onDone();
   };
 
-  const splitOptions: { value: SplitChoice; label: string }[] = [
-    { value: 'ratio', label: strings.entry.split },
+  // Q-U5: one row of choices naming each person's own share, in the household's order (never the payer's).
+  const [first, second] = pair;
+  const firstPct = first ? (s.ratio[first.id] ?? 50) : 50;
+  const named = (pct: number) => (first && second && pct !== 50 ? strings.reading.shares(first.name, pct, second.name, 100 - pct) : strings.reading.even);
+  const isPreset = (SHEET_PRESETS as readonly number[]).includes(firstPct);
+  const showOther = s.splitMode === 'ratio' && (otherChosen || !isPreset);
+  const choice: SplitValue = s.splitMode === 'ratio'
+    ? (showOther ? 'other' : `ratio:${String(firstPct)}`)
+    : isBack && (s.splitMode === 'treat' || s.splitMode === 'for_other')
+      ? `all:${s.splitMode === 'treat' ? s.payer : (other?.id ?? '')}`
+      : s.splitMode;
+  const splitOptions: { value: SplitValue; label: string }[] = [
+    ...SHEET_PRESETS.map((p) => ({ value: `ratio:${String(p)}` as const, label: named(p) })),
+    { value: 'other', label: strings.entry.other },
     { value: 'exact', label: strings.entry.exact },
-    { value: 'for_other', label: strings.entry.forOther(other?.name ?? '') },
-    { value: 'treat', label: s.payer === me.id ? strings.entry.myTreat : strings.entry.theirTreat(payerPerson.name) },
+    ...(isBack
+      ? pair.map((p) => ({ value: `all:${p.id}` as const, label: strings.entry.allOf(p.name) }))
+      : [
+          { value: 'for_other' as const, label: strings.entry.forOther(other?.name ?? '') },
+          { value: 'treat' as const, label: s.payer === me.id ? strings.entry.myTreat : strings.entry.theirTreat(payerPerson.name) },
+        ]),
   ];
+  const chooseSplit = (v: SplitValue) => {
+    picked.current.split = true;
+    setOtherChosen(v === 'other');
+    if (v === 'other') update({ ...s, splitMode: 'ratio', splitTouched: true });
+    else if (v.startsWith('ratio:')) update(first ? setShareOf(s, first.id, Number(v.slice('ratio:'.length)), pair) : s);
+    else if (v.startsWith('all:')) update({ ...s, splitMode: v.slice('all:'.length) === s.payer ? 'treat' : 'for_other', splitTouched: true });
+    else update({ ...s, splitMode: v as SplitChoice, splitTouched: true });
+  };
+  const step = (direction: 1 | -1) => {
+    if (!first) return;
+    picked.current.split = true;
+    update(setShareOf(s, first.id, stepShare(firstPct, direction), pair));
+  };
+
   const remainder = remainderWords(s, pair);
   const summary = summaryWords(s, pair);
   const sum = sumWords(s);
-  const payerPct = s.ratio[s.payer] ?? 50;
+  const yesterday = yesterdayOf(today);
+  const otherDay = s.date !== today && s.date !== yesterday;
 
   const footer = (
     <div className="flex flex-col gap-2">
@@ -205,17 +260,25 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   return (
     <Sheet open={open} onOpenChange={(next) => { if (!next) onDone(); }} title={title} dirty={dirty} full footer={footer}>
     <form id={formId} onSubmit={save} noValidate className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <Field
-          label={strings.entry.amount}
-          variant="amount"
-          value={s.amountText}
-          onChange={(e) => { update({ ...s, amountText: e.target.value }); }}
-          onKeyDown={(e) => { enterMovesTo(e, descriptionRef.current); }}
-          enterKeyHint="next"
-          autoFocus={request.mode !== 'edit'}
-        />
-        <p className="text-secondary text-ink-2 nums-list m-0 min-h-[1.3rem]" aria-live="polite">{sum}</p>
+      {/* Q-L12: the hero. The display serif on a hairline, a ghost "0.00", and a sum's result inside the line. */}
+      <div className="flex min-w-0 flex-col gap-1">
+        <label htmlFor={`${formId}-amount`} className="text-secondary text-ink-2 font-medium">{strings.entry.amount}</label>
+        <div className="border-line focus-within:border-forest flex min-w-0 items-baseline gap-1 border-b transition-[border-color,box-shadow] duration-150 focus-within:shadow-[0_1px_0_var(--forest)]">
+          <span aria-hidden="true" className="text-amount text-ink-2">{strings.ui.currency}</span>
+          <input
+            id={`${formId}-amount`}
+            value={s.amountText}
+            placeholder={strings.entry.amountPlaceholder}
+            onChange={(e) => { update({ ...s, amountText: e.target.value }); }}
+            onKeyDown={(e) => { enterMovesTo(e, descriptionRef.current); }}
+            inputMode="decimal"
+            enterKeyHint="next"
+            autoComplete="off"
+            autoFocus={request.mode !== 'edit'}
+            className="text-amount nums-list text-ink placeholder:text-ink-2 w-full min-w-0 flex-1 bg-transparent py-1 outline-none"
+          />
+          <span aria-live="polite" className="text-secondary text-ink-2 nums-list shrink-0 whitespace-nowrap">{sum}</span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -230,12 +293,14 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           autoComplete="off"
           autoCapitalize="sentences"
         />
-        {/* A fixed-height row, so suggestions appearing never push the form down. */}
-        <div className="flex h-11 min-w-0 items-center gap-2 overflow-x-auto" role="group" aria-label={strings.entry.suggestions}>
-          {suggestions.map((d) => (
-            <Chip key={d} onSelectedChange={() => { describe(d); }} className="shrink-0">{d}</Chip>
-          ))}
-        </div>
+        {/* A fixed-height row, so suggestions appearing never push the form down; recent ones before typing. */}
+        {hasHistory ? (
+          <div className="-mx-1 flex h-11 min-w-0 items-center gap-2 overflow-x-auto px-1" role="group" aria-label={strings.entry.suggestions}>
+            {suggestions.map((d) => (
+              <Chip key={d} onSelectedChange={() => { describe(d); }} className="shrink-0">{d}</Chip>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <Group label={strings.entry.category}>
@@ -267,53 +332,27 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
               people={pair}
               value={s.payer}
               onChange={(payer) => {
-                // The split stays each person's own percentage; only its wording follows the payer.
-                update({ ...s, payer });
+                // A split is each person's own share; only its wording follows the payer. Money back that is
+                // all one person's stays that person's (Q-U5: the meaning never flips).
+                if (isBack && (s.splitMode === 'treat' || s.splitMode === 'for_other')) {
+                  const holder = s.splitMode === 'treat' ? s.payer : other?.id;
+                  update({ ...s, payer, splitMode: holder === payer ? 'treat' : 'for_other' });
+                } else update({ ...s, payer });
               }}
             />
           </Group>
 
-          <Group label={strings.entry.split}>
-            <Segmented
-              label={strings.entry.split}
-              options={splitOptions}
-              value={s.splitMode}
-              onValueChange={(mode) => {
-                picked.current.split = true;
-                update({ ...s, splitMode: mode, splitTouched: true });
-              }}
-            />
-            {s.splitMode === 'ratio' && other ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.ratioPresets}>
-                  {RATIO_PRESETS.map((p) => (
-                    <Chip
-                      key={p}
-                      selected={payerPct === p}
-                      onSelectedChange={() => {
-                        picked.current.split = true;
-                        update(setPayerShare(s, p, pair));
-                      }}
-                    >
-                      <span className="nums-list">{strings.reading.ratio(p, 100 - p)}</span>
-                    </Chip>
-                  ))}
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={payerPct}
-                  aria-label={strings.entry.percent(payerPerson.name)}
-                  aria-valuetext={strings.entry.ratioLine(payerPerson.name, payerPct, other.name, 100 - payerPct)}
-                  onChange={(e) => {
-                    picked.current.split = true;
-                    update(setPayerShare(s, Number(e.target.value), pair));
-                  }}
-                  className="accent-forest h-11 w-full"
-                />
-                <p className="text-secondary text-ink-2 nums-list m-0">{strings.entry.ratioLine(payerPerson.name, payerPct, other.name, 100 - payerPct)}</p>
+          <Group label={strings.entry.shared}>
+            <Choices label={strings.entry.shared} options={splitOptions} value={choice} onValueChange={chooseSplit} />
+            {showOther && first && second ? (
+              <div className="mt-3 flex min-w-0 items-center gap-3">
+                <StepButton label={strings.entry.lessFor(first.name)} disabled={firstPct <= 0} onClick={() => { step(-1); }}>
+                  <Minus size={20} strokeWidth={2} aria-hidden="true" />
+                </StepButton>
+                <p aria-live="polite" className="text-body nums-list m-0 min-w-0 flex-1 text-center">{strings.reading.shares(first.name, firstPct, second.name, 100 - firstPct)}</p>
+                <StepButton label={strings.entry.moreFor(first.name)} disabled={firstPct >= 100} onClick={() => { step(1); }}>
+                  <Plus size={20} strokeWidth={2} aria-hidden="true" />
+                </StepButton>
               </div>
             ) : null}
             {s.splitMode === 'exact' ? (
@@ -343,48 +382,55 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
       <Group label={strings.entry.date}>
         <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
-          <Chip selected={!picking && s.date === today} onSelectedChange={() => { setPicking(false); update({ ...s, date: today }); }}>
+          <Chip selected={s.date === today} onSelectedChange={() => { update({ ...s, date: today }); }}>
             {strings.entry.today}
           </Chip>
-          <Chip selected={!picking && s.date === yesterdayOf(today)} onSelectedChange={() => { setPicking(false); update({ ...s, date: yesterdayOf(today) }); }}>
+          <Chip selected={s.date === yesterday} onSelectedChange={() => { update({ ...s, date: yesterday }); }}>
             {strings.entry.yesterday}
           </Chip>
-          <Chip selected={picking} onSelectedChange={() => { setPicking(true); }}>
-            {picking && s.date !== today && s.date !== yesterdayOf(today) ? formatDay(s.date, today) : strings.entry.pickDate}
+          {/* Q-L13: the app's own month grid, in a small sheet; the chip then reads the day ("Tue 10 Nov"). */}
+          <Chip selected={otherDay} aria-haspopup="dialog" onSelectedChange={() => { setPickingDate(true); }}>
+            {otherDay ? formatDay(s.date, today) : strings.entry.pickDate}
           </Chip>
         </div>
-        {picking ? (
-          <input
-            type="date"
-            aria-label={strings.entry.dateField}
-            value={s.date}
-            max={today}
-            onChange={(e) => { if (e.target.value) update({ ...s, date: e.target.value }); }}
-            className="bg-sunk text-ink mt-3 min-h-12 w-full rounded-[12px] px-4"
-          />
-        ) : null}
       </Group>
 
-      <div>
-        <Button variant="plain" aria-expanded={showMore} onClick={() => { setShowMore(!showMore); }}>
-          {strings.entry.more}
-        </Button>
-        {showMore ? (
-          <div className="mt-3 flex flex-col gap-1.5">
-            <label htmlFor={`${formId}-notes`} className="text-secondary text-ink-2 font-medium">{strings.entry.notes}</label>
-            <textarea
-              id={`${formId}-notes`}
-              value={s.notes}
-              rows={3}
-              onChange={(e) => { update({ ...s, notes: e.target.value }); }}
-              className="bg-sunk text-ink text-body min-h-24 w-full rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
-            />
-          </div>
-        ) : null}
-      </div>
-
+      <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${formId}-notes`} className="text-secondary text-ink-2 font-medium">{strings.entry.notes}</label>
+          <textarea
+            id={`${formId}-notes`}
+            value={s.notes}
+            rows={3}
+            onChange={(e) => { update({ ...s, notes: e.target.value }); }}
+            className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
+          />
+        </div>
+      </Disclosure>
     </form>
+    <DateSheet
+      open={pickingDate}
+      onClose={() => { setPickingDate(false); }}
+      value={s.date}
+      today={today}
+      onPick={(date) => { update({ ...s, date }); }}
+    />
     </Sheet>
+  );
+}
+
+/** A −/+ for "Other" (Q-U5): a 44 px round target. */
+function StepButton({ label, disabled, onClick, children }: { label: string; disabled: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="bg-sunk text-ink press inline-flex size-11 shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }
 

@@ -132,6 +132,10 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
         <Drawer.Overlay className="bg-scrim fixed inset-0 z-40" />
         <Drawer.Content
           {...(description ? {} : { 'aria-describedby': undefined })}
+          // While it slides away it is no longer there to read or press (a sheet over a sheet closes on top of
+          // one that stays open: the date grid over the Add sheet, Q-L13).
+          aria-hidden={open ? undefined : true}
+          inert={!open}
           onEscapeKeyDown={(event) => {
             if (confirming) {
               event.preventDefault();

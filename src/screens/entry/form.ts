@@ -267,8 +267,31 @@ export function summaryWords(s: FormState, people: readonly Person[]): string | 
   return strings.entry.summaryShares(payer.name, money, shareWords(shares, people));
 }
 
-/** Presets for the ratio (SPL-1), from the payer's side: 50/50, 60/40, 70/30 and their reverses. */
-export const RATIO_PRESETS = [50, 60, 70, 40, 30] as const;
+/** Presets for the ratio (SPL-1), as the first person's share: 50/50, 60/40, 70/30 and their reverses. */
+export const RATIO_PRESETS = [50, 60, 40, 70, 30] as const;
+
+/**
+ * The split choices the Add sheet offers as named chips (S2 polish Q-U5), as the first person's share:
+ * "50/50", "Jae 60 · Sam 40", "Jae 40 · Sam 60". Anything else is "Other" (the 5 % stepper).
+ */
+export const SHEET_PRESETS = [50, 60, 40] as const;
+
+/** One step of "Other" (Q-U5): 5 % of the whole, to the next multiple of 5 up or down. */
+export const STEP = 5;
+
+/** Q-U5: a person's own share set directly; the other gets the rest. Who paid never changes what it means. */
+export function setShareOf(s: FormState, id: UserId, pct: number, people: readonly Person[]): FormState {
+  const other = people.find((p) => p.id !== id);
+  if (!other) return s;
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  return { ...s, splitMode: 'ratio', ratio: { [id]: p, [other.id]: 100 - p }, splitTouched: true };
+}
+
+/** The next "Other" step for a share, more or less (to a multiple of 5, within 0–100). */
+export function stepShare(pct: number, direction: 1 | -1): number {
+  const next = direction > 0 ? Math.floor(pct / STEP) * STEP + STEP : Math.ceil(pct / STEP) * STEP - STEP;
+  return Math.max(0, Math.min(100, next));
+}
 
 export function setPayerShare(s: FormState, payerPct: number, people: readonly Person[]): FormState {
   const other = people.find((p) => p.id !== s.payer);

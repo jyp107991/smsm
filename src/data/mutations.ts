@@ -380,10 +380,19 @@ export async function setIdentity(name: string, animal: 'cat' | 'dog', layer = a
   await layer.refresh();
 }
 
-/** SET-2: the monzo.me name for the settle-up handoff; null or empty clears it. A pasted link is accepted. */
+/**
+ * The monzo.me name in what was typed: a pasted link or an "@name" is accepted (S2 polish Q-U11). '' for
+ * nothing; null when it can't be a monzo.me name.
+ */
+export function monzoNameOf(typed: string): string | null {
+  const value = typed.trim().replace(/^(https?:\/\/)?monzo\.me\//i, '').replace(/\/+$/, '').replace(/^@/, '');
+  return value === '' || /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : null;
+}
+
+/** SET-2: the monzo.me name for the settle-up handoff; null or empty clears it. A pasted link or "@name" is accepted. */
 export async function setMonzoMe(username: string | null, layer = activeDataLayer()): Promise<void> {
-  const value = username === null ? '' : username.trim().replace(/^(https?:\/\/)?monzo\.me\//i, '').replace(/\/+$/, '');
-  if (value !== '' && !/^[A-Za-z0-9_-]{1,40}$/.test(value)) throw new EntryInvalidError(['monzoName']);
+  const value = monzoNameOf(username ?? '');
+  if (value === null) throw new EntryInvalidError(['monzoName']);
   await online(layer, () => layer.api.setMonzoMe(value === '' ? null : value));
   await layer.refresh();
 }

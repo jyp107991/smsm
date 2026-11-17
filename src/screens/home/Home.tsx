@@ -1,12 +1,16 @@
 /**
  * Home (DESIGN §4.1): "are we square?" and adding. The plank and the sentence (with the offline and
  * waiting-to-sync pill under the plank), quick add with its live reading and the Add expense button in its
- * box (the one way to add, Q-L4; a long press offers "Same as last time", ADD-7), today's entries, and only
+ * box (the one way to add, Q-L4; a long press offers "Same as last time", ADD-7), the last few entries by day
+ * (Q-U7), and only
  * the banners that are needed: an approval waiting, a change the server refused (OFF-5). Settings is the gear.
  */
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { Settings as Gear } from 'lucide-react';
-import { dismissProblem, useCategories, useDataLayer, useEntries, useSyncStatus, type ExpenseDraft, type ExpenseRow } from '../../data';
+import { formatDay } from '../../core/dates';
+import {
+  dismissProblem, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus, type ExpenseDraft, type ExpenseRow, type SettlementRow,
+} from '../../data';
 import { Logo } from '../../ui/Logo';
 import { Button, ICON } from '../../ui/primitives';
 import { go } from '../../ui/router';
@@ -15,7 +19,7 @@ import { NO_CATEGORIES } from '../shared/empty';
 import { ApprovalBanners } from '../shared/Approvals';
 import { MonzoBanner } from '../settle/question';
 import { usePeople } from '../shared/people';
-import { EntryRowView } from '../shared/rows';
+import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
 import { QuickAdd } from './QuickAdd';
@@ -40,7 +44,7 @@ export function Home() {
       <Problems />
       <BalanceRegion />
       <QuickAdd />
-      <Today />
+      <RecentRows />
     </div>
   );
 }
@@ -74,21 +78,44 @@ function Problems() {
   );
 }
 
-function Today() {
+/** Q-U7: how many of the latest entries and settle-ups Home shows ("the last few"; Activity has the rest). */
+const RECENT = 5;
+
+type Recent = { kind: 'expense'; row: ExpenseRow } | { kind: 'settlement'; row: SettlementRow };
+
+/**
+ * Q-U7: Home shows the ledger. "Recent" is the last few entries and settle-ups (newest first, by their date,
+ * then when they were added), under day headings ("Today", "Yesterday", "Tue 10 Nov"); each day's rows are a
+ * list named by its heading. Never a blank "nothing today" while there is history.
+ */
+function RecentRows() {
   const layer = useDataLayer();
   const entries = useEntries().data;
+  const settlements = useSettlements().data;
   const categories = useCategories().data ?? NO_CATEGORIES;
   const people = usePeople();
   const { pendingIds } = useSyncStatus();
   const today = layer.today();
-  const rows = useMemo(
-    () => (entries ?? []).filter((e) => e.date === today && e.deleted_at === null).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
-    [entries, today],
-  );
+  const id = useId();
+  const days = useMemo(() => {
+    const all: Recent[] = [
+      ...(entries ?? []).filter((e) => e.deleted_at === null).map((row) => ({ kind: 'expense' as const, row })),
+      ...(settlements ?? []).filter((s) => s.deleted_at === null).map((row) => ({ kind: 'settlement' as const, row })),
+    ];
+    all.sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0));
+    const groups: { date: string; items: Recent[] }[] = [];
+    for (const item of all.slice(0, RECENT)) {
+      const last = groups[groups.length - 1];
+      if (last?.date === item.row.date) last.items.push(item);
+      else groups.push({ date: item.row.date, items: [item] });
+    }
+    return groups;
+  }, [entries, settlements]);
+  const loading = entries === undefined || settlements === undefined;
   return (
-    <section aria-labelledby="home-today" className="flex flex-col">
+    <section aria-labelledby={`${id}-recent`} className="flex flex-col">
       <div className="rule-ledger flex items-baseline justify-between gap-3">
-        <h2 id="home-today" className="text-heading m-0">{strings.home.today}</h2>
+        <h2 id={`${id}-recent`} className="text-heading m-0">{strings.home.recent}</h2>
         <a
           href="/activity"
           onClick={(e) => { e.preventDefault(); go({ name: 'activity' }); }}
@@ -97,16 +124,28 @@ function Today() {
           {strings.home.seeAll}
         </a>
       </div>
-      {rows.length === 0 ? (
-        <p className="text-secondary text-ink-2 mt-3 mb-0">{strings.home.nothingToday}</p>
+      {loading ? null : days.length === 0 ? (
+        <p className="text-secondary text-ink-2 mt-3 mb-0">{strings.home.nothingYet}</p>
       ) : (
-        <ul aria-label={strings.home.today} className="m-0 list-none p-0">
-          {rows.map((r) => (
-            <li key={r.id} className="border-line border-b last:border-b-0">
-              <EntryRowView row={r} categories={categories} people={people.list} pending={pendingIds.has(r.id)} />
-            </li>
-          ))}
-        </ul>
+        days.map((d, i) => {
+          const heading = `${id}-day-${String(i)}`;
+          return (
+            <div key={d.date} className="flex flex-col">
+              <h3 id={heading} className="text-subtitle text-ink-2 mt-3 mb-0">{formatDay(d.date, today)}</h3>
+              <ul aria-labelledby={heading} className="m-0 list-none p-0">
+                {d.items.map((item) => (
+                  <li key={item.row.id} className="border-line border-b last:border-b-0">
+                    {item.kind === 'expense' ? (
+                      <EntryRowView row={item.row} categories={categories} people={people.list} pending={pendingIds.has(item.row.id)} />
+                    ) : (
+                      <SettlementRowView row={item.row} people={people.list} />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })
       )}
     </section>
   );

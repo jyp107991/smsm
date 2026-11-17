@@ -387,7 +387,7 @@ describe('Q-U3 ADD-1: quick add says what it needs, reads "42,50", and its key s
     fireEvent.change(box, { target: { value: '42,50 tesco' } });
     fireEvent.submit(box.closest('form') as HTMLFormElement);
     await settle(layer);
-    expect(controls.tables.expenses.map((e) => [e.description, e.amount_pence])).toEqual([['tesco', 4250]]);
+    expect(controls.tables.expenses.map((e) => [e.description, e.amount_pence])).toEqual([['Tesco', 4250]]); // S2 polish Q-U6: saved tidy (was 'tesco')
   });
 
   it('Q-U3: the Quick add box\'s Enter key says "send"', async () => {
