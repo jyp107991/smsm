@@ -12,12 +12,12 @@
  */
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
-import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay } from '../../core/dates';
 import { formatPence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
-  currentOpenChapter, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
+  currentCountry, currentOpenChapter, homeCountry, locate, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -36,6 +36,7 @@ import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from 
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
 import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
+import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
 import { RecurringHistory, Toggle } from './RecurringParts';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
@@ -88,7 +89,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     const blank = blankForm({ me: me?.id ?? '', people: pair, today, split });
     // CHP-2: a new entry starts in this phone's current chapter (an Inbox bill never does, REC-4).
     const chapterId = request.mode === 'add' && request.inboxItem === undefined ? currentOpenChapter() : null;
-    return { ...blank, categoryId: otherCategoryId(live), chapterId, ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
+    // PLC-3: and this phone's current country.
+    const country = currentCountry();
+    return { ...blank, categoryId: otherCategoryId(live), chapterId, country, ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
   });
   // S3 (REC-1): the schedule, when this is a regular payment ("Repeat" turns an expense into one).
   const [initialSchedule] = useState((): ScheduleState | null => {
@@ -98,13 +101,30 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   });
   const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
+  const [s, setS] = useState<FormState>(initial);
   // CHP-1: a chapter started from this form is chosen for this entry (one request object per opening).
   const [newChapter, setNewChapter] = useState(false);
+  // PLC-2: with location on, a new entry dated today picks up the town and country when the sheet opens (never
+  // blocks saving; a place typed or removed meanwhile wins).
+  const home = useHousehold().data?.home_country ?? homeCountry();
+  const placeRef = useRef<HTMLInputElement>(null);
+  const placeTouched = useRef(false);
+  const capture = request.mode === 'add' && request.inboxItem === undefined && request.prefill?.place === undefined;
+  useEffect(() => {
+    if (!capture) return;
+    let live = true;
+    void locate().then((where) => {
+      if (!live || !where || placeTouched.current) return;
+      setS((prev) => (prev.date !== today ? prev : {
+        ...prev, lat: where.lat, lng: where.lng, place: where.place ?? prev.place ?? null, country: where.country ?? prev.country,
+      }));
+    });
+    return () => { live = false; };
+  }, [capture, today]);
   const chapterEditing = useMemo<ChapterEditing>(
     () => (newChapter ? { mode: 'new', onSaved: (chapterId) => { setS((prev) => ({ ...prev, chapterId })); } } : null),
     [newChapter],
   );
-  const [s, setS] = useState<FormState>(initial);
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
   const [pickingDate, setPickingDate] = useState(false);
@@ -376,6 +396,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         enterKeyHint="next"
         autoFocus={request.mode !== 'edit'}
       />
+      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) ? (
+        <ForeignAmount s={s} home={home} onChange={(next) => { update({ ...s, ...next }); }} />
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <Field
@@ -511,7 +534,29 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       </Group>
       )}
 
+      {!rec && s.place ? (
+        <PlaceRow
+          place={s.place}
+          onEdit={() => { setShowMore(true); requestAnimationFrame(() => { placeRef.current?.focus(); }); }}
+          onRemove={() => { placeTouched.current = true; update({ ...s, place: null, lat: null, lng: null }); }}
+        />
+      ) : null}
+
       <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
+        {!rec ? (
+          <Field
+            ref={placeRef}
+            label={strings.places.place}
+            hint={strings.places.placeHint}
+            value={s.place ?? ''}
+            autoComplete="off"
+            autoCapitalize="words"
+            maxLength={80}
+            className="mb-4"
+            // A typed place carries no position (PLC-1).
+            onChange={(e) => { placeTouched.current = true; update({ ...s, place: e.target.value, lat: null, lng: null }); }}
+          />
+        ) : null}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${formId}-notes`} className="text-secondary text-ink-2 font-medium">{strings.entry.notes}</label>
           <textarea
