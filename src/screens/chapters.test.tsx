@@ -36,6 +36,8 @@ afterEach(async () => { await open?.dispose(); open = null; });
 
 function at(path: string) {
   history.replaceState(null, '', path);
+  // Tell the app's router, as the browser would on a navigation (it may already be showing a page).
+  window.dispatchEvent(new PopStateEvent('popstate'));
   resetHistoryForTests();
 }
 
@@ -50,7 +52,8 @@ async function settle(layer: DataLayer) {
 
 type S4Tables = MemoryTables & { chapters: ChapterRow[] };
 const tablesOf = (c: { controls: { tables: MemoryTables } }) => c.controls.tables as S4Tables;
-const isChecked = (el: HTMLElement) => el.getAttribute('aria-checked') === 'true' || (el as HTMLInputElement).checked;
+// A boolean either way (an unchecked Radix radio has aria-checked="false" and no `checked` property).
+const isChecked = (el: HTMLElement) => el.getAttribute('aria-checked') === 'true' || (el instanceof HTMLInputElement && el.checked);
 const isPressed = (el: HTMLElement) => el.getAttribute('aria-pressed') === 'true';
 const text = (el: HTMLElement) => el.textContent.replace(/\s+/g, ' ').trim();
 
@@ -451,10 +454,15 @@ describe('Activity’s Chapter filter and the entry page (ACT-1, CHP-2)', () => 
     at('/activity');
     show(layer);
     await screen.findByRole('link', { name: 'Lamp, £40.00, Jae paid' });
-    const picker = await pickChapter('Japan');
-    for (const name of ['Everyday', 'New sofa']) {
-      expect(within(picker).queryAllByRole('radio', { name }).concat(within(picker).queryAllByRole('checkbox', { name }), within(picker).queryAllByRole('button', { name }))).not.toHaveLength(0);
+    // The options are all there before one is picked (picking closes the picker).
+    fireEvent.click(within(filters()).getByRole('button', { name: 'Chapter', hidden: true }));
+    const open = await screen.findByRole('dialog', { name: 'Chapter' });
+    for (const name of ['Everyday', 'Japan', 'New sofa']) {
+      expect(within(open).queryAllByRole('radio', { name }).concat(within(open).queryAllByRole('checkbox', { name }), within(open).queryAllByRole('button', { name }))).not.toHaveLength(0);
     }
+    fireEvent.click(within(open).getByRole('button', { name: 'Close' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Chapter' })).toBeNull(); });
+    await pickChapter('Japan');
     await waitFor(() => { expect(screen.queryByRole('link', { name: 'Lamp, £40.00, Jae paid', hidden: true })).toBeNull(); });
     expect(screen.getByRole('link', { name: 'Kaiseki dinner, £1,000.00, Sam paid', hidden: true })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /^Sofa,/, hidden: true })).toBeNull();

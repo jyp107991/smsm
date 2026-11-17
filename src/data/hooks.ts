@@ -116,11 +116,11 @@ export function useChapters(): DataResult<ChapterRow[]> {
   return result(q, data);
 }
 
-/** CHP-2: this phone's current chapter, when it is still there and open. */
-export function useCurrentChapter(): ChapterRow | null {
+/** CHP-2: this phone's current chapter's id, when it is still there and open (a closed one is never current). */
+export function useCurrentChapter(): string | null {
   const id = useSyncExternalStore(subscribeCurrentChapter, currentChapterId, () => null);
   const chapters = useChapters().data;
-  return useMemo(() => chapters?.find((c) => c.id === id && !c.closed) ?? null, [chapters, id]);
+  return useMemo(() => (chapters?.some((c) => c.id === id && !c.closed) ? id : null), [chapters, id]);
 }
 
 /** S3: every regular payment (paused and ended ones too), with the waiting changes applied (REC-1). */

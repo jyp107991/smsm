@@ -5,7 +5,7 @@
  */
 import { ArrowLeft } from 'lucide-react';
 import { useId, useMemo, useState, type ReactNode } from 'react';
-import { formatPence } from '../../core/money';
+import { formatPence, pence } from '../../core/money';
 import {
   closeChapter, setCurrentChapter, useCategories, useChapters, useCurrentChapter, useDataLayer, useEntries, useSyncStatus,
 } from '../../data';
@@ -62,7 +62,7 @@ export function ChapterPage({ id }: { id: string }) {
       </div>
     );
   }
-  const isCurrent = current?.id === chapter.id;
+  const isCurrent = current === chapter.id;
   const dates = datesOf(chapter, today);
   const country = chapter.kind === 'trip' ? countryName(chapter.country) : null;
   const categoryName = (cid: string | null) => categories.find((c) => c.id === cid)?.name ?? strings.chapters.uncategorised;
@@ -105,13 +105,13 @@ export function ChapterPage({ id }: { id: string }) {
 
       {summary.byCategory.length > 0 ? (
         <Figures id={catId} title={strings.chapters.byCategory}>
-          {summary.byCategory.map((c) => <Line key={c.categoryId ?? 'none'} label={categoryName(c.categoryId)} amount={formatPence(c.amount)} />)}
+          {summary.byCategory.map((c) => <Line key={c.categoryId ?? 'none'} label={categoryName(c.categoryId)} amount={formatPence(c.total)} />)}
         </Figures>
       ) : null}
       {rows.length > 0 ? (
         <Figures id={payId} title={strings.chapters.whoPaid}>
-          {summary.byPerson.map((p) => (
-            <Line key={p.person} label={people.list.find((x) => x.id === p.person)?.name ?? ''} amount={formatPence(p.amount)} />
+          {people.list.map((p) => (
+            <Line key={p.id} label={p.name} amount={formatPence(summary.byPerson[p.id] ?? pence(0))} />
           ))}
         </Figures>
       ) : null}

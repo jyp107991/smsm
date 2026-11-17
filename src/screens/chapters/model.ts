@@ -10,8 +10,9 @@ import { strings } from '../../ui/strings';
 
 export function summaryOf(chapter: ChapterRow, entries: readonly ExpenseRow[], people: readonly string[], today: IsoDate): ChapterSummary {
   return chapterSummary(
-    { kind: chapter.kind === 'trip' ? 'trip' : 'project', startDate: chapter.start_date, endDate: chapter.end_date, closed: chapter.closed },
+    { id: chapter.id, kind: chapter.kind === 'trip' ? 'trip' : 'project', startDate: chapter.start_date, endDate: chapter.end_date, closed: chapter.closed },
     entries.filter((e) => e.chapter_id === chapter.id).map((e) => ({
+      chapterId: e.chapter_id,
       kind: e.kind === 'money_back' ? 'money_back' : 'expense', amount: pence(e.amount_pence), date: e.date, categoryId: e.category_id,
       paid: (e.paid && typeof e.paid === 'object' && !Array.isArray(e.paid) ? e.paid : {}) as Record<string, number>, deleted: e.deleted_at !== null,
     })),
@@ -23,7 +24,7 @@ export function summaryOf(chapter: ChapterRow, entries: readonly ExpenseRow[], p
 /** "£1,840.00 over 9 days, £204.44 a day" (trip), "£3,200.00 so far" (project), "£3,200.00 in all" (closed project). */
 export function summarySentence(chapter: ChapterRow, s: ChapterSummary): string {
   const total = formatPence(s.total);
-  if (chapter.kind === 'trip' && s.days !== null) return strings.chapters.overDays(total, s.days, s.perDay === null ? null : formatPence(s.perDay));
+  if (chapter.kind === 'trip' && s.days > 0) return strings.chapters.overDays(total, s.days, s.perDay === null ? null : formatPence(s.perDay));
   return chapter.closed ? strings.chapters.inAll(total) : strings.chapters.soFar(total);
 }
 

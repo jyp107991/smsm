@@ -2,12 +2,13 @@
  * CHP-2 on Home (DESIGN §4.1): while this phone has a current chapter, a chip beside quick add says where new
  * entries go ("Adding to Japan"); tapping it opens the chapter. Nothing shows for everyday.
  */
-import { useCurrentChapter } from '../../data';
+import { useChapters, useCurrentChapter } from '../../data';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
 
 export function CurrentChapterChip() {
-  const chapter = useCurrentChapter();
+  const id = useCurrentChapter();
+  const chapter = useChapters().data?.find((c) => c.id === id);
   if (!chapter) return null;
   return (
     <div className="-mb-3 flex">

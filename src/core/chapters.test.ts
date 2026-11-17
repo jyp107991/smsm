@@ -52,8 +52,8 @@ interface ChaptersCore {
   everydayOnly<T extends { chapterId: string | null }>(entries: readonly T[]): T[];
 }
 
-const MODULE = './chapters';
-const loaded = (await import(/* @vite-ignore */ MODULE).catch(() => null)) as ChaptersCore | null;
+import * as chaptersModule from './chapters';
+const loaded: ChaptersCore | null = chaptersModule;
 function core(): ChaptersCore {
   if (!loaded) throw new Error('src/core/chapters.ts does not exist yet (S4a)');
   return loaded;

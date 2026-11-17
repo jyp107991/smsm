@@ -106,7 +106,6 @@ function ChapterForm({ editing, open, onClose }: { editing: Exclude<ChapterEditi
         value={(picking === 'end' ? f.endDate ?? f.startDate : f.startDate) ?? today}
         today={today}
         max={null}
-        title={picking === 'end' ? strings.chapters.pickEnd : strings.chapters.pickStart}
         onPick={(d) => { set(picking === 'end' ? { endDate: d } : { startDate: d }); }}
       />
     </Sheet>
