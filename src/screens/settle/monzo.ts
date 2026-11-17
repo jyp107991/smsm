@@ -15,6 +15,14 @@ export function monzoLink(username: string, amount: Pence): string {
 }
 
 export interface PendingMonzo {
+  /**
+   * The settle-up's row id, made once when "Pay with Monzo" is tapped: every place that answers Yes (the
+   * sheet, the Home banner, after a restart, in another window) records this one row, so it is recorded once.
+   * Missing only in a question kept by an earlier version; one is given when it is read.
+   */
+  id?: string;
+  /** Who asked (the person signed in when Monzo was opened): only they are asked. */
+  by?: string;
   from: string;
   to: string;
   amount: number;
@@ -55,6 +63,8 @@ function read(raw: string | undefined | null): PendingMonzo | null {
   const v = JSON.parse(raw) as Partial<PendingMonzo>;
   if (typeof v.from === 'string' && typeof v.to === 'string' && typeof v.amount === 'number' && Number.isSafeInteger(v.amount) && v.amount > 0 && typeof v.date === 'string') {
     const out: PendingMonzo = { from: v.from, to: v.to, amount: v.amount, date: v.date, note: typeof v.note === 'string' ? v.note : null };
+    if (typeof v.id === 'string') out.id = v.id;
+    if (typeof v.by === 'string') out.by = v.by;
     if (v.later === true) out.later = true;
     return out;
   }

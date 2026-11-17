@@ -12,7 +12,7 @@ import {
   useEntries, useHousehold, type ExpenseDraft, type ExpenseRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
-import { enterMovesTo, holdEnterWhileComposing } from '../../ui/keys';
+import { enterMovesTo, enterSavesOnce } from '../../ui/keys';
 import { Button, Chip, Field, Segmented, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
@@ -212,7 +212,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           value={s.description}
           placeholder={strings.entry.descriptionPlaceholder}
           onChange={(e) => { describe(e.target.value); }}
-          onKeyDown={holdEnterWhileComposing}
+          onKeyDown={enterSavesOnce}
           enterKeyHint="done"
           autoComplete="off"
           autoCapitalize="sentences"

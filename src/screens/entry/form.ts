@@ -184,10 +184,10 @@ export function sumWords(s: FormState): string | null {
   return a === null ? null : strings.entry.sum(formatPence(a));
 }
 
-/** An exact share as typed; empty or a plain zero is £0.00 (parseAmount refuses zero for an entry's amount). */
+/** An exact share as typed; empty or a plain zero ("0", "0.00", "0,00") is £0.00 (parseAmount refuses zero for an entry's amount). */
 function exactPence(text: string | undefined): Pence | null {
   const t = (text ?? '').trim();
-  if (t === '' || /^£?\s*0+(\.0{1,2})?$/.test(t)) return pence(0);
+  if (t === '' || /^£?\s*0+([.,]0{1,2})?$/.test(t)) return pence(0);
   return parseAmount(t);
 }
 

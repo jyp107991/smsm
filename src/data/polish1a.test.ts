@@ -168,3 +168,27 @@ describe('Q-F4 ACT-3: Delete and Restore do nothing when the row is already in t
     expect(edits(controls.tables.activity, settled.id)).toEqual(['deleted']);
   });
 });
+
+describe('Q-F4 review: Delete and Restore say whether they changed anything (so a no-op shows no toast)', () => {
+  it('Q-F4 ACT-3: true when the row changed, false when it was already so', async () => {
+    const lamp = storedExpense();
+    const { layer } = household({ expenses: [lamp] });
+    await layer.ready;
+    await layer.idle();
+    expect(m.restoreExpense(lamp.id, layer)).toBe(false);
+    expect(m.deleteExpense(lamp.id, layer)).toBe(true);
+    expect(m.deleteExpense(lamp.id, layer)).toBe(false);
+    expect(m.restoreExpense(lamp.id, layer)).toBe(true);
+  });
+
+  it('Q-F4 SET-3: the same for settle-ups', async () => {
+    const { layer } = household({ expenses: [storedExpense()] });
+    await layer.ready;
+    await layer.idle();
+    const id = m.addSettlement({ from: SAM_ID, to: JAE_ID, amount: pence(500), date: TODAY }, layer);
+    expect(m.restoreSettlement(id, layer)).toBe(false);
+    expect(m.deleteSettlement(id, layer)).toBe(true);
+    expect(m.deleteSettlement(id, layer)).toBe(false);
+    expect(m.restoreSettlement(id, layer)).toBe(true);
+  });
+});

@@ -124,6 +124,10 @@
   {"text": "tesco 1000001", "expected": null},
   {"text": "1.234 tesco", "expected": null},
   {"text": "이마트", "expected": null},
+  {"text": "12 hot dog stand", "expected": {"amount": 1200, "description": "hot stand", "categoryId": null, "payer": "u-jae", "split": null, "date": "2026-11-17", "tags": [], "confident": false}, "note": "S2 polish review: cat/dog read as the payer, but next to an ordinary word it is unsure (Enter opens the form)"},
+  {"text": "30 dog and duck", "expected": {"amount": 3000, "description": "and duck", "categoryId": null, "payer": "u-jae", "split": null, "date": "2026-11-17", "tags": [], "confident": false}, "note": "S2 polish review: cat/dog read as the payer, but next to an ordinary word it is unsure (Enter opens the form)"},
+  {"text": "8 cat cafe", "expected": {"amount": 800, "description": "cafe", "categoryId": null, "payer": "u-sam", "split": null, "date": "2026-11-17", "tags": [], "confident": false}, "note": "S2 polish review: cat/dog read as the payer, but next to an ordinary word it is unsure (Enter opens the form)"},
+  {"text": "20 dog walking", "expected": {"amount": 2000, "description": "walking", "categoryId": null, "payer": "u-jae", "split": null, "date": "2026-11-17", "tags": [], "confident": false}, "note": "S2 polish review: cat/dog read as the payer, but next to an ordinary word it is unsure (Enter opens the form)"},
   {"text": "abc def ghi", "expected": null},
   {"text": "12-3 tesco", "expected": null},
   {"text": "sam paid for them treat", "expected": null}

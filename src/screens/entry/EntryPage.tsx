@@ -119,8 +119,8 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         {deleted ? (
           <Button
             onClick={() => {
-              restoreExpense(row.id);
-              toast.show({ message: strings.entry.restored(label) });
+              // Q-F4: a second tap restores nothing, and says nothing.
+              if (restoreExpense(row.id)) toast.show({ message: strings.entry.restored(label) });
             }}
           >
             {strings.entry.restore}
@@ -133,7 +133,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
             <Button
               variant="destructive"
               onClick={() => {
-                deleteExpense(row.id);
+                if (!deleteExpense(row.id)) return;
                 toast.show({
                   message: strings.entry.deleted(label),
                   action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
@@ -178,7 +178,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
       </dl>
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
-          <Button onClick={() => { restoreSettlement(row.id); toast.show({ message: strings.entry.restored(heading) }); }}>
+          <Button onClick={() => { if (restoreSettlement(row.id)) toast.show({ message: strings.entry.restored(heading) }); }}>
             {strings.entry.restore}
           </Button>
         ) : (
@@ -187,7 +187,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
             <Button
               variant="destructive"
               onClick={() => {
-                deleteSettlement(row.id);
+                if (!deleteSettlement(row.id)) return;
                 toast.show({
                   message: strings.entry.deleted(heading),
                   action: { label: strings.entry.undo, onAction: () => { restoreSettlement(row.id); } },

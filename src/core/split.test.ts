@@ -304,3 +304,40 @@ describe('resolveDefaultSplit', () => {
     });
   });
 });
+
+describe('ratioShares with large weights (S2 polish Q-F5: money back weighted by an exact split\'s pence)', () => {
+  /** The same rule in exact integers: floor, then the leftover pennies by largest remainder, ties to the payer, then id. */
+  function reference(amount: number, weights: Record<string, number>, payer: string): Record<string, number> {
+    const ids = Object.keys(weights).sort();
+    const total = ids.reduce((t, id) => t + BigInt(weights[id] ?? 0), 0n);
+    const rows = ids.map((id) => {
+      const num = BigInt(amount) * BigInt(weights[id] ?? 0);
+      return { id, floor: num / total, rem: num % total };
+    });
+    let left = BigInt(amount) - rows.reduce((t, r) => t + r.floor, 0n);
+    const order = [...rows].sort((a, b) => (a.rem !== b.rem ? (b.rem > a.rem ? 1 : -1) : a.id === payer ? -1 : b.id === payer ? 1 : a.id < b.id ? -1 : 1));
+    const out: Record<string, number> = {};
+    for (const r of rows) out[r.id] = Number(r.floor);
+    for (const r of order) {
+      if (left === 0n) break;
+      out[r.id] = (out[r.id] ?? 0) + 1;
+      left -= 1n;
+    }
+    return out;
+  }
+
+  it('SPL-3 MB-1: weights up to £1,000,000 in pence give exactly the integer rule (amount × weight beyond 2^53)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 100_000_000 }),
+        fc.integer({ min: 0, max: 100_000_000 }),
+        fc.integer({ min: 1, max: 100_000_000 }),
+        fc.constantFrom('a', 'b'),
+        (amount, a, b, payer) => {
+          expect(ratioShares(pence(amount), { a, b }, payer)).toEqual(reference(amount, { a, b }, payer));
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+});

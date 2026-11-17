@@ -94,6 +94,14 @@ const PET_NOUNS: ReadonlySet<string> = new Set([
   'flea', 'lead', 'collar', 'bowl', 'carrier', 'hair',
 ]);
 
+/** True when a token is something the grammar reads (not an ordinary description word). */
+function isCommandWord(raw: string, ctx: QuickAddContext): boolean {
+  const w = normaliseKey(raw);
+  return parseAmount(raw) !== null || raw.startsWith('#') || parseDateWord(w, ctx.today) !== null || ratioWord(w) !== null
+    || ['treat', 'for', 'paid', 'me', 'i', 'cat', 'dog'].includes(w) || categoryFor(w, ctx.categories) !== null
+    || Object.values(ctx.names).some((n) => normaliseKey(n) === w);
+}
+
 export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddReading | null {
   try {
     return parse(text, ctx);
@@ -140,6 +148,12 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
       const d = parseDateWord(word, ctx.today);
       if (d !== null) { date = d; continue; }
     }
+    if (mode !== null && (word === 'treat' || ratioWord(word) !== null)) {
+      // A second split word ("for sam treat"): kept as words, and the form opens for the person to choose.
+      unsure = true;
+      words.push(raw);
+      continue;
+    }
     if (mode !== null && word === 'for' && (next === 'them' || personFor(next) !== null)) {
       // Q-F3: "70/30 for sam", "treat for sam": a second split word. Sam is not the payer; the words stay in
       // the description and the reading is unsure, so Enter opens the form for the person to choose.
@@ -176,6 +190,9 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
       const partOfWords = p !== null && (prev === 'with' || prev === 'and'
         || ((word === 'cat' || word === 'dog') && PET_NOUNS.has(next)));
       if (p !== null && !partOfWords) {
+        // "hot dog stand", "cat cafe": cat/dog followed by an ordinary word may be part of the description.
+        // It is still read as the payer, but unsure, so Enter opens the form to check (S2 polish review).
+        if ((word === 'cat' || word === 'dog') && next !== '' && next !== 'paid' && !isCommandWord(tokens[i + 1] ?? '', ctx)) unsure = true;
         // Person words are commands: the first names the payer; a repeat of the same person is dropped; a
         // different second person is something the grammar can't read.
         if (payer === null) payer = p;

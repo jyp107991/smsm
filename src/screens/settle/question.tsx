@@ -7,7 +7,7 @@
  */
 import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatPence, pence } from '../../core/money';
-import { addSettlement, deleteSettlement, newId } from '../../data';
+import { addSettlement, deleteSettlement, newId, useDataLayer } from '../../data';
 import { tickSettled } from '../../ui/haptics';
 import { Button, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
@@ -53,15 +53,32 @@ export function MonzoQuestionProvider({ onUnanswered, children }: { onUnanswered
   const [pending, setPending] = useState<PendingMonzo | null>(null);
   const [bannerHidden, setBannerHidden] = useState(false);
   const [first] = useState(() => onUnanswered);
+  const layer = useDataLayer();
   useEffect(() => {
     let live = true;
     void loadPending().then((p) => {
       if (!live || !p) return;
-      setPending(p);
-      if (!p.later) first(p);
+      const me = layer.me();
+      const pair = layer.members().map((m) => m.user_id);
+      // Only the person who asked is asked, and only about the two people in this household; a question
+      // already recorded (its row is here) is done. Anything else is forgotten.
+      const theirs = p.by === undefined || p.by === me;
+      const ours = p.from !== p.to && pair.includes(p.from) && pair.includes(p.to);
+      if (!theirs || !ours || me === null || (p.id !== undefined && layer.settlements().some((s) => s.id === p.id))) {
+        void savePending(null);
+        return;
+      }
+      // A question kept by an earlier version gets its row id now, kept with it.
+      let q = p;
+      if (q.id === undefined || q.by === undefined) {
+        q = { ...q, id: q.id ?? newId(), by: q.by ?? me };
+        void savePending(q);
+      }
+      setPending(q);
+      if (!q.later) first(q);
     });
     return () => { live = false; };
-  }, [first]);
+  }, [first, layer]);
   const [api] = useState(() => ({
     ask: (p: PendingMonzo) => {
       const kept = { ...p };
@@ -104,12 +121,14 @@ function Banner({ pending }: { pending: PendingMonzo }) {
   const from = people.list.find((x) => x.id === pending.from);
   const to = people.list.find((x) => x.id === pending.to);
   const sentenceId = `monzo-banner-${rowId}`;
+  // The sentence needs both names: nothing is shown until they are known.
+  if (!from || !to) return null;
 
   const yes = () => {
     if (done.current) return;
     let id: string;
     try {
-      id = addSettlement({ id: rowId, from: pending.from, to: pending.to, amount: pence(pending.amount), date: pending.date, note: pending.note, method: 'monzo' });
+      id = addSettlement({ id: pending.id ?? rowId, from: pending.from, to: pending.to, amount: pence(pending.amount), date: pending.date, note: pending.note, method: 'monzo' });
     } catch (err) {
       setError(plainError(err));
       return;
@@ -127,7 +146,7 @@ function Banner({ pending }: { pending: PendingMonzo }) {
   return (
     <section aria-labelledby={sentenceId} className="bg-surface border-line flex flex-col gap-3 rounded-[16px] border px-4 py-3">
       <p id={sentenceId} className="m-0 break-words">
-        {strings.settle.banner(from?.name ?? '', to?.name ?? '', formatPence(pence(pending.amount)))}
+        {strings.settle.banner(from.name, to.name, formatPence(pence(pending.amount)))}
       </p>
       <div className="flex flex-wrap gap-3">
         <Button variant="plain" onClick={yes}>{strings.settle.yes}</Button>

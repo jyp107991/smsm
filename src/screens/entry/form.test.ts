@@ -4,7 +4,7 @@ import { pence } from '../../core/money';
 import type { ExpenseRow } from '../../data';
 import type { Person } from '../shared/words';
 import {
-  blankForm, copyForm, draftOf, formFromRow, refundForm, remainderWords, setPayerShare, sumWords, summaryWords, withSplit,
+  blankForm, copyForm, draftOf, followExact, formFromRow, refundForm, remainderWords, setPayerShare, sumWords, summaryWords, withSplit,
 } from './form';
 
 const J: Person = { id: 'j', name: 'Jae', animal: 'cat' };
@@ -71,3 +71,21 @@ describe('the form', () => {
     expect(draftOf(f, people)).toMatchObject({ draft: { kind: 'money_back', refundOf: 'e1', amount: 1000, payer: 'j' } });
   });
 });
+
+describe('S2 polish 1a review', () => {
+  it('Q-U3 SPL-1: "0,00" in an Exact share reads as zero, like "0.00"', () => {
+    const f = withSplit({ ...blank(), amountText: '30', description: 'Lamp' }, { mode: 'exact', amounts: { j: pence(0), s: pence(0) } }, people);
+    expect(remainderWords({ ...f, exactText: { j: '30', s: '0,00' } }, people)).toBe('Adds up');
+    expect(draftOf({ ...f, exactText: { j: '30,00', s: '0,0' } }, people)).toMatchObject({ draft: { split: { mode: 'exact', amounts: { j: 3000, s: 0 } } } });
+  });
+
+  it('Q-F5 MB-1: money back on a huge exact split keeps exact pence (no floating-point overflow)', () => {
+    const big = row({
+      amount_pence: 99_999_999, paid: { j: 99_999_999 }, split_mode: 'exact', split_params: { j: 99_999_997, s: 2 }, shares: { j: 99_999_997, s: 2 },
+    });
+    const f = refundForm(big, people, TODAY);
+    const d = draftOf(followExact({ ...f, amountText: '999999.99' }), people);
+    expect(d).toMatchObject({ draft: { split: { mode: 'exact', amounts: { j: 99_999_997, s: 2 } } } });
+  });
+});
+

@@ -72,3 +72,28 @@ describe('Q-U3 ADD-1 TXT-4: a comma decimal with exactly two digits', () => {
     expect(parseQuickAdd('４２，５０ 이마트', ctx)).toMatchObject({ amount: 4250, description: '이마트' });
   });
 });
+
+describe('S2 polish 1a review: confidence around cat/dog and a second split word', () => {
+  it.each([
+    ['12 hot dog stand', 'J'],
+    ['30 dog and duck', 'J'],
+    ['8 cat cafe', 'S'],
+    ['20 dog walking', 'J'],
+  ])('Q-U3 ADD-1 %j: cat/dog followed by an ordinary word names the payer but is unsure', (text, payer) => {
+    expect(parseQuickAdd(text, ctx)).toMatchObject({ payer, confident: false });
+  });
+
+  it.each([
+    ['tesco 20 cat', 'S'],
+    ['42.50 tesco cat', 'S'],
+    ['cat 25 dinner', 'S'],
+    ['42.50 cat paid tesco', 'S'],
+    ['9 dog paid pret', 'J'],
+  ])('Q-U3 ADD-1 %j: cat/dog followed by the amount, a command word or the end of the line is confident', (text, payer) => {
+    expect(parseQuickAdd(text, ctx)).toMatchObject({ payer, confident: true });
+  });
+
+  it.each([['25 dinner for sam treat'], ['25 dinner for sam 70/30']])('Q-F3 ADD-1 %j: a split word after "for <name>" is unsure', (text) => {
+    expect(parseQuickAdd(text, ctx)).toMatchObject({ payer: 'J', confident: false });
+  });
+});

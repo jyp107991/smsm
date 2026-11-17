@@ -24,14 +24,17 @@ export function ratioShares(amount: Pence, ratio: Readonly<Record<UserId, number
   const totalPct = ids.reduce((t, id) => t + (ratio[id] ?? 0), 0);
   if (ids.length === 0 || totalPct <= 0) throw new RangeError('ratio must have a positive total');
   if (ids.some((id) => (ratio[id] ?? 0) < 0)) throw new RangeError('ratio parts must not be negative');
+  const total = BigInt(totalPct);
   const rows = ids.map((id) => {
-    // Integer arithmetic for the floor and the remainder, so no floating-point error decides a penny.
-    const num = amount * (ratio[id] ?? 0);
-    return { id, floor: Math.floor(num / totalPct), rem: num % totalPct };
+    // Exact integers (BigInt) for the floor and the remainder, so no floating-point error decides a penny, even
+    // when the weights are pence rather than percentages (money back on an exact split, S2 polish Q-F5), where
+    // amount × weight can pass 2^53.
+    const num = BigInt(amount) * BigInt(ratio[id] ?? 0);
+    return { id, floor: Number(num / total), rem: num % total };
   });
   const left = amount - rows.reduce((t, r) => t + r.floor, 0);
   const order = [...rows].sort((a, b) => {
-    if (b.rem !== a.rem) return b.rem - a.rem;
+    if (b.rem !== a.rem) return b.rem > a.rem ? 1 : -1;
     if (a.id === payer) return -1;
     if (b.id === payer) return 1;
     return a.id < b.id ? -1 : 1;

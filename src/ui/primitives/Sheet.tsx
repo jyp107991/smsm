@@ -54,6 +54,14 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     if (open) opener.current = focusedElement();
   }, [open]);
 
+  // Q-F1: when the sheet really closes (not StrictMode re-running its effects), the rest of a double tap on
+  // Save doesn't land on what the sheet uncovers.
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) swallowRepeatTap();
+    wasOpen.current = open;
+  }, [open]);
+
   // A closed sheet never reopens still asking.
   if (!open && confirming) setConfirming(false);
 
@@ -93,8 +101,6 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     watchTaps();
     return () => {
       active.current = false;
-      // Q-F1: the rest of a double tap on Save doesn't land on what the sheet uncovers.
-      swallowRepeatTap();
       // Deferred, so a re-run of this effect (StrictMode, a re-render) keeps the entry it already has.
       setTimeout(() => {
         if (!active.current) closeLayer(id);

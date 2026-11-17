@@ -204,22 +204,27 @@ function dropRefusedNew(layer: DataLayer, table: 'expenses' | 'settlements', id:
   return true;
 }
 
-/** ACT-3: soft delete; the entry stays in the database and can be restored. Also Undo of a save (ADD-6). */
-export function deleteExpense(id: string, layer = activeDataLayer()): void {
+/**
+ * ACT-3: soft delete; the entry stays in the database and can be restored. Also Undo of a save (ADD-6).
+ * True when something changed; false when it was already deleted (Q-F4: the screen then says nothing).
+ */
+export function deleteExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row, onServer } = currentExpense(layer, id);
-  if (dropRefusedNew(layer, 'expenses', id, onServer)) return;
+  if (dropRefusedNew(layer, 'expenses', id, onServer)) return true;
   // Q-F4: already deleted (a second tap, or the other phone got there first): nothing to do, nothing logged.
-  if (row.deleted_at !== null) return;
+  if (row.deleted_at !== null) return false;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: expenseLabel(row) });
+  return true;
 }
 
-export function restoreExpense(id: string, layer = activeDataLayer()): void {
+export function restoreExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row } = currentExpense(layer, id);
   // Q-F4: not deleted: nothing to restore.
-  if (row.deleted_at === null) return;
+  if (row.deleted_at === null) return false;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: null }, label: expenseLabel(row) });
+  return true;
 }
 
 function settlementCtx(layer: DataLayer) {
@@ -254,19 +259,21 @@ export function editSettlement(id: string, patch: Partial<SettlementDraft>, laye
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'upsert', isNew: !onServer, row, input });
 }
 
-export function deleteSettlement(id: string, layer = activeDataLayer()): void {
+export function deleteSettlement(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row, onServer } = currentSettlement(layer, id);
-  if (dropRefusedNew(layer, 'settlements', id, onServer)) return;
-  if (row.deleted_at !== null) return; // Q-F4
+  if (dropRefusedNew(layer, 'settlements', id, onServer)) return true;
+  if (row.deleted_at !== null) return false; // Q-F4
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: settlementLabel(row) });
+  return true;
 }
 
-export function restoreSettlement(id: string, layer = activeDataLayer()): void {
+export function restoreSettlement(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row } = currentSettlement(layer, id);
-  if (row.deleted_at === null) return; // Q-F4
+  if (row.deleted_at === null) return false; // Q-F4
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'patch', id, patch: { deleted_at: null }, label: settlementLabel(row) });
+  return true;
 }
 
 // ───────── learning: what a person's choices teach the app (CAT-3, CAT-4) ─────────

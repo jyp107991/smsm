@@ -84,10 +84,11 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
     return { from: start.from, to: start.to, amount, date, note: note.trim() === '' ? null : note.trim(), method };
   };
 
-  const record = (d: SettlementDraft): boolean => {
+  /** `id`: the row this records; the Monzo question carries its own, so it is recorded once wherever it is answered. */
+  const record = (d: SettlementDraft, rowIdToUse = rowId): boolean => {
     let id: string;
     try {
-      id = addSettlement({ ...d, id: rowId });
+      id = addSettlement({ ...d, id: rowIdToUse });
     } catch (err) {
       setError(plainError(err));
       return false;
@@ -135,7 +136,8 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
   const payWithMonzo = () => {
     const d = draft('monzo');
     if (!d || !monzoName) return;
-    const pending: PendingMonzo = { from: d.from, to: d.to, amount: d.amount, date: d.date, note: d.note ?? null };
+    // The question carries this sheet's row id and who asked, so it records one row wherever it is answered.
+    const pending: PendingMonzo = { id: rowId, by: people.me?.id ?? '', from: d.from, to: d.to, amount: d.amount, date: d.date, note: d.note ?? null };
     // The question waits for the person's return (SET-2); it is kept on the phone, so it survives the app
     // being closed on the way (Q-U2).
     question.ask(pending);
@@ -168,7 +170,8 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
               className="flex-1"
               onClick={() => {
                 if (done.current) return;
-                if (record({ from: asking.from, to: asking.to, amount: pence(asking.amount), date: asking.date, note: asking.note, method: 'monzo' })) {
+                const answer = { from: asking.from, to: asking.to, amount: pence(asking.amount), date: asking.date, note: asking.note, method: 'monzo' as const };
+                if (record(answer, asking.id ?? rowId)) {
                   question.forget();
                 }
               }}

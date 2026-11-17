@@ -290,7 +290,7 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
 
   const act = (dir: 'left' | 'right') => {
     if (dir === 'left') {
-      deleteExpense(row.id);
+      if (!deleteExpense(row.id)) return;
       toast.show({
         message: strings.entry.deleted(row.description),
         action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
