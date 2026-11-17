@@ -51,9 +51,9 @@ export function Home() {
       <TripBanner />
       <RecapBanners />
       <BalanceRegion />
-      <ThisMonth />
       <CurrentChapterChip />
       <QuickAdd />
+      <ThisMonth />
       <SuggestRecurring />
       <RecentRows />
     </div>
