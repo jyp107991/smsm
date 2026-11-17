@@ -1,0 +1,214 @@
+/**
+ * What screens read (S2 brief, "Interfaces → Data layer"). Everything comes from the phone's copy first,
+ * with the waiting writes already applied, so it works offline and shows a save at once. The balance is
+ * computed here by the core's one balance function over those rows; screens never do money maths.
+ */
+import { useIsRestoring, useMutationState, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
+import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
+import type { Pence } from '../core/money';
+import type { UserId } from '../core/split';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from './api';
+import { activeDataLayer, DataContext } from './context';
+import { MONEY_KEY } from './keys';
+import type { WriteProblem } from './problems';
+import {
+  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, settlementsQuery,
+} from './queries';
+import type { DataLayer } from './queryClient';
+import { expenseToLedger, settlementToLedger } from './rows';
+import { userIdOf, type SessionState } from './session';
+import { overlay, type MoneyOp } from './writes';
+
+export interface DataResult<T> {
+  /** Undefined until the first copy is on the phone. */
+  data: T | undefined;
+  status: 'pending' | 'error' | 'success';
+  /** A request to the server is in flight (the data shown may be about to change). */
+  isFetching: boolean;
+  error: Error | null;
+}
+
+function result<T>(q: UseQueryResult, data: T | undefined): DataResult<T> {
+  return { data, status: q.status, isFetching: q.isFetching, error: q.error };
+}
+
+export function useDataLayer(): DataLayer {
+  return useContext(DataContext) ?? activeDataLayer();
+}
+
+export type SessionView = { status: 'loading' } | SessionState;
+
+/** Who is signed in; 'loading' only while the phone's copy is being read from storage (milliseconds). */
+export function useSession(): SessionView {
+  const { session } = useDataLayer();
+  const subscribe = useCallback((cb: () => void) => session.subscribe(cb), [session]);
+  const get = useCallback(() => session.state(), [session]);
+  const state = useSyncExternalStore(subscribe, get, get);
+  return useIsRestoring() ? { status: 'loading' } : state;
+}
+
+function useUid(): string | null {
+  const { session } = useDataLayer();
+  const subscribe = useCallback((cb: () => void) => session.subscribe(cb), [session]);
+  const get = useCallback(() => userIdOf(session.state()), [session]);
+  return useSyncExternalStore(subscribe, get, get);
+}
+
+/** The signed-in person's household id: undefined until known, null when not in one. */
+function useHid(): { uid: string | null; hid: string | null | undefined; q: UseQueryResult } {
+  const { api } = useDataLayer();
+  const uid = useUid();
+  const q = useQuery(membershipQuery(api, uid));
+  return { uid, hid: q.data === undefined ? undefined : (q.data?.household_id ?? null), q };
+}
+
+/** The writes still waiting to be sent, oldest first. */
+function useWaitingOps(): MoneyOp[] {
+  const ops = useMutationState({
+    filters: { mutationKey: MONEY_KEY, status: 'pending' },
+    select: (m) => m.state.variables as MoneyOp | undefined,
+  });
+  return useMemo(() => ops.filter((o): o is MoneyOp => o !== undefined), [ops]);
+}
+
+/** The household, or null when this person isn't in one yet (setup: start or join). */
+export function useHousehold(): DataResult<HouseholdRow | null> {
+  const { api } = useDataLayer();
+  const { uid, hid, q: mq } = useHid();
+  const q = useQuery(householdQuery(api, uid, hid));
+  // Not in a household (setup): known as soon as this person's membership is known.
+  if (hid === null) return result(mq, null);
+  return result(q, q.data);
+}
+
+/** The people in the household, in the order they joined. */
+export function useMembers(): DataResult<MemberRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(membersQuery(api, uid, hid));
+  return result(q, q.data);
+}
+
+/** All categories in their order, archived ones included (they keep their history; CAT-1). */
+export function useCategories(): DataResult<CategoryRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(categoriesQuery(api, uid, hid));
+  const data = useMemo(() => q.data && [...q.data].sort((a, b) => a.sort - b.sort), [q.data]);
+  return result(q, data);
+}
+
+function newestFirst<R extends { date: string; created_at: string; id: string }>(a: R, b: R): number {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
+  return a.id < b.id ? 1 : -1;
+}
+
+/** Every expense and money-back entry, newest first, deleted ones included (`deleted_at` set; ACT-3). */
+export function useEntries(): DataResult<ExpenseRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(expensesQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(() => q.data && overlay(q.data, ops, 'expenses').sort(newestFirst), [q.data, ops]);
+  return result(q, data);
+}
+
+/** Every settle-up, newest first, deleted ones included. */
+export function useSettlements(): DataResult<SettlementRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(settlementsQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(() => q.data && overlay(q.data, ops, 'settlements').sort(newestFirst), [q.data, ops]);
+  return result(q, data);
+}
+
+/** Identity and default-split requests (PPL-4, PPL-5), oldest first. */
+export function useChangeRequests(): DataResult<ChangeRequestRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(changesQuery(api, uid, hid));
+  return result(q, q.data);
+}
+
+/** An entry's history from the database's log (ACT-2), newest first. Needs a connection the first time. */
+export function useHistory(entityId: string): DataResult<ActivityRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(activityQuery(api, uid, hid, entityId));
+  return result(q, q.data);
+}
+
+/** Whether the phone has a connection (as the browser reports it). */
+export function useOnline(): boolean {
+  const { network } = useDataLayer();
+  const subscribe = useCallback((cb: () => void) => network.subscribe(cb), [network]);
+  const get = useCallback(() => network.online, [network]);
+  return useSyncExternalStore(subscribe, get, get);
+}
+
+export type BalanceView =
+  | { status: 'loading' }
+  /** BAL-6: only one person so far. */
+  | { status: 'waiting-for-partner' }
+  /** A row that can't be money reached the phone; the figure is not shown rather than shown wrong. */
+  | { status: 'error'; error: Error }
+  | {
+      status: 'ready';
+      /** In the order they joined. */
+      members: readonly [UserId, UserId];
+      /** Positive = this person is owed. The two always sum to zero (BAL-1). */
+      nets: Record<UserId, Pence>;
+      state: BalanceState;
+      /** BAL-4: "Next one's on Sam", or null. */
+      nextOneOn: UserId | null;
+      /** BAL-5: computed from the phone's copy while offline. */
+      offline: boolean;
+    };
+
+/** The one balance (BAL-1): core `netPositions` over the cached rows with waiting writes applied. */
+export function useBalance(): BalanceView {
+  const members = useMembers();
+  const entries = useEntries();
+  const settlements = useSettlements();
+  const online = useOnline();
+  return useMemo((): BalanceView => {
+    if (!members.data || !entries.data || !settlements.data) return { status: 'loading' };
+    const [a, b] = members.data;
+    if (!a || !b) return { status: 'waiting-for-partner' };
+    const pair = [a.user_id, b.user_id] as const;
+    try {
+      const nets = netPositions(pair, entries.data.map(expenseToLedger), settlements.data.map(settlementToLedger));
+      const state = balanceState(nets, pair);
+      return { status: 'ready', members: pair, nets, state, nextOneOn: nextOneOn(state), offline: !online };
+    } catch (e) {
+      return { status: 'error', error: e instanceof Error ? e : new Error(String(e)) };
+    }
+  }, [members.data, entries.data, settlements.data, online]);
+}
+
+export interface SyncStatus {
+  online: boolean;
+  /** "3 changes waiting to sync" (OFF-5). */
+  waiting: number;
+  /** Ids of entries and settle-ups with a change still waiting. */
+  pendingIds: ReadonlySet<string>;
+  /** Writes the server refused, kept for the person to fix (OFF-5). */
+  problems: readonly WriteProblem[];
+  /** This app is too old to write and is updating; writes are waiting for the new version. */
+  updating: boolean;
+}
+
+export function useSyncStatus(): SyncStatus {
+  const layer = useDataLayer();
+  const online = useOnline();
+  const ops = useWaitingOps();
+  const problems = useSyncExternalStore(layer.problems.subscribe, layer.problems.list, layer.problems.list);
+  const subscribeStale = useCallback((cb: () => void) => layer.subscribeStale(cb), [layer]);
+  const isStale = useCallback(() => layer.stale(), [layer]);
+  const updating = useSyncExternalStore(subscribeStale, isStale, isStale);
+  const pendingIds = useMemo(() => new Set(ops.map((o) => (o.op === 'upsert' ? o.row.id : o.id))), [ops]);
+  return { online, waiting: ops.length, pendingIds, problems, updating };
+}
