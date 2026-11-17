@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~12:35 UTC: polish wave 1a LIVE
+- PR #5 merged (CI run 44081702363 all green incl. two-user 21/21, mutation ≥85%); deploy run 44083075343 green; live version.json commit c9b1d3e.
+- Live now: double taps record once (Save, Record it, Yes, Duplicate, Money back); future dates refused; Enter moves through the form; the Monzo question persists with a Home reminder; quick add reads "42,50" and cat/dog anywhere (unsure next to ordinary words); refunds of exact splits keep their proportion; the logo sits centred inside Android's safe zone.
+- CI's one failure on the way (run 44076630487) was the test tapping "Yes" while its sheet was still sliding in; the test now waits for the button to settle. Fresh review: 10 findings, all fixed with tests.
+- Running: wave 1b builder (look). Next: wave 1b screenshots to the owner → yes → merge; then wave 2 tests-first.
+
 ## 2026-11-17: S2 polish 1a: CI fix and fresh-review fixes
 - **CI run 44076630487** failed one browser test ("Yes" tapped twice on "Did it go through?"): nothing was recorded and the quiet banner showed instead. The test measured where Yes was while the sheet could still be sliding up (it opens as the app starts), so both taps landed below the sheet, which put it away ("Not yet"). The test now waits until the button has stopped moving and really receives the tap before tapping. The app was right: a tap outside a sheet closes it, and the question was kept.
 - **Review fixes:** the Monzo question now carries its own settle-up id and who asked, so answering it in the sheet, on the banner, after a restart or in another window records it once; a question from the other person or about someone outside the household is dropped; the banner waits for both names. Quick add: "hot dog stand", "dog and duck", "cat cafe", "dog walking" open the form to check (the cat/dog is still read as who paid); "for sam treat" too. A held Enter doesn't run on through the form. "0,00" is zero in an Exact share. Money back on huge exact splits is worked out in exact whole numbers. The double-tap guard only arms when a sheet really closes, and also ignores a long press's late click. Deleting or restoring twice shows no second message.
