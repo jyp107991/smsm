@@ -2,6 +2,10 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~19:30 UTC: S3 LIVE (Bills, regular payments, Inbox, categories)
+- PR #10 merged (CI run 44151281214 all green, two-user 24/24); deploy run 44153852490 green on re-run (the first attempt hit a GitHub runner port clash before anything deployed); live version.json 9bb65e2. Owner said yes to the screenshots.
+- CI's two-user suite caught one real bug before release (Inbox Keep refused a bill dated "tomorrow" on a phone behind the UK date); fixed with a regression test.
+
 ## 2026-11-17 ~18:15 UTC: S3 built (Bills, regular payments, Inbox, categories)
 - Built directly (no agents), after the owner's instruction. Database: post_due_recurring by the UK date with row locks, varying bills to the Inbox, nightly job 01:17, no deletes; SQL 91/91, refused 30/30. Core: costs a month/year, upcoming, looks-monthly. Data: regular payments, Inbox decisions and categories through the offline queue.
 - Screens: **Bills tab** (what home costs; this month as a calendar with its total; next 30 days; subscriptions with a year's total; paused or ended at the bottom); **regular payment sheet** (How often, Every, **Starts on the day you pick**, Ends, Amount varies, Subscription; Pause, Resume, End; history with price changes); **Repeat** in the Add sheet; **Inbox** on Home; **"looks monthly"** suggestion; **Settings → Categories** (rename, emoji, colour, order, archive, add).
