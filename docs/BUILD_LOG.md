@@ -2,6 +2,11 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~13:00 UTC: wave 1b built and merged on the branch; owner reviewing screenshots
+- Quick add: cat/dog never decide who paid (owner) — live after the next merge.
+- Wave 1b (look) merged into the branch with 1a; 1149 unit tests, 68/68 demo e2e locally. Chosen-chip tint 28 % by night (14 % by day).
+- Before/after screenshots sent to the owner (sign-in, Home, approval, offline, Add sheet, scrim, Activity filter, Settings). **Waiting for the owner's yes before 1b goes to main.** Then wave 2 tests-first.
+
 ## 2026-11-17 ~12:35 UTC: polish wave 1a LIVE
 - PR #5 merged (CI run 44081702363 all green incl. two-user 21/21, mutation ≥85%); deploy run 44083075343 green; live version.json commit c9b1d3e.
 - Live now: double taps record once (Save, Record it, Yes, Duplicate, Money back); future dates refused; Enter moves through the form; the Monzo question persists with a Home reminder; quick add reads "42,50" and cat/dog anywhere (unsure next to ordinary words); refunds of exact splits keep their proportion; the logo sits centred inside Android's safe zone.
