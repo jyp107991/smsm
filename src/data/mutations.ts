@@ -13,7 +13,7 @@ import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
-import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
+import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
@@ -742,4 +742,57 @@ export async function locate(opts: { prompt?: boolean; timeoutMs?: number } | Da
 /** PLC-6, OFF-4: the day's rate (pounds per unit) for a currency; offline, the last one known (`stale`). */
 export async function rateFor(currency: string, date?: string, layer = activeDataLayer()) {
   return rateWith(layer.rates, currency.toUpperCase(), { online: layer.network.online, today: layer.today(), ...(date ? { date } : {}) });
+}
+
+// ───────── S5b: comments (ACT-4) and the settle day (SET-4) ─────────
+
+function commentsShown(layer: DataLayer): CommentRow[] {
+  const uid = layer.me() ?? '';
+  return overlay(layer.client.getQueryData<CommentRow[]>(keys.comments(uid)) ?? [], layer.waiting(), 'comments');
+}
+
+const COMMENT_MAX = 500;
+
+/** ACT-4: adds a comment to an entry; returns its id at once (saved through the queue, offline too). */
+export function addComment(expenseId: string, body: string, layer = activeDataLayer()): string {
+  const ctx = context(layer);
+  const text = body.trim();
+  if (text.length < 1 || text.length > COMMENT_MAX) throw new EntryInvalidError(['comment']);
+  const row: CommentRow = {
+    id: newId(), household_id: ctx.hid, expense_id: expenseId, author: ctx.uid, body: text, created_at: layer.now().toISOString(), deleted_at: null,
+  };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'comments', op: 'upsert', isNew: true, row, input: null });
+  return row.id;
+}
+
+function changeComment(id: string, change: Partial<Pick<CommentRow, 'body' | 'deleted_at'>>, layer: DataLayer): boolean {
+  const ctx = context(layer);
+  const current = commentsShown(layer).find((c) => c.id === id);
+  if (!current) throw new EntryNotFoundError(id);
+  // Only the author changes a comment (the database refuses anyone else too).
+  if (current.author !== ctx.uid) throw new EntryInvalidError(['notYours']);
+  const next: CommentRow = { ...current, ...change };
+  const columns = (Object.keys(change) as CommentColumn[]).filter((k) => next[k] !== current[k]);
+  if (columns.length === 0) return false;
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'comments', op: 'upsert', isNew: false, row: next, input: null, columns });
+  return true;
+}
+
+/** ACT-4: the author edits their comment. True when something changed. */
+export function editComment(id: string, body: string, layer = activeDataLayer()): boolean {
+  const text = body.trim();
+  if (text.length < 1 || text.length > COMMENT_MAX) throw new EntryInvalidError(['comment']);
+  return changeComment(id, { body: text }, layer);
+}
+
+/** ACT-4: the author deletes their comment (kept, marked deleted). True when something changed. */
+export function deleteComment(id: string, layer = activeDataLayer()): boolean {
+  return changeComment(id, { deleted_at: layer.now().toISOString() }, layer);
+}
+
+/** SET-4: the household's settle day (1–28) or null for off. Needs a connection. */
+export async function setSettleDay(day: number | null, layer = activeDataLayer()): Promise<void> {
+  if (day !== null && (!Number.isInteger(day) || day < 1 || day > 28)) throw new EntryInvalidError(['settleDay']);
+  await online(layer, () => layer.api.setSettleDay(day));
+  await layer.refresh();
 }

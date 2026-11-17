@@ -125,7 +125,7 @@ export function couple(
 ): Couple {
   const stamp = '2026-11-01T12:00:00.000Z';
   const household: HouseholdRow = {
-    id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: opts.defaultRatio ?? null, joint_enabled: false, joint_ratio: null, created_at: stamp,
+    id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: opts.defaultRatio ?? null, joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp,
   };
   const members: MemberRow[] = [
     { household_id: HID, user_id: JAE_ID, display_name: 'Jae', animal: 'cat', locked_at: stamp, monzo_me: 'jaetest', joined_at: stamp },

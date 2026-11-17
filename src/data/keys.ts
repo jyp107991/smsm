@@ -14,6 +14,7 @@ export const keys = {
   members: (uid: string) => ['smsm', uid, 'members'] as const,
   categories: (uid: string) => ['smsm', uid, 'categories'] as const,
   chapters: (uid: string) => ['smsm', uid, 'chapters'] as const,
+  comments: (uid: string) => ['smsm', uid, 'comments'] as const,
   expenses: (uid: string) => ['smsm', uid, 'expenses'] as const,
   settlements: (uid: string) => ['smsm', uid, 'settlements'] as const,
   changes: (uid: string) => ['smsm', uid, 'changes'] as const,

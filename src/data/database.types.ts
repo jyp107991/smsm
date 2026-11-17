@@ -257,14 +257,14 @@ isOneToOne: false
                   ]
                 },"households": {
                   Row: {
-                    "created_at": string,"default_ratio": Json | null,"home_country": string,"id": string,"join_code": string,"joint_enabled": boolean,"joint_ratio": Json | null
+                    "created_at": string,"default_ratio": Json | null,"home_country": string,"id": string,"join_code": string,"joint_enabled": boolean,"joint_ratio": Json | null,"settle_day": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"default_ratio"?: Json | null,"home_country"?: string,"id"?: string,"join_code"?: string,"joint_enabled"?: boolean,"joint_ratio"?: Json | null
+                    "created_at"?: string,"default_ratio"?: Json | null,"home_country"?: string,"id"?: string,"join_code"?: string,"joint_enabled"?: boolean,"joint_ratio"?: Json | null,"settle_day"?: number | null
                   }
                   Update: {
-                    "created_at"?: string,"default_ratio"?: Json | null,"home_country"?: string,"id"?: string,"join_code"?: string,"joint_enabled"?: boolean,"joint_ratio"?: Json | null
+                    "created_at"?: string,"default_ratio"?: Json | null,"home_country"?: string,"id"?: string,"join_code"?: string,"joint_enabled"?: boolean,"joint_ratio"?: Json | null,"settle_day"?: number | null
                   }
                   Relationships: [
                     
@@ -520,6 +520,9 @@ isOneToOne: false
                            },
 "set_monzo_me":
 { Args: { "p_username": string }; Returns: undefined
+                           },
+"set_settle_day":
+{ Args: { "p_day": number }; Returns: undefined
                            }
           }
           Enums: {

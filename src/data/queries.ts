@@ -7,7 +7,7 @@ import { queryOptions, skipToken } from '@tanstack/react-query';
 import { z } from 'zod';
 import {
   ApiError,
-  type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChapterRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
+  type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChapterRow, type CommentRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
   type InboxItemRow, type RecurringRow, type SettlementRow,
 } from './api';
 import { keys } from './keys';
@@ -88,6 +88,18 @@ const chapterSchema = z.looseObject({
   id, household_id: id, name: z.string(), emoji: z.string(), kind: z.enum(['trip', 'project']), country: z.string().nullable(),
   start_date: z.string().nullable(), end_date: z.string().nullable(), closed: z.boolean(),
 });
+
+const commentSchema = z.looseObject({
+  id, household_id: id, expense_id: id, author: id, body: z.string(), created_at: z.string(), deleted_at: z.string().nullable(),
+});
+
+/** S5b: the household's comments (ACT-4). */
+export function commentsQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.comments(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(commentSchema), 'comments', await api.comments(hid)) as CommentRow[] : skipToken,
+  });
+}
 
 /** S4a: the household's chapters (CHP-1). */
 export function chaptersQuery(api: Api, uid: string | null, hid: Hid) {

@@ -125,7 +125,7 @@ describe('Q-L6 PPL-3: the taken animal card', () => {
     const me = '00000000-0000-4000-8000-0000000000b9';
     const { api } = createMemoryApi(
       {
-        households: [{ id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: null, joint_enabled: false, joint_ratio: null, created_at: stamp }],
+        households: [{ id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: null, joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp }],
         members: [
           { household_id: HID, user_id: JAE_ID, display_name: 'Jae', animal: 'cat', locked_at: stamp, monzo_me: null, joined_at: stamp },
           { household_id: HID, user_id: me, display_name: null, animal: null, locked_at: null, monzo_me: null, joined_at: '2026-11-02T12:00:00.000Z' },

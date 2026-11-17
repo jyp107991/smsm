@@ -69,7 +69,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
 
   const household: HouseholdRow = {
     id: DEMO_HOUSEHOLD_ID, join_code: 'DEMO42', home_country: 'GB', default_ratio: null,
-    joint_enabled: false, joint_ratio: null, created_at: stamp(start),
+    joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp(start),
   };
   const members: [MemberRow, MemberRow] = [
     { household_id: DEMO_HOUSEHOLD_ID, user_id: JAE, display_name: 'Jae', animal: 'dog', locked_at: stamp(start), monzo_me: 'jae-demo', joined_at: stamp(start) },

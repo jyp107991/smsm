@@ -17,6 +17,21 @@ CREATE SCHEMA public;
 COMMENT ON SCHEMA public IS 'standard public schema';
 
 --
+-- Name: check_comment_entry(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.check_comment_entry() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if not exists (select 1 from expenses e where e.id = new.expense_id and e.household_id = new.household_id) then
+    raise exception 'that entry is not one of yours' using errcode = '23503';
+  end if;
+  return new;
+end $$;
+
+--
 -- Name: check_entry_chapter(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -64,6 +79,21 @@ begin
        select 1 from members m where m.household_id = new.household_id
         and coalesce((new.shares ->> m.user_id::text)::bigint, 0) <> coalesce((new.paid ->> m.user_id::text)::bigint, 0)) then
     raise exception 'treat: whoever pays covers it';
+  end if;
+  return new;
+end $$;
+
+--
+-- Name: comments_guard(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.comments_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+begin
+  if new.author is distinct from old.author or new.expense_id is distinct from old.expense_id or new.household_id is distinct from old.household_id then
+    raise exception 'a comment stays with its author and its entry' using errcode = '42501';
   end if;
   return new;
 end $$;
@@ -238,7 +268,7 @@ declare act text; diff jsonb := '{}'; k text; ent text; o jsonb; n jsonb := to_j
 begin
   ent := case tg_table_name when 'expenses' then 'expense' when 'settlements' then 'settlement'
                             when 'categories' then 'category' when 'inbox_items' then 'inbox_item'
-                            when 'chapters' then 'chapter' else 'recurring' end;
+                            when 'chapters' then 'chapter' when 'comments' then 'comment' else 'recurring' end;
   if tg_op = 'INSERT' then
     act := 'created';
     diff := jsonb_build_object('after', n - 'split_params' - 'items');
@@ -441,6 +471,25 @@ begin
   if p_username is not null and p_username !~ '^[A-Za-z0-9_-]{1,40}$' then raise exception 'that does not look like a monzo.me name'; end if;
   update members set monzo_me = p_username where user_id = auth.uid();
 end $_$;
+
+--
+-- Name: set_settle_day(integer); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.set_settle_day(p_day integer) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare hid uuid := my_household(); was smallint;
+begin
+  if hid is null then raise exception 'not in a household'; end if;
+  if p_day is not null and (p_day < 1 or p_day > 28) then raise exception 'pick a day from 1 to 28'; end if;
+  select settle_day into was from households where id = hid;
+  if was is not distinct from p_day then return; end if;
+  update households set settle_day = p_day where id = hid;
+  insert into activity(household_id, actor, entity, entity_id, action, summary)
+  values (hid, auth.uid(), 'household', hid, 'edited', jsonb_build_object('settle_day', jsonb_build_object('before', was, 'after', p_day)));
+end $$;
 
 --
 -- Name: stamp_author(); Type: FUNCTION; Schema: public; Owner: -
@@ -718,7 +767,9 @@ CREATE TABLE public.households (
     default_ratio jsonb,
     joint_enabled boolean DEFAULT false NOT NULL,
     joint_ratio jsonb,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    settle_day smallint,
+    CONSTRAINT households_settle_day_check CHECK (((settle_day IS NULL) OR ((settle_day >= 1) AND (settle_day <= 28))))
 );
 
 --
@@ -1148,6 +1199,24 @@ CREATE TRIGGER chapters_log AFTER INSERT OR UPDATE ON public.chapters FOR EACH R
 --
 
 CREATE TRIGGER chapters_stamp BEFORE UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
+
+--
+-- Name: comments comments_entry; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER comments_entry BEFORE INSERT ON public.comments FOR EACH ROW EXECUTE FUNCTION public.check_comment_entry();
+
+--
+-- Name: comments comments_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER comments_guard BEFORE UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.comments_guard();
+
+--
+-- Name: comments comments_log; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER comments_log AFTER INSERT OR UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: expenses expenses_author; Type: TRIGGER; Schema: public; Owner: -
@@ -1835,6 +1904,13 @@ GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO anon;
 
 --
+-- Name: FUNCTION check_comment_entry(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.check_comment_entry() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.check_comment_entry() TO service_role;
+
+--
 -- Name: FUNCTION check_entry_chapter(); Type: ACL; Schema: public; Owner: -
 --
 
@@ -1848,6 +1924,13 @@ GRANT ALL ON FUNCTION public.check_entry_chapter() TO service_role;
 REVOKE ALL ON FUNCTION public.check_money() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.check_money() TO authenticated;
 GRANT ALL ON FUNCTION public.check_money() TO service_role;
+
+--
+-- Name: FUNCTION comments_guard(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.comments_guard() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.comments_guard() TO service_role;
 
 --
 -- Name: FUNCTION create_household(); Type: ACL; Schema: public; Owner: -
@@ -1975,6 +2058,14 @@ GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO service
 REVOKE ALL ON FUNCTION public.set_monzo_me(p_username text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO authenticated;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO service_role;
+
+--
+-- Name: FUNCTION set_settle_day(p_day integer); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.set_settle_day(p_day integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.set_settle_day(p_day integer) TO authenticated;
+GRANT ALL ON FUNCTION public.set_settle_day(p_day integer) TO service_role;
 
 --
 -- Name: FUNCTION stamp_author(); Type: ACL; Schema: public; Owner: -

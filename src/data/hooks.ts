@@ -8,13 +8,13 @@ import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } fro
 import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import type { ActivityRow, CategoryRow, ChangeRequestRow, ChapterRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ChapterRow, CommentRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
 import { activeDataLayer, DataContext } from './context';
 import type { Memory } from '../core/categorise';
 import { MEMORY_KEY, MONEY_KEY } from './keys';
 import type { WriteProblem } from './problems';
 import {
-  activityQuery, categoriesQuery, changesQuery, chaptersQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
+  activityQuery, categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
   settlementsQuery,
 } from './queries';
 import { currentChapterId, setCurrentChapter, subscribeCurrentChapter } from './mutations';
@@ -115,6 +115,26 @@ export function useChapters(): DataResult<ChapterRow[]> {
   const ops = useWaitingOps();
   const data = useMemo(() => q.data && overlay(q.data, ops, 'chapters'), [q.data, ops]);
   return result(q, data);
+}
+
+/** S5b (ACT-4): every comment in the household (deleted ones too), oldest first, with waiting changes applied. */
+export function useAllComments(): DataResult<CommentRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(commentsQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(
+    () => q.data && overlay(q.data, ops, 'comments').sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0)),
+    [q.data, ops],
+  );
+  return result(q, data);
+}
+
+/** ACT-4: one entry's thread, oldest first (deleted ones kept, shown as deleted). */
+export function useComments(expenseId: string): DataResult<CommentRow[]> {
+  const all = useAllComments();
+  const data = useMemo(() => all.data?.filter((c) => c.expense_id === expenseId), [all.data, expenseId]);
+  return { ...all, data };
 }
 
 /** CHP-2: this phone's current chapter's id, when it is still there and open (a closed one is never current). */

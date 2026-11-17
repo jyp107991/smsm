@@ -12,7 +12,7 @@ import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
-  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterColumn, type ChapterRow, type ChapterWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
+  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type CommentWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
   type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
@@ -74,7 +74,7 @@ export interface SettlementDraft {
 export type InvalidReason =
   | EntryIssue
   | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100'
-  | 'schedule' | 'colour' | 'chapterName' | 'chapterDates';
+  | 'schedule' | 'colour' | 'chapterName' | 'chapterDates' | 'comment' | 'notYours' | 'settleDay';
 
 /** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
@@ -125,6 +125,8 @@ export type MoneyOp = OpBase & (
   /** S4a: a chapter started, edited, closed or reopened (CHP-1, CHP-3); never deleted. */
   /** `columns`: only these are written to an existing chapter (close, reopen, an edit), never the rest. */
   | { table: 'chapters'; op: 'upsert'; isNew: boolean; row: ChapterRow; input: null; columns?: readonly ChapterColumn[] }
+  /** S5b (ACT-4): a comment added, edited or deleted (soft); an edit sends only its columns. */
+  | { table: 'comments'; op: 'upsert'; isNew: boolean; row: CommentRow; input: null; columns?: readonly CommentColumn[] }
 );
 
 export function newId(): string {
@@ -445,6 +447,7 @@ export function opLabel(op: MoneyOp): string {
   if (op.table === 'expenses') return expenseLabel(op.row);
   if (op.table === 'settlements') return settlementLabel(op.row);
   if (op.table === 'recurring') return op.row.description;
+  if (op.table === 'comments') return op.row.body.slice(0, 40);
   return op.row.name;
 }
 
@@ -495,6 +498,12 @@ export function recurringWrite(row: RecurringRow): RecurringWrite {
 }
 
 /** The columns of a category the phone sends. */
+/** The columns of a comment the phone sends. */
+export function commentWrite(row: CommentRow): CommentWrite {
+  const { id, household_id, expense_id, author, body, deleted_at } = row;
+  return { id, household_id, expense_id, author, body, deleted_at };
+}
+
 /** The columns of a chapter the phone sends. */
 export function chapterWrite(row: ChapterRow): ChapterWrite {
   const { id, household_id, name, emoji, kind, country, start_date, end_date, closed } = row;
@@ -507,4 +516,4 @@ export function categoryWrite(row: CategoryRow): CategoryWrite {
 }
 
 /** Whatever a queued write gets back from the server. */
-export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow | ChapterRow;
+export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow | ChapterRow | CommentRow;

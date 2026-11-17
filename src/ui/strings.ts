@@ -96,6 +96,9 @@ export const strings = {
     colour: 'Pick one of the colours shown.',
     chapterName: 'Give it a name of up to 40 characters.',
     chapterDates: 'It can’t end before it starts.',
+    comment: 'Write a comment of up to 500 characters.',
+    notYours: 'Only whoever wrote a comment can change it.',
+    settleDay: 'Pick a day from the 1st to the 28th.',
   },
 
   // ───────────── S2: the daily loop ─────────────

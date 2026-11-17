@@ -11,7 +11,7 @@ import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type Use
 import {
   ApiError,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
-  type ChapterRow, type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
+  type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
 } from './api';
 import type { Json } from './database.types';
 
@@ -29,6 +29,8 @@ export interface MemoryTables {
   inboxItems: InboxItemRow[];
   /** S4a: chapters (trips and projects). */
   chapters: ChapterRow[];
+  /** S5b: comments on entries. */
+  comments: CommentRow[];
   minClientVersion: string | null;
 }
 
@@ -108,6 +110,7 @@ export function createMemoryApi(
     recurring: clone(seed.recurring ?? []),
     inboxItems: clone(seed.inboxItems ?? []),
     chapters: clone(seed.chapters ?? []),
+    comments: clone(seed.comments ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
   /** The server's UK date (DAT-2: post_due_recurring posts by London's date). */
@@ -358,7 +361,7 @@ export function createMemoryApi(
         const stamp = now().toISOString();
         tables.households.push({
           id, join_code: crypto.randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase(), home_country: 'GB', default_ratio: null,
-          joint_enabled: false, joint_ratio: null, created_at: stamp,
+          joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp,
         });
         tables.members.push({ household_id: id, user_id: me().userId, display_name: null, animal: null, locked_at: null, monzo_me: null, joined_at: stamp });
         DEFAULT_CATEGORIES.forEach(([name, emoji, colour], i) => {
@@ -469,6 +472,43 @@ export function createMemoryApi(
         return next;
       }),
     chapters: (hid) => call('chapters', hid, () => mine(tables.chapters).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))),
+    comments: (hid) => call('comments', hid, () => mine(tables.comments).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))),
+    upsertComment: (row, columns) =>
+      call('upsertComment', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        const i = tables.comments.findIndex((r) => r.id === row.id);
+        const existing = i === -1 ? undefined : tables.comments[i];
+        // comments_upd: only the author; comments_guard: the author and the entry stay.
+        if (existing && existing.author !== me().userId) refuse('new row violates row-level security policy for table "comments"', '42501');
+        if (!existing && row.author !== me().userId) refuse('new row violates row-level security policy for table "comments"', '42501');
+        if (!existing && !tables.expenses.some((e) => e.id === row.expense_id && e.household_id === row.household_id)) refuse('that entry is not one of yours', '23503');
+        const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<CommentRow> : row;
+        const body = (sent.body ?? existing?.body ?? '').trim();
+        if (body.length < 1 || body.length > 500) refuse('new row violates check constraint "comments_body_check"', '23514');
+        const next: CommentRow = existing
+          ? { ...existing, ...sent, author: existing.author, expense_id: existing.expense_id, household_id: existing.household_id }
+          : { created_at: now().toISOString(), ...row };
+        if (existing) tables.comments[i] = next;
+        else tables.comments.push(next);
+        const changes = existing ? diff(existing, next) : null;
+        if (!existing) log('comment', next.id, 'created', { after: next as unknown as Json }, next.household_id);
+        else if (changes && Object.keys(changes as object).length > 0) {
+          log('comment', next.id, existing.deleted_at === null && next.deleted_at !== null ? 'deleted' : 'edited', changes, next.household_id);
+        }
+        return next;
+      }),
+    setSettleDay: (day) =>
+      call('setSettleDay', day, () => {
+        const hid = myHousehold();
+        const h = tables.households.find((x) => x.id === hid);
+        if (!h) return refuse('not in a household');
+        if (day !== null && (!Number.isInteger(day) || day < 1 || day > 28)) refuse('pick a day from 1 to 28');
+        const was = (h as { settle_day?: number | null }).settle_day ?? null;
+        if (was === day) return undefined;
+        Object.assign(h, { settle_day: day });
+        log('household', h.id, 'edited', { settle_day: { before: was, after: day } }, h.id);
+        return undefined;
+      }),
     upsertChapter: (row, columns) =>
       call('upsertChapter', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');

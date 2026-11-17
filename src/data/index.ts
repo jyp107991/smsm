@@ -11,7 +11,7 @@ export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
   useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {
@@ -23,12 +23,13 @@ export {
   CATEGORY_COLOURS, type CategoryColour, type CategoryDraft, type RecurringDraft,
   saveChapter, closeChapter, setCurrentChapter, currentChapterId, currentOpenChapter, type ChapterDraft,
   currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor, askLocation,
+  addComment, editComment, deleteComment, setSettleDay,
 } from './mutations';
 export type { WindowRole } from './windows';
 export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
-  type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow,
+  type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow,
 } from './api';
 export { REFUSAL_MESSAGES, type WriteProblem, type RefusalReason } from './problems';
 export { browserGeo, frankfurterRates, type GeoService, type RatesService, type Located } from './places';

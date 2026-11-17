@@ -41,7 +41,7 @@ import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE } from './keys';
 import type { Network } from './network';
 import { createProblemStore, problemFrom, type ProblemStore } from './problems';
 import {
-  categoriesQuery, changesQuery, chaptersQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery, settlementsQuery,
+  categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery, settlementsQuery,
 } from './queries';
 import { createRealtime, type Realtime } from './realtime';
 import { expenseToLedger, settlementToLedger } from './rows';
@@ -49,7 +49,7 @@ import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
 import { claimQueue, OtherWindowError, type QueueLocks, type WindowRole } from './windows';
 import {
-  categoryWrite, chapterWrite, completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, recurringWrite, settlementWrite,
+  categoryWrite, chapterWrite, commentWrite, completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, recurringWrite, settlementWrite,
   type ExpenseUpsert, type MemoryOp, type MoneyOp, type QueuedRow,
 } from './writes';
 
@@ -356,6 +356,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       client.query({ ...recurringQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...inboxQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...chaptersQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      client.query({ ...commentsQuery(api, id, hid), staleTime: 0 }).catch(noop),
     ]);
     followHousehold();
     wake();
@@ -408,6 +409,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
         return api.upsertCategory(categoryWrite(op.row));
       case 'chapters':
         return api.upsertChapter(chapterWrite(op.row), op.isNew ? undefined : op.columns);
+      case 'comments':
+        return api.upsertComment(commentWrite(op.row), op.isNew ? undefined : op.columns);
     }
   }
 
@@ -450,6 +453,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'inbox_items': return keys.inbox(id);
       case 'categories': return keys.categories(id);
       case 'chapters': return keys.chapters(id);
+      case 'comments': return keys.comments(id);
     }
   }
 
