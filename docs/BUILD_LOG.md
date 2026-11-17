@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~10:15 UTC: S2 LIVE — first-real-use checkpoint ★
+- **PR #4 merged** (head 8acec62, all checks green incl. two-user 21/21); **deploy run 44060979111** green (migrations, app, demo, smoke). Live: https://smsm.jaexpark94.workers.dev (version.json commit 5778062). Opened as a phone (Pixel 7, dark): sign-in screen, no overflow, no errors.
+- **Fresh review** of the final changes: no blockers; fixed with failing tests first: a sign-out isn't undone by the short session wait; a stale last-person note is cleared; docs. `auth-config` now proves the live emails carry the code (run 44059948621: both "yes", custom sender on).
+- **Backup** run 44061902567 green (encrypted artifact, 3 KB: no household yet).
+- **Owner next:** install on both phones, sign in, start/join. **Me next:** once both have joined, tell the owner, then `enable_signup = false` through `auth-config`. Then S3 per BUILD_PLAN.
+
 ## 2026-11-17 ~10:00 UTC: sign-in email live; two-user suite green
 - **Two-user suite: 21/21 green** on CI run 44058300857 (commit 8124048), with all other checks.
 - **Sign-in email applied** (owner said yes): `auth-config` push run 44058977473. Codes now go out from smsm's own Gmail account (address only in the secret), subject "Your smsm code". A test request to the live auth service for the smsm address returned 200 (it would fail if Gmail refused the login); the owner checks that inbox.
