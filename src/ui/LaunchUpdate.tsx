@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { build } from '../data/build';
 import { Logo } from './Logo';
 import { strings } from './strings';
-import { createLaunchUpdate, type UpdateStage } from './launchUpdate';
+import { createLaunchUpdate, type UpdateResult, type UpdateStage } from './launchUpdate';
+import { registerUpdateCheck } from './updates';
 
 /** A return to the app after this long counts as a launch (Android often resumes rather than relaunches). */
 const RESUME_AFTER_MS = 10 * 60 * 1000;
@@ -28,10 +29,9 @@ export function LaunchUpdate({ beforeReload }: { beforeReload: () => Promise<voi
   const [stage, setStage] = useState<UpdateStage>('idle');
   const [progress, setProgress] = useState(0);
   useEffect(() => {
-    let running = false;
-    const run = () => {
-      if (running) return;
-      running = true;
+    let running: Promise<UpdateResult> | null = null;
+    const run = (): Promise<UpdateResult> => {
+      if (running) return running;
       const update = createLaunchUpdate({
         current: build.commit,
         fetchVersion: serverVersion,
@@ -40,16 +40,22 @@ export function LaunchUpdate({ beforeReload }: { beforeReload: () => Promise<voi
         onStage: (s, p) => { setStage(s); setProgress(p); },
         session: sessionStorage,
       });
-      void update().finally(() => { running = false; });
+      running = update().finally(() => { running = null; });
+      return running;
     };
-    run();
+    // "Check for updates" in Settings runs this same check.
+    const unregister = registerUpdateCheck(run);
+    void run();
     let hiddenAt: number | null = null;
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-      else if (hiddenAt !== null && Date.now() - hiddenAt >= RESUME_AFTER_MS && !sheetOpen()) run();
+      else if (hiddenAt !== null && Date.now() - hiddenAt >= RESUME_AFTER_MS && !sheetOpen()) void run();
     };
     document.addEventListener('visibilitychange', onVisibility);
-    return () => { document.removeEventListener('visibilitychange', onVisibility); };
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      unregister();
+    };
   }, [beforeReload]);
 
   if (stage === 'idle' || stage === 'checking') return null;
