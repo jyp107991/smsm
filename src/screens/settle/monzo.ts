@@ -6,6 +6,11 @@
  * the household's copy), not in this tab's sessionStorage, so it survives the app being closed on the way
  * back from Monzo. After "Not yet" it is kept with `later: true`, and Home shows a quiet banner instead of
  * asking again, until the person answers Yes or Forget it. Signing out forgets it.
+ *
+ * An answer (Yes, Forget it) is also noted at once in localStorage (`markAnswered`): IndexedDB writes are
+ * asynchronous, and an app closed a moment after the tap can lose the delete (CI run 44092991657). A question
+ * found in the store that matches the note is treated as answered (`isAnswered`, checked as the app opens). Keeping a question (`savePending` with
+ * one) clears the note, so a new question is always asked.
  */
 import { formatPlainPounds, type Pence } from '../../core/money';
 import { idbStorage, type PromiseStorage } from '../../data/storage';
@@ -33,6 +38,42 @@ export interface PendingMonzo {
 }
 
 const KEY = 'smsm-monzo-pending';
+/** The last question answered on this phone (its id and what it said), kept where a write is immediate. */
+const ANSWERED = 'smsm-monzo-answered';
+
+/** What a question says, so a copy kept before it had an id still matches. */
+function said(p: PendingMonzo): string {
+  return [p.from, p.to, String(p.amount), p.date, p.note ?? ''].join('|');
+}
+
+/** Notes, synchronously, that this question has been answered (Yes or Forget it). Never throws. */
+export function markAnswered(p: PendingMonzo): void {
+  try {
+    localStorage.setItem(ANSWERED, JSON.stringify({ id: p.id ?? null, said: said(p) }));
+  } catch {
+    /* no localStorage: the store's own delete is all there is */
+  }
+}
+
+/** True when this question was answered on this phone (its store copy may have outlived the answer). */
+export function isAnswered(p: PendingMonzo): boolean {
+  try {
+    const raw = localStorage.getItem(ANSWERED);
+    if (!raw) return false;
+    const note = JSON.parse(raw) as { id?: unknown; said?: unknown };
+    return (typeof note.id === 'string' && note.id === p.id) || note.said === said(p);
+  } catch {
+    return false;
+  }
+}
+
+function clearAnswered(): void {
+  try {
+    localStorage.removeItem(ANSWERED);
+  } catch {
+    /* nothing to clear */
+  }
+}
 
 let store: PromiseStorage | null = null;
 function storage(): PromiseStorage {
@@ -48,6 +89,8 @@ let fallback: PendingMonzo | null = null;
 
 /** Keeps the question (or forgets it, with null). Resolves once stored; never rejects. */
 export async function savePending(p: PendingMonzo | null): Promise<void> {
+  // A question being kept is not answered (a new one, or "Not yet").
+  if (p) clearAnswered();
   fallback = p;
   try {
     if (p) await storage().setItem(KEY, JSON.stringify(p));
