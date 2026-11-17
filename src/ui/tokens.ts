@@ -138,6 +138,8 @@ export const USED_PAIRS: { fg: TokenName; bg: TokenName; use: PairUse }[] = [
   { fg: 'moss', bg: 'surface', use: 'graphic' },
   { fg: 'honey', bg: 'paper', use: 'graphic' },
   { fg: 'berry', bg: 'surface', use: 'graphic' },
+  // A field in error: a berry border round the sunk well.
+  { fg: 'berry', bg: 'sunk', use: 'graphic' },
 ];
 
 function channel(hex: string, offset: number): number {
