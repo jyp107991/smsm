@@ -581,7 +581,7 @@ export const strings = {
     totalIn: (amount: string) => `${amount} in all`,
     comparison: (amount: string, diff: string, more: boolean, before: string) => `${amount}, ${diff} ${more ? 'more' : 'less'} than ${before}`,
     same: (amount: string, before: string) => `${amount}, the same as ${before}`,
-    beforeMonth: 'last month',
+    beforeMonth: 'the same days last month',
     before3: 'the 3 months before',
     before12: 'the 12 months before',
     beforeYear: 'the same days last year',

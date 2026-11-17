@@ -179,10 +179,20 @@ export function periodOf(choice: PeriodChoice, today: IsoDate): Period {
   }
 }
 
-/** The same-length period just before (by days). */
-export function previousPeriod(p: Period): Period {
+/**
+ * The period to compare with: the same days `monthsBack` months earlier (this month so far → the same days of last
+ * month; the last 3 months → the 3 before; this year → the same days last year). Without `monthsBack`, the
+ * same number of days just before.
+ */
+export function previousPeriod(p: Period, monthsBack?: number): Period {
+  if (monthsBack !== undefined) return { from: addMonths(p.from, -monthsBack), to: addMonths(p.to, -monthsBack) };
   const days = daysBetween(p.from, p.to) + 1;
   return { from: addDays(p.from, -days), to: addDays(p.from, -1) };
+}
+
+/** How far back a choice's comparison goes. */
+export function monthsBackOf(choice: PeriodChoice): number {
+  return choice === 'month' ? 1 : choice === '3months' ? 3 : 12;
 }
 
 /** £ figures for the notes and sentences: pence → whole pounds, rounded to the nearest pound, halves up. */

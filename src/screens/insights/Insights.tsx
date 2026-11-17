@@ -6,7 +6,7 @@
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { addMonths, startOfMonth, type IsoDate } from '../../core/dates';
 import {
-  byCategory, byCountry, fairness, monthlyTotals, notes, periodOf, previousPeriod, sharedSpend, standingOrder, whoPaid, type Note, type Period,
+  byCategory, byCountry, fairness, monthlyTotals, monthsBackOf, notes, periodOf, previousPeriod, sharedSpend, standingOrder, whoPaid, type Note, type Period,
   type PeriodChoice,
 } from '../../core/insights';
 import { formatPence, pence, type Pence } from '../../core/money';
@@ -54,7 +54,7 @@ export function Insights() {
     : periodOf(choice as PeriodChoice, today);
   const opts = { everydayOnly: !chapter && !withChapters };
   const total = sharedSpend(scoped, period, opts);
-  const before = chapter ? null : sharedSpend(entries, previousPeriod(period), opts);
+  const before = chapter ? null : sharedSpend(entries, previousPeriod(period, monthsBackOf(choice as PeriodChoice)), opts);
   const cats = byCategory(scoped, period, opts);
   const countries = byCountry(scoped, period, opts);
   const paid = whoPaid(scoped, period, ids, opts);
