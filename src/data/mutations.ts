@@ -189,8 +189,10 @@ export function editExpense(id: string, patch: Partial<ExpenseDraft>, layer = ac
   const current = currentExpense(layer, id);
   const base = { opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: !current.onServer } as const;
   if (current.input) {
-    // The entry as the person entered it (still waiting, or kept to fix): rebuilt exactly from that.
-    layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...current.input, ...patch }, current.row) });
+    // The entry as the person entered it (still waiting, or kept to fix): rebuilt exactly from that. A new pounds
+    // amount with no new original drops the old one (it no longer describes the entry, PLC-6).
+    const stale = patch.amount !== undefined && patch.amount !== current.input.amount && patch.original === undefined;
+    layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...current.input, ...patch, ...(stale ? { original: null } : {}) }, current.row) });
     return;
   }
   if (!touchesMoney(patch)) {
@@ -713,6 +715,16 @@ export function setCurrentCountry(code: string | null, layer = activeDataLayer()
 /** PLC-2: use the phone's location for new entries and trip suggestions (per phone; off until turned on). */
 export function setUseLocation(on: boolean): void {
   setStoredUseLocation(on);
+}
+
+/** PLC-2: lets the browser ask for location (only from the Settings switch). True when it was allowed. */
+export async function askLocation(layer = activeDataLayer()): Promise<boolean> {
+  try {
+    await layer.geo.position({ prompt: true, timeoutMs: 30000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -5,7 +5,7 @@
  * current). Home again with this phone's current trip still open: "Welcome home. Close Japan? 9 days, £1,840.00."
  * "No" hides the trip question for that country until the phone has been home; "Not yet" hides welcome home today.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatPence } from '../../core/money';
 import {
   closeChapter, homeCountry, locate, saveChapter, setCurrentChapter, setCurrentCountry, useChapters, useCurrentChapter, useDataLayer,
@@ -41,6 +41,8 @@ export function TripBanner() {
   const [here, setHere] = useState<string | null>(null);
   // Bumped when a choice is stored, so the banner re-reads it.
   const [, setHidden] = useState(0);
+  // A double tap on Start a trip makes one trip.
+  const started = useRef(false);
 
   // Where the phone is: on open and each time the app comes back to the front.
   useEffect(() => {
@@ -72,6 +74,8 @@ export function TripBanner() {
           <Button
             variant="plain"
             onClick={() => {
+              if (started.current) return;
+              started.current = true;
               const id = saveChapter({ name, emoji: '🧳', kind: 'trip', country: here, startDate: today, endDate: null });
               setCurrentChapter(id);
               setCurrentCountry(here);
@@ -87,7 +91,8 @@ export function TripBanner() {
 
   // Home: a "No" abroad is forgotten; offer to close this phone's current trip.
   if (get(SAID_NO) !== null) put(SAID_NO, null);
-  if (!current || current.kind !== 'trip' || current.closed || get(NOT_YET) === `${current.id}:${today}`) return null;
+  // Only a trip abroad: a trip in the home country (Cornwall) is not over just because the phone is home.
+  if (!current || current.kind !== 'trip' || current.closed || !current.country || current.country === home || get(NOT_YET) === `${current.id}:${today}`) return null;
   const s = summaryOf(current, entries, ids, today);
   return (
     <div role="note" className="bg-surface border-line flex flex-col gap-3 rounded-[16px] border px-4 py-3">

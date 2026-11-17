@@ -15,7 +15,7 @@ import { fromMonth } from './schedule';
 export function Toggle({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange: (on: boolean) => void }) {
   const id = useId();
   return (
-    <label htmlFor={id} className="press flex min-h-14 w-full cursor-pointer items-center gap-4 py-2">
+    <label htmlFor={id} className="press relative flex min-h-14 w-full cursor-pointer items-center gap-4 py-2">
       <span className="flex min-w-0 flex-1 flex-col">
         <span id={`${id}-label`} className="text-body text-ink">{label}</span>
         {hint ? <span id={`${id}-hint`} className="text-secondary text-ink-2">{hint}</span> : null}
@@ -28,7 +28,8 @@ export function Toggle({ label, hint, on, onChange }: { label: string; hint?: st
         aria-labelledby={`${id}-label`}
         {...(hint ? { 'aria-describedby': `${id}-hint` } : {})}
         onChange={(e) => { onChange(e.target.checked); }}
-        className="peer sr-only"
+        // The whole row is the target: the real switch lies over it, invisible (a tap anywhere toggles it).
+        className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer appearance-none opacity-0"
       />
       <span
         aria-hidden="true"

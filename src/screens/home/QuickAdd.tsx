@@ -14,8 +14,7 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import { formatPence, formatPlainPounds } from '../../core/money';
 import {
-  addExpense, deleteExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus,
-} from '../../data';
+  addExpense, deleteExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus, locate, type Located } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { useKeyboardOpen } from '../../ui/keyboard';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -83,6 +82,16 @@ export function QuickAdd() {
     setText('');
   };
 
+  // PLC-2: with location on, the phone looks up where it is once typing starts, so a quick-added entry gets the
+  // town too; saving never waits for it.
+  const here = useRef<Located | null>(null);
+  const looking = useRef(false);
+  const lookUp = () => {
+    if (looking.current) return;
+    looking.current = true;
+    void locate().then((where) => { here.current = where; });
+  };
+
   const save = (e: SyntheticEvent) => {
     e.preventDefault();
     if (savedText.current === text) return;
@@ -100,6 +109,10 @@ export function QuickAdd() {
         id: newId(),
         description: reading.saveAs, amount: reading.amount, date: reading.date, categoryId: reading.categoryId,
         payer: reading.payer, split: reading.split, tags: reading.tags,
+        // PLC-2: the town, if it was found while typing (never waited for).
+        ...(here.current && reading.date === layer.today()
+          ? { place: here.current.place, lat: here.current.lat, lng: here.current.lng, ...(here.current.country ? { country: here.current.country } : {}) }
+          : {}),
       });
     } catch {
       // Something the form can explain better: open it with what was typed.
@@ -107,6 +120,9 @@ export function QuickAdd() {
       return;
     }
     savedText.current = text;
+    // The next entry looks again (the phone may have moved).
+    here.current = null;
+    looking.current = false;
     // CAT-3, CAT-4: a category or split the person typed teaches the app.
     try {
       rememberChoice(reading.saveAs, {
@@ -152,7 +168,7 @@ export function QuickAdd() {
           disabled={otherWindow}
           placeholder={strings.home.quickAddPlaceholder}
           value={text}
-          onChange={(e) => { setText(e.target.value); setNeedsAmount(false); savedText.current = null; }}
+          onChange={(e) => { setText(e.target.value); setNeedsAmount(false); savedText.current = null; lookUp(); }}
           onKeyDown={holdEnterWhileComposing}
           enterKeyHint="send"
           autoComplete="off"

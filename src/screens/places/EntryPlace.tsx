@@ -27,7 +27,9 @@ export function PlaceRow({ place, onEdit, onRemove }: { place: string; onEdit: (
 }
 
 /** "Paid in JPY": only when the entry's country uses another currency. */
-export function ForeignAmount({ s, home, onChange }: { s: FormState; home: string; onChange: (next: Partial<FormState>) => void }) {
+export function ForeignAmount({ s, home, setForm }: { s: FormState; home: string; setForm: (change: (prev: FormState) => FormState) => void }) {
+  // Always from the latest form, so a rate arriving later never puts back what was typed meanwhile.
+  const onChange = (next: Partial<FormState>) => { setForm((prev) => ({ ...prev, ...next })); };
   const id = useId();
   const currency = currencyOf(s.country ?? home);
   const [note, setNote] = useState<string | null>(null);
@@ -40,7 +42,9 @@ export function ForeignAmount({ s, home, onChange }: { s: FormState; home: strin
     void rateFor(currency).then((r) => {
       if (!live) return;
       if (r) {
-        onChange({ foreign: { currency, rateText: r.rate } });
+        // Only into an empty Rate box: a rate the person typed while it loaded wins.
+        setForm((prev) => (prev.foreign && prev.foreign.currency === currency && prev.foreign.rateText === ''
+          ? { ...prev, foreign: { currency, rateText: r.rate } } : prev));
         setNote(r.stale ? strings.places.rateStale(r.date) : null);
       } else setNote(strings.places.rateNone);
     });

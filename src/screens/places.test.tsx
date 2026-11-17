@@ -439,3 +439,47 @@ describe('Activity’s Country and Place filters (PLC-7, CHP-6)', () => {
     expect(screen.queryByRole('link', { name: 'Lamp, £40.00, Jae paid', hidden: true })).toBeNull();
   });
 });
+
+// ───────── S4b fresh review: regression tests ─────────
+describe('fresh review (PLC-6, PLC-2, PLC-4)', () => {
+  it('PLC-6: a rate arriving late never puts back what was typed meanwhile', async () => {
+    let answer: (v: { date: string; base: string; quote: string; rate: number }) => void = () => undefined;
+    const slow = { rate: vi.fn(() => new Promise<{ date: string; base: string; quote: string; rate: number }>((resolve) => { answer = resolve; })) };
+    const c = couple({ rates: slow });
+    data.setCurrentCountry('JP');
+    show(c.layer);
+    const sheet = await openAddSheet();
+    fireEvent.click(switchOrBox(sheet, 'Paid in JPY'));
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '1200' } });
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Description' }), { target: { value: 'Ramen' } });
+    await act(async () => { answer({ date: '2026-11-14', base: 'JPY', quote: 'GBP', rate: 0.0047475 }); await Promise.resolve(); });
+    await waitFor(() => { expect(within(sheet).getByRole<HTMLInputElement>('textbox', { name: 'Rate' }).value).toBe('0.0047475'); });
+    expect(within(sheet).getByRole<HTMLInputElement>('textbox', { name: 'Amount' }).value).toBe('1200');
+    expect(within(sheet).getByRole<HTMLInputElement>('textbox', { name: 'Description' }).value).toBe('Ramen');
+  });
+
+  it('PLC-2: editing a saved entry’s place is saved (and removing it too)', async () => {
+    const kyoto = spent(611, 'Tea', 900, 'Eating out', JAE_ID, '2026-11-12', { country: 'JP', place: 'Kyoto', lat: 35.012, lng: 135.768 });
+    const c = couple({ expenses: [kyoto] });
+    at(`/entry/${kyoto.id}`);
+    show(c.layer);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const sheet = await screen.findByRole('dialog');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Remove place' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await settle(c.layer);
+    expect(tablesOf(c).expenses.find((e) => e.id === kyoto.id)).toMatchObject({ place: null, lat: null, lng: null, country: 'JP' });
+  });
+
+  it('PLC-4: no "Welcome home" for a trip in the home country', async () => {
+    const cornwall = storedChapter({ id: '00000000-0000-4000-8000-00000000c499', name: 'Cornwall', country: 'GB', end_date: null });
+    const c = couple({ chapters: [cornwall], geo: geoAt(LONDON), rates: rates() });
+    data.setUseLocation(true);
+    localStorage.setItem('smsm-current-chapter', cornwall.id);
+    show(c.layer);
+    await screen.findByRole('region', { name: 'Balance' });
+    await settle(c.layer);
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.queryByText(/Welcome home/)).toBeNull();
+  });
+});

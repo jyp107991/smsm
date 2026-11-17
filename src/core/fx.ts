@@ -65,3 +65,13 @@ export function formatForeign(amount: number | string, currency: string): string
 export function roundPosition(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
+
+/** "¥", "€", "$" (en-GB narrow symbol), for the amount field while paying in that currency. */
+export function currencySymbol(currency: string): string {
+  try {
+    const part = new Intl.NumberFormat('en-GB', { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find((p) => p.type === 'currency');
+    return part?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}

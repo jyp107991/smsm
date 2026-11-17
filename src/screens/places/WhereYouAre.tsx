@@ -3,7 +3,7 @@
  * "Use location" switch with its reason. Turning it on lets the browser ask once; refused, smsm carries on without.
  */
 import { useId } from 'react';
-import { locate, setCurrentCountry, setUseLocation, useCurrentCountry, useLocationSetting } from '../../data';
+import { askLocation, setCurrentCountry, setUseLocation, useCurrentCountry, useLocationSetting } from '../../data';
 import { useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { countryList } from '../chapters/model';
@@ -36,9 +36,10 @@ export function WhereYouAre() {
         onChange={(on) => {
           setUseLocation(on);
           if (!on) return;
-          // The browser asks now, once; if it isn't allowed, the switch goes back off and says so.
-          void locate({ prompt: true, timeoutMs: 30000 }).then((where) => {
-            if (where === null) {
+          // The browser asks now, once; if it isn't allowed, the switch goes back off and says so (offline is
+          // fine: the permission is what counts, not the place name).
+          void askLocation().then((allowed) => {
+            if (!allowed) {
               setUseLocation(false);
               toast.show({ message: strings.places.locationDenied });
             }

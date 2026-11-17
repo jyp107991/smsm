@@ -22,7 +22,7 @@ export {
   saveRecurring, pauseRecurring, resumeRecurring, endRecurring, keepInboxItem, dismissInboxItem, saveCategory, archiveCategory, reorderCategories,
   CATEGORY_COLOURS, type CategoryColour, type CategoryDraft, type RecurringDraft,
   saveChapter, closeChapter, setCurrentChapter, currentChapterId, currentOpenChapter, type ChapterDraft,
-  currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor,
+  currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor, askLocation,
 } from './mutations';
 export type { WindowRole } from './windows';
 export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type InvalidReason, type SettlementDraft } from './writes';

@@ -14,6 +14,7 @@ import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay } from '../../core/dates';
+import { currencyOf, currencySymbol } from '../../core/fx';
 import { formatPence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
@@ -115,9 +116,13 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     let live = true;
     void locate().then((where) => {
       if (!live || !where || placeTouched.current) return;
-      setS((prev) => (prev.date !== today ? prev : {
-        ...prev, lat: where.lat, lng: where.lng, place: where.place ?? prev.place ?? null, country: where.country ?? prev.country,
-      }));
+      setS((prev) => {
+        if (prev.date !== today) return prev;
+        const country = where.country ?? prev.country;
+        // Another currency now: "Paid in" starts again for it (never a stale conversion out of sight).
+        const foreign = prev.foreign && currencyOf(country) !== prev.foreign.currency ? null : prev.foreign;
+        return { ...prev, lat: where.lat, lng: where.lng, place: where.place ?? prev.place ?? null, country, foreign };
+      });
     });
     return () => { live = false; };
   }, [capture, today]);
@@ -167,7 +172,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const asked = (f: FormState, r: ScheduleState | null) => {
     const exact = f.splitMode === 'exact' ? f.exactText : null;
     return JSON.stringify(request.mode === 'edit' || template
-      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, r]
+      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, f.place ?? null, f.foreign ?? null, r]
       : [f.amountText, f.description, f.notes, exact, r === null ? null : r.everyText]);
   };
   const dirty = asked(s, rec) !== asked(initial, initialSchedule);
@@ -388,6 +393,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       <Field
         label={strings.entry.amount}
         variant="amount"
+        {...(s.foreign ? { symbol: currencySymbol(s.foreign.currency) } : {})}
         value={s.amountText}
         placeholder={strings.entry.amountPlaceholder}
         trailing={sum}
@@ -397,7 +403,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         autoFocus={request.mode !== 'edit'}
       />
       {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) ? (
-        <ForeignAmount s={s} home={home} onChange={(next) => { update({ ...s, ...next }); }} />
+        <ForeignAmount s={s} home={home} setForm={(change) => { setS((prev) => followExact(change(prev))); setErrors([]); }} />
       ) : null}
 
       <div className="flex flex-col gap-2">
@@ -576,7 +582,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         {/* REC-1: an expense can become a regular payment, keeping what was typed. */}
         {request.mode === 'add' && request.inboxItem === undefined && !rec && !isBack ? (
           <div className="mt-4">
-            <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setErrors([]); }}>{strings.recurring.repeat}</Button>
+            <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setS((prev) => ({ ...prev, foreign: null })); setErrors([]); }}>{strings.recurring.repeat}</Button>
           </div>
         ) : null}
       </Disclosure>
@@ -649,6 +655,14 @@ function changedFields(from: ExpenseDraft, to: ExpenseDraft, splitTouched: boole
   if (!same(to.notes, from.notes)) out.notes = to.notes ?? null;
   if (!same(to.tags, from.tags)) out.tags = to.tags ?? [];
   if (to.chapterId !== undefined && (to.chapterId ?? null) !== (from.chapterId ?? null)) out.chapterId = to.chapterId;
+  // PLC-1, PLC-2, PLC-6: the country, the place (with its position) and the original currency, when changed.
+  if (to.country !== undefined && to.country !== from.country) out.country = to.country;
+  if (to.place !== undefined && (to.place ?? null) !== (from.place ?? null)) {
+    out.place = to.place;
+    out.lat = to.lat ?? null;
+    out.lng = to.lng ?? null;
+  }
+  if (to.original !== undefined && !same(to.original, from.original)) out.original = to.original;
   return out;
 }
 

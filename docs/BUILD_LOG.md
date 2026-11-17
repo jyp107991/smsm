@@ -2,6 +2,11 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~21:15 UTC: S4b places and currencies built; S4 as one release (PR #11)
+- S4b: current country and location per phone; town and country captured on new entries (with permission); Paid in another currency with the day's rate (Frankfurter) and exact conversion; trip suggestion and Welcome home; Country and Place filters; entry page details. Tests first by a separate agent (95), all pass.
+- Fresh review: 3 blockers (late rate overwriting typing; stale original on unsynced edits; place/original edits not saved) and 6 smaller items, all fixed with regression tests.
+- S4a and S4b ship together in PR #11 (the S4b commits had to be pushed for safety). Suite 1,530; SQL 115/115; browser tests for bills, chapters and places pass.
+
 ## 2026-11-17 ~20:25 UTC: S4a chapters built
 - Built directly; tests first by a separate agent (SQL 21 checks, core 22, data 15, screens 25, e2e 5). Database: no delete, logged, realtime, own-household chapters only (SQL 115/115, refused 37/37). Screens: Settings → Chapters, chapter sheet and page (total, days, per day, by category, who paid, entries), Chapter choice in the Add form, "Adding to …" on Home, Activity Chapter filter, entry page link. Demo: Japan (closed) and New sofa (open).
 - Full suite 1,425 green; chapter and bills browser tests green. Screenshots sent. Fresh review of the money parts running; then CI and release.
