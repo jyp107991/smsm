@@ -1,7 +1,7 @@
 /**
  * The signed-in app and the steps before it. Signed out, every route shows sign-in (S2 brief, "Routes");
  * signed in but not in a household, start or join; then name and animal; then the app: Home and Activity
- * as tabs (Bills and Insights wait for S3 and S5), the entry page and Settings, and the two sheets.
+ * and Bills as tabs (Insights waits for S5), the entry page and Settings, and the two sheets.
  */
 import { useEffect, useState } from 'react';
 import { useHousehold, useSession, useSyncStatus } from '../data';
@@ -10,6 +10,9 @@ import { BottomTabs, Button, MAIN_TABS, TabPanel, ToastProvider, type MainTab } 
 import { go, useRoute, type Route } from '../ui/router';
 import { strings } from '../ui/strings';
 import { Activity } from './activity/Activity';
+import { Bills } from './bills/Bills';
+import { Inbox } from './bills/Inbox';
+import { Categories } from './settings/Categories';
 import { EntryPage } from './entry/EntryPage';
 import { EntrySheet } from './entry/EntrySheet';
 import { Home } from './home/Home';
@@ -67,6 +70,7 @@ const TABS = MAIN_TABS.filter((t) => t.value === 'home' || t.value === 'activity
 
 function tabOf(route: Route, last: MainTab): MainTab {
   if (route.name === 'activity') return 'activity';
+  if (route.name === 'bills') return 'bills';
   if (route.name === 'entry') return last;
   return 'home';
 }
@@ -81,6 +85,12 @@ function Page({ route }: { route: Route }) {
       return <Settings />;
     case 'entry':
       return <EntryPage key={route.id} id={route.id} />;
+    case 'bills':
+      return <Bills />;
+    case 'inbox':
+      return <Inbox />;
+    case 'categories':
+      return <Categories />;
   }
 }
 
@@ -120,7 +130,7 @@ function MainApp() {
             items={TABS}
             value={tab}
             onValueChange={(t) => {
-              const target: Route = t === 'activity' ? { name: 'activity' } : { name: 'home' };
+              const target: Route = t === 'activity' ? { name: 'activity' } : t === 'bills' ? { name: 'bills' } : { name: 'home' };
               if (route.name !== target.name) go(target);
             }}
           >

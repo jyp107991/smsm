@@ -130,6 +130,8 @@ async function goCategories() {
 }
 
 const balance = () => screen.getByRole('region', { name: 'Balance' });
+/** The balance sentence, whole ("Sam owes Jae £5.49": the amount is its own element, as the S2 tests read it). */
+const saying = (sentence: string) => within(balance()).getAllByText((_, el) => el?.textContent === sentence)[0];
 
 /** A day of the calendar: a gridcell, or a button in one, named "Sun 1 Nov" (and ": Rent posted" when it has bills). */
 function day(grid: HTMLElement, name: RegExp): HTMLElement | undefined {
@@ -307,7 +309,7 @@ describe('the regular payment sheet (REC-1, REC-6, SPL-2)', () => {
     const netflix = c.controls.tables.expenses.filter((e) => e.description === 'Netflix' && e.deleted_at === null);
     expect(netflix).toHaveLength(1);
     expect(netflix[0]?.recurring_id).toBe(tablesOf(c).recurring[0]?.id);
-    await waitFor(() => { expect(within(balance()).getByText('Sam owes Jae £5.49')).toBeTruthy(); });
+    await waitFor(() => { expect(saying('Sam owes Jae £5.49')).toBeTruthy(); });
   });
 
   it('REC-6: editing the amount changes future occurrences only; the sheet’s history notes the price change', async () => {
@@ -365,11 +367,11 @@ describe('the regular payment sheet (REC-1, REC-6, SPL-2)', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Netflix is due today and will post when you’re back online')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Home' }));
-    await waitFor(() => { expect(within(balance()).getByText('All square')).toBeTruthy(); });
+    await waitFor(() => { expect(saying('All square')).toBeTruthy(); });
     act(() => { c.network.set(true); });
     await settle(c.layer);
     await settle(c.layer);
-    await waitFor(() => { expect(within(balance()).getByText('Sam owes Jae £5.49')).toBeTruthy(); });
+    await waitFor(() => { expect(saying('Sam owes Jae £5.49')).toBeTruthy(); });
     expect(c.controls.tables.expenses.filter((e) => e.description === 'Netflix')).toHaveLength(1);
   });
 });
@@ -395,7 +397,7 @@ describe('the Inbox (INB-1, INB-2, INB-3, REC-3)', () => {
     const { layer } = couple({ recurring: TEMPLATES, inboxItems: [ENERGY_BILL] });
     show(layer);
     await screen.findByRole('button', { name: /^Inbox\W+1(\D|$)/ });
-    expect(within(balance()).getByText('All square')).toBeTruthy();
+    expect(saying('All square')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
     await screen.findByRole('searchbox', { name: 'Search' });
     expect(within(screen.getByRole('main')).queryByText('Energy')).toBeNull();
@@ -428,7 +430,7 @@ describe('the Inbox (INB-1, INB-2, INB-3, REC-3)', () => {
     expect(tablesOf(c).inboxItems[0]).toMatchObject({ status: 'kept', expense_id: kept[0]?.id });
 
     fireEvent.click(screen.getByRole('tab', { name: 'Home' }));
-    await waitFor(() => { expect(within(balance()).getByText('Jae owes Sam £42.18')).toBeTruthy(); });
+    await waitFor(() => { expect(saying('Jae owes Sam £42.18')).toBeTruthy(); });
     expect(screen.queryByRole('button', { name: /^Inbox\b/ })).toBeNull();
   });
 
@@ -581,7 +583,8 @@ describe('categories (CAT-1)', () => {
 
     // Its entries keep it.
     fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Lamp, £40.00, Jae paid' }));
+    // Entry rows are links to their page (S2, polish-2.test.tsx); the first draft of this test said button.
+    fireEvent.click(await screen.findByRole('link', { name: 'Lamp, £40.00, Jae paid' }));
     await screen.findByRole('region', { name: 'History' });
     expect(text(screen.getByRole('main'))).toContain('Household');
     // It isn't offered for new entries.

@@ -3,7 +3,7 @@
  * any approval waiting; the usual split; your monzo.me name; the join code and Share invite until the
  * household is full; Download a backup; the theme; the version; Sign out (warning first if changes wait).
  */
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
   backupJson, build, ChangesWaitingError, monzoNameOf, requestChange, setMonzoMe, signOut, useChangeRequests,
@@ -126,6 +126,21 @@ export function Settings() {
           <Button variant="plain" onClick={() => { download(); toast.show({ message: strings.settings.backupDone }); }}>
             {strings.settings.backup}
           </Button>
+        </div>
+      </Section>
+
+      {/* CAT-1: the household's categories, edited on their own page. */}
+      <Section title={strings.settings.spending}>
+        <div className="flex flex-col">
+          <a
+            href="/settings/categories"
+            onClick={(e) => { e.preventDefault(); go({ name: 'categories' }); }}
+            className="text-ink text-body press flex min-h-12 items-center justify-between gap-3"
+          >
+            {strings.categories.link}
+            <ChevronRight size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" className="text-ink-2" />
+          </a>
+          <p className="text-secondary text-ink-2 m-0">{strings.categories.linkLine}</p>
         </div>
       </Section>
 

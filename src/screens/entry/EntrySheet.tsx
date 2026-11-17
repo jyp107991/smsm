@@ -13,11 +13,12 @@
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
 import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
-import { formatDay } from '../../core/dates';
+import { formatDate, formatDay } from '../../core/dates';
 import { formatPence } from '../../core/money';
 import {
-  addExpense, deleteExpense, editExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
-  useEntries, useHousehold, type ExpenseDraft, type ExpenseRow,
+  addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
+  useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
+  type RecurringRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { enterMovesTo, enterSavesOnce } from '../../ui/keys';
@@ -34,6 +35,8 @@ import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
+import { RecurringHistory, Toggle } from './RecurringParts';
+import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
   blankForm, draftOf, followExact, formFromRow, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, sumWords, summaryWords,
   withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
@@ -68,15 +71,29 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const pair = people.list;
 
   const existing: ExpenseRow | undefined = request.mode === 'edit' ? (entries.find((e) => e.id === request.id) ?? request.row) : undefined;
+  const templates = useRecurring().data;
+  const online = useOnline();
+  // S3: the regular payment being edited (it stays the one opened, even as the list refreshes).
+  const [template] = useState((): RecurringRow | undefined =>
+    request.mode === 'recurring' && request.id !== undefined ? templates?.find((t) => t.id === request.id) : undefined);
 
   // The form starts once, from what was asked; later changes to the lists don't reset what is typed.
   const [initial] = useState((): FormState => {
     if (request.mode === 'edit' && existing) return formFromRow(existing, pair, request.input);
     if (request.mode === 'refund') return refundForm(request.of, pair, today);
+    if (template) return formFromTemplate(template, pair, today);
     const split = defaultSplit({ remembered: null, category: undefined, householdRatio: household?.default_ratio, people: pair, me: me?.id ?? '' });
     const blank = blankForm({ me: me?.id ?? '', people: pair, today, split });
-    return { ...blank, categoryId: otherCategoryId(live), ...(request.mode === 'add' ? request.prefill : undefined) };
+    return { ...blank, categoryId: otherCategoryId(live), ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
   });
+  // S3 (REC-1): the schedule, when this is a regular payment ("Repeat" turns an expense into one).
+  const [initialSchedule] = useState((): ScheduleState | null => {
+    if (request.mode !== 'recurring') return null;
+    if (template) return scheduleOf(template);
+    return { ...blankSchedule(today), ...request.schedule };
+  });
+  const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
+  const [picking, setPicking] = useState<'start' | 'end' | null>(null);
   const [s, setS] = useState<FormState>(initial);
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
@@ -117,18 +134,22 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
    * otherwise drop it unseen. A new entry (add, money back): only typed text, as a tapped chip on an
    * otherwise empty form is one tap to redo (Q-U11).
    */
-  const asked = (f: FormState) => {
+  const asked = (f: FormState, r: ScheduleState | null) => {
     const exact = f.splitMode === 'exact' ? f.exactText : null;
-    return JSON.stringify(request.mode === 'edit'
-      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes]
-      : [f.amountText, f.description, f.notes, exact]);
+    return JSON.stringify(request.mode === 'edit' || template
+      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, r]
+      : [f.amountText, f.description, f.notes, exact, r === null ? null : r.everyText]);
   };
-  const dirty = asked(s) !== asked(initial);
+  const dirty = asked(s, rec) !== asked(initial, initialSchedule);
+  const changeSchedule = (next: Partial<ScheduleState>) => {
+    if (rec) setRec({ ...rec, ...next });
+    setErrors([]);
+  };
 
   /** A new description: the category and split follow the household's guess until the person picks them. */
   const describe = (description: string) => {
     let next = { ...s, description };
-    if (request.mode === 'add') {
+    if (request.mode === 'add' || (request.mode === 'recurring' && !template)) {
       const g = guessFor(description, { categories, memory, entries });
       if (!s.categoryTouched) next = { ...next, categoryId: g.categoryId ?? otherCategoryId(live) };
       if (!s.splitTouched) {
@@ -139,7 +160,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     update(next);
   };
 
-  const title = request.mode === 'refund' ? strings.entry.moneyBack
+  const title = rec ? (template ? strings.recurring.edit : strings.recurring.title)
+    : request.mode === 'refund' ? strings.entry.moneyBack
     : request.mode === 'edit' ? (existing?.kind === 'money_back' ? strings.entry.editMoneyBack : strings.entry.edit)
     : strings.entry.add;
   if (!me) return null;
@@ -150,6 +172,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const save = (e?: SyntheticEvent) => {
     e?.preventDefault();
     if (done.current) return;
+    if (rec) {
+      saveSchedule(rec);
+      return;
+    }
     // Q-F2: a date after the phone's today is refused, as quick add refuses one (an edit keeps a date it had).
     if (s.date > today && (request.mode !== 'edit' || s.date !== initial.date)) {
       setErrors([strings.entry.dateAfterToday]);
@@ -176,6 +202,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         undo = () => {
           if ('draft' in before) editExpense(id, changedFields(draft, before.draft, false));
         };
+      } else if (request.mode === 'add' && request.inboxItem !== undefined) {
+        // INB-2 Keep: the bill becomes an entry with its template and occurrence, and leaves the Inbox.
+        id = keepInboxItem(request.inboxItem, { ...draft, id: rowId });
+        undo = () => { /* kept bills are edited or deleted from their entry page */ };
       } else {
         id = addExpense({ ...draft, id: rowId });
         // Q-U8: Undo says what it took away.
@@ -208,6 +238,62 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       duration: 5000,
       about: id,
     });
+    onDone();
+  };
+
+  /** S3 (REC-1, REC-6): saves the regular payment; an edit changes future occurrences only. */
+  const saveSchedule = (r: ScheduleState) => {
+    const every = everyOf(r.everyText);
+    if (every === null) {
+      setErrors([strings.recurring.everyNeeded]);
+      return;
+    }
+    if (r.endDate !== null && r.endDate < r.startDate) {
+      setErrors([strings.recurring.endBeforeStart]);
+      return;
+    }
+    const description = s.description.trim() !== '' ? s.description : (live.find((c) => c.id === s.categoryId)?.name ?? '');
+    const result = draftOf({ ...s, description, kind: 'expense' }, pair);
+    if ('errors' in result) {
+      setErrors(result.errors);
+      return;
+    }
+    const d = result.draft;
+    try {
+      saveRecurring({
+        ...(template ? { id: template.id } : { id: rowId }),
+        description: d.description, amount: d.amount, categoryId: d.categoryId, payer: d.payer, split: d.split, notes: d.notes ?? null,
+        frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: r.amountVaries, isSubscription: r.isSubscription,
+      });
+    } catch (err) {
+      setErrors([plainError(err)]);
+      return;
+    }
+    done.current = true;
+    tickSaved();
+    // OFF-4: one due today waits for the connection, and says so.
+    const waits = !online && !template && r.startDate <= today && !r.amountVaries;
+    toast.show({
+      message: waits ? strings.bills.pendingPost(d.description) : strings.recurring.savedWhat(d.description),
+      icon: <Head animal={payerPerson.animal} size={24} nod />,
+      duration: waits ? 8000 : 5000,
+    });
+    onDone();
+  };
+  /** REC-1: pause, resume or end a template from its sheet; nothing is deleted. */
+  const lifecycle = (what: 'pause' | 'resume' | 'end') => {
+    if (!template || done.current) return;
+    try {
+      if (what === 'pause') pauseRecurring(template.id);
+      else if (what === 'resume') resumeRecurring(template.id);
+      else endRecurring(template.id);
+    } catch (err) {
+      setErrors([plainError(err)]);
+      return;
+    }
+    done.current = true;
+    const word = what === 'pause' ? strings.recurring.pausedToast : what === 'resume' ? strings.recurring.resumedToast : strings.recurring.endedToast;
+    toast.show({ message: word(template.description) });
     onDone();
   };
 
@@ -377,6 +463,15 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         </>
       ) : null}
 
+      {rec ? (
+        <ScheduleFields
+          rec={rec}
+          today={today}
+          startLocked={template !== undefined && template.posted_count > 0}
+          onChange={changeSchedule}
+          onPick={setPicking}
+        />
+      ) : (
       <Group label={strings.entry.date}>
         <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
           <Chip selected={s.date === today} onSelectedChange={() => { update({ ...s, date: today }); }}>
@@ -391,6 +486,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           </Chip>
         </div>
       </Group>
+      )}
 
       <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
         <div className="flex flex-col gap-1.5">
@@ -403,7 +499,30 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
+        {/* REC-1: an expense can become a regular payment, keeping what was typed. */}
+        {request.mode === 'add' && request.inboxItem === undefined && !rec && !isBack ? (
+          <div className="mt-4">
+            <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setErrors([]); }}>{strings.recurring.repeat}</Button>
+          </div>
+        ) : null}
       </Disclosure>
+      {template ? (
+        <div className="flex flex-col gap-4">
+          {!template.active ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.pausedNote}</p> : null}
+          {template.end_date !== null && template.end_date <= today ? (
+            <p className="text-secondary text-ink-2 m-0">{strings.recurring.endedNote(formatDay(template.end_date, today))}</p>
+          ) : null}
+          <div className="flex flex-wrap gap-3">
+            {template.active
+              ? <Button variant="plain" onClick={() => { lifecycle('pause'); }}>{strings.recurring.pause}</Button>
+              : <Button variant="plain" onClick={() => { lifecycle('resume'); }}>{strings.recurring.resume}</Button>}
+            {template.end_date === null || template.end_date > today
+              ? <Button variant="plain" onClick={() => { lifecycle('end'); }}>{strings.recurring.end}</Button>
+              : null}
+          </div>
+          <RecurringHistory template={template} />
+        </div>
+      ) : null}
     </form>
     <DateSheet
       open={pickingDate}
@@ -412,6 +531,17 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       today={today}
       onPick={(date) => { update({ ...s, date }); }}
     />
+    {rec ? (
+      <DateSheet
+        open={picking !== null}
+        onClose={() => { setPicking(null); }}
+        value={picking === 'end' ? (rec.endDate ?? rec.startDate) : rec.startDate}
+        today={today}
+        max={null}
+        title={picking === 'end' ? strings.recurring.pickEnd : strings.recurring.pickStart}
+        onPick={(date) => { changeSchedule(picking === 'end' ? { endDate: date } : { startDate: date }); }}
+      />
+    ) : null}
     </Sheet>
   );
 }
@@ -483,5 +613,74 @@ function PayerToggle({ label, people, value, onChange }: { label: string; people
         </ToggleGroup.Item>
       ))}
     </ToggleGroup.Root>
+  );
+}
+
+/**
+ * S3 (REC-1): how often, every, starts (any day: the owner picks the day it recurs on), ends, and the two
+ * switches. The start can't move once something has posted, so posted days never shift.
+ */
+function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
+  rec: ScheduleState;
+  today: string;
+  startLocked: boolean;
+  onChange: (next: Partial<ScheduleState>) => void;
+  onPick: (which: 'start' | 'end') => void;
+}) {
+  const n = everyOf(rec.everyText) ?? 1;
+  return (
+    <>
+      <Group label={strings.recurring.howOften}>
+        <Choices
+          label={strings.recurring.howOften}
+          options={[
+            { value: 'weekly', label: strings.recurring.weekly },
+            { value: 'monthly', label: strings.recurring.monthly },
+            { value: 'yearly', label: strings.recurring.yearly },
+          ]}
+          value={rec.frequency}
+          onValueChange={(frequency) => { onChange({ frequency }); }}
+        />
+        <div className="flex max-w-56 items-end gap-3">
+          <Field
+            label={strings.recurring.every}
+            inputMode="numeric"
+            autoComplete="off"
+            value={rec.everyText}
+            onChange={(e) => { onChange({ everyText: e.target.value }); }}
+            className="w-20"
+          />
+          <span className="text-body text-ink-2 pb-3">{strings.recurring.unit(rec.frequency, n)}</span>
+        </div>
+      </Group>
+
+      <Group label={strings.recurring.starts}>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.starts}>
+          <Chip selected={rec.startDate === today} disabled={startLocked} onSelectedChange={() => { onChange({ startDate: today }); }}>
+            {strings.entry.today}
+          </Chip>
+          <Chip selected={rec.startDate !== today} disabled={startLocked} aria-haspopup="dialog" onSelectedChange={() => { onPick('start'); }}>
+            {rec.startDate !== today ? formatDate(rec.startDate, today) : strings.entry.pickDate}
+          </Chip>
+        </div>
+        <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p>
+      </Group>
+
+      <Group label={strings.recurring.ends}>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.ends}>
+          <Chip selected={rec.endDate === null} onSelectedChange={() => { onChange({ endDate: null }); }}>
+            {strings.recurring.never}
+          </Chip>
+          <Chip selected={rec.endDate !== null} aria-haspopup="dialog" onSelectedChange={() => { onPick('end'); }}>
+            {rec.endDate !== null ? formatDate(rec.endDate, today) : strings.entry.pickDate}
+          </Chip>
+        </div>
+      </Group>
+
+      <div className="flex flex-col">
+        <Toggle label={strings.recurring.amountVaries} hint={strings.recurring.amountVariesHint} on={rec.amountVaries} onChange={(amountVaries) => { onChange({ amountVaries }); }} />
+        <Toggle label={strings.recurring.subscription} on={rec.isSubscription} onChange={(isSubscription) => { onChange({ isSubscription }); }} />
+      </div>
+    </>
   );
 }

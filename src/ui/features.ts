@@ -3,6 +3,6 @@
  * in S3 and Insights in S5; until then their tabs are hidden.
  */
 export const FEATURES = {
-  bills: false,
+  bills: true,
   insights: false,
 } as const;
