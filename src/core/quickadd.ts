@@ -82,26 +82,6 @@ function categoryFor(word: string, categories: readonly CategoryRef[]): string |
   return hits.length === 1 ? (hits[0]?.id ?? null) : null;
 }
 
-/**
- * `cat` and `dog` name the payer in any position (ADD-1, S2 polish Q-U3), except when the very next word is one
- * of these pet products or services: then "cat food", "dog walker" are what was bought, and the words stay in
- * the description (the reading is marked unsure so the form opens). Kept short and plain on purpose: a word
- * missing here only means the cat or dog is read as the payer, which the reading shows before saving.
- * Recorded in docs/DECISIONS.md (17 Nov, S2 polish 1a).
- */
-const PET_NOUNS: ReadonlySet<string> = new Set([
-  'food', 'litter', 'treats', 'toy', 'toys', 'bed', 'walker', 'sitter', 'groomer', 'grooming', 'vet', 'insurance',
-  'flea', 'lead', 'collar', 'bowl', 'carrier', 'hair',
-]);
-
-/** True when a token is something the grammar reads (not an ordinary description word). */
-function isCommandWord(raw: string, ctx: QuickAddContext): boolean {
-  const w = normaliseKey(raw);
-  return parseAmount(raw) !== null || raw.startsWith('#') || parseDateWord(w, ctx.today) !== null || ratioWord(w) !== null
-    || ['treat', 'for', 'paid', 'me', 'i', 'cat', 'dog'].includes(w) || categoryFor(w, ctx.categories) !== null
-    || Object.values(ctx.names).some((n) => normaliseKey(n) === w);
-}
-
 export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddReading | null {
   try {
     return parse(text, ctx);
@@ -116,8 +96,9 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
   const personFor = (word: string): UserId | null => {
     if (word === 'me' || word === 'i') return ctx.me;
     for (const p of people) {
+      // Only names (and me/I) say who paid. "cat" and "dog" are ordinary words (owner, 17 Nov): the people are
+      // Jae and Sam, not their animals, and "hot dog stand" or "cat food" must never change the payer.
       if (normaliseKey(ctx.names[p] ?? '') === word) return p;
-      if (ctx.animals[p] === word) return p;
     }
     return null;
   };
@@ -185,14 +166,10 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
     {
       const p = personFor(word);
       const prev = normaliseKey(tokens[i - 1] ?? '');
-      // "dinner with Sam", "cat food", "dog walker": a person word that is part of the words stays in the
-      // description, and the reading is marked unsure (the person can fix it; S6 may read it better).
-      const partOfWords = p !== null && (prev === 'with' || prev === 'and'
-        || ((word === 'cat' || word === 'dog') && PET_NOUNS.has(next)));
+      // "dinner with Sam": a person word that is part of the words stays in the description, and the reading
+      // is marked unsure (the person can fix it; S6 may read it better).
+      const partOfWords = p !== null && (prev === 'with' || prev === 'and');
       if (p !== null && !partOfWords) {
-        // "hot dog stand", "cat cafe": cat/dog followed by an ordinary word may be part of the description.
-        // It is still read as the payer, but unsure, so Enter opens the form to check (S2 polish review).
-        if ((word === 'cat' || word === 'dog') && next !== '' && next !== 'paid' && !isCommandWord(tokens[i + 1] ?? '', ctx)) unsure = true;
         // Person words are commands: the first names the payer; a repeat of the same person is dropped; a
         // different second person is something the grammar can't read.
         if (payer === null) payer = p;

@@ -174,7 +174,7 @@ function payloadOf(r: RequestLike): Record<string, unknown> {
   return r.payload && typeof r.payload === 'object' && !Array.isArray(r.payload) ? (r.payload as Record<string, unknown>) : {};
 }
 
-/** "Jae 60%, Sam 40%" for a ratio naming both people. */
+/** "Jae 60 · Sam 40" for a ratio naming both people (Q-L9). */
 export function ratioWords(ratio: unknown, people: readonly Person[]): string {
   const [a, b] = people;
   if (!a || !b || !ratio || typeof ratio !== 'object') return '';

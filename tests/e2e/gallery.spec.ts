@@ -4,7 +4,9 @@
  * BAL-3: the plank at five balances.
  *
  * What the page must provide: each section is a <section> labelled by its heading (so it is a region
- * with that name): "The mark", "Letters", "Colours", "The plank", "The cat and the dog", "On the page".
+ * with that name): "Colours", "The plank", "The cat and the dog", "On the page".
+ * (Changed by the S2 polish brief, Q-L11: the gallery drops the decided choices, so "The mark" and "Letters"
+ * are no longer required; if they stay, they show only the chosen mark and letters. tests/e2e/polish-1b.spec.ts.)
  */
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -14,7 +16,7 @@ const VIEWPORTS = [
   { width: 320, height: 568 },
 ] as const;
 const THEMES = ['light', 'dark'] as const;
-const SECTIONS = ['The mark', 'Letters', 'Colours', 'The plank', 'The cat and the dog', 'On the page'];
+const SECTIONS = ['Colours', 'The plank', 'The cat and the dog', 'On the page'];
 
 async function settle(page: Page): Promise<void> {
   await page.evaluate(async () => {
@@ -25,7 +27,7 @@ async function settle(page: Page): Promise<void> {
 async function openGallery(page: Page, theme: (typeof THEMES)[number] = 'light'): Promise<void> {
   await page.emulateMedia({ colorScheme: theme });
   await page.goto('/gallery');
-  await expect(page.getByRole('heading', { name: 'The mark', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Colours', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'The cat and the dog', exact: true }).locator('svg[role="img"]').first()).toBeVisible();
   await settle(page);
 }

@@ -99,6 +99,10 @@ jobs:
       - name: Local sign-in settings for the suite (CI workspace only, never committed)
         run: |
           sed -i -E 's/^(sign_in_sign_ups|token_verifications) = .*/\1 = 1000/' supabase/config.toml
+          # Sign-ups are closed on the live project once both people joined; the suite makes new couples, so
+          # its own local stack opens them (CI workspace only, never committed).
+          sed -i -E 's/^enable_signup = .*/enable_signup = true/' supabase/config.toml
+          grep -q '^enable_signup = true' supabase/config.toml || { echo 'enable_signup not opened for the suite'; exit 1; }
           # The code email templates come from config.toml (as on the live project). The live project sends
           # through Gmail; the local stack must keep its own mail catcher (Mailpit) so the suite can read the
           # codes and nothing is ever sent from the real account. So the SMTP block is removed here, in the

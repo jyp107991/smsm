@@ -114,8 +114,8 @@ describe('parseQuickAdd', () => {
   });
 
   it('TXT-4 command words are case-insensitive', () => {
-    const words = ['yesterday', 'treat', 'sam', 'groc', 'mon', 'today', 'for', 'them', 'paid', 'cat', 'dog', 'me'];
-    const phrases = ['42.50 tesco yesterday treat', '42.50 tesco sam paid groc', '42.50 mon for them', '42.50 today cat paid', '9 dog paid me'];
+    const words = ['yesterday', 'treat', 'sam', 'jae', 'groc', 'mon', 'today', 'for', 'them', 'paid', 'me'];
+    const phrases = ['42.50 tesco yesterday treat', '42.50 tesco sam paid groc', '42.50 mon for them', '42.50 today sam paid', '9 jae paid pret', '9 me pret'];
     fc.assert(
       fc.property(fc.constantFrom(...phrases), fc.array(fc.boolean(), { minLength: 40, maxLength: 40 }), (phrase, flips) => {
         let n = 0;

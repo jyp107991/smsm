@@ -37,7 +37,19 @@
   --cat-fern: light-dark(oklch(62.50% 0.0757 144.60), oklch(85.97% 0.0794 155.66)); /* #6b946b, #a7e1bb */
   --cat-stone: light-dark(oklch(50.99% 0.0063 95.18), oklch(72.07% 0.0057 106.54)); /* #676662, #a5a5a1 */
 
-  /* The one soft shadow (DESIGN §3.3): sheets, toasts, the add button. */
+  /*
+   * Derived steps (S2 polish, Q-L2 and Q-L3). Not new colours: mixes of the tokens above.
+   *   --forest-tint  a chosen chip or active filter: forest washed into the sunk well, 14% by day, 28% by night (forest text on it).
+   *   --scrim        the backdrop under a sheet: warm ink at 28% by day, black at 45% by night. Never a light wash.
+   *   --wash         a press or hover: a thin film of ink over whatever the control is painted with (it darkens
+   *                  by day and lightens by night, so one rule serves every fill); --wash-strong while pressed.
+   */
+  --forest-tint: light-dark(color-mix(in oklch, var(--forest) 14%, var(--sunk)), color-mix(in oklch, var(--forest) 28%, var(--sunk)));
+  --scrim: light-dark(oklch(25.67% 0.0223 63.57 / 0.28), oklch(0% 0 0 / 0.45));
+  --wash: color-mix(in oklch, var(--ink) 6%, transparent);
+  --wash-strong: color-mix(in oklch, var(--ink) 11%, transparent);
+
+  /* The one soft shadow (DESIGN §3.3): sheets and toasts. */
   --shadow-float: 0 8px 28px rgb(42 33 24 / 0.12);
 
   /*

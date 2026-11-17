@@ -52,7 +52,8 @@ export async function enterCode(page: Page, code: string, how: 'type' | 'paste' 
   } else {
     await box.fill(code);
   }
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  // S2 polish Q-L5: the sixth digit signs in by itself (typed or pasted), so there is no Sign in to tap: a tap
+  // after it could land on the next screen once the sign-in has gone through.
 }
 
 export async function signIn(phone: Phone): Promise<void> {
@@ -109,7 +110,8 @@ export const balanceRegion = (page: Page) => page.getByRole('region', { name: 'B
 export const quickAddBox = (page: Page) => page.getByRole('textbox', { name: 'Quick add' });
 export const todayList = (page: Page) => page.getByRole('list', { name: 'Today' });
 export const savedStatus = (page: Page) => page.getByRole('status').filter({ hasText: /^Saved/ });
-export const waitingToSync = (page: Page) => page.getByRole('status').filter({ hasText: /changes? waiting to sync/ });
+// S2 polish Q-L10: offline it reads "Offline · 1 waiting to sync" (one pill under the plank); online "3 changes waiting to sync".
+export const waitingToSync = (page: Page) => page.getByRole('status').filter({ hasText: /waiting to sync/ });
 
 export async function goHome(page: Page): Promise<void> {
   const tab = page.getByRole('tab', { name: 'Home' });

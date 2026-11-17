@@ -9,9 +9,8 @@ export const strings = {
     version: (version: string, commit: string) => `Version ${version} · ${commit.slice(0, 7)}`,
   },
   update: {
-    ready: 'Updated. Tap to refresh',
+    ready: 'A new version is ready',
     refresh: 'Refresh',
-    later: 'Later',
     offlineReady: 'Ready to work offline',
   },
   /** smsm open twice on one phone: only one window saves (src/data/windows.ts). */
@@ -86,7 +85,7 @@ export const strings = {
 
   signIn: {
     email: 'Email',
-    emailPlaceholder: 'you@example.com',
+    emailFirst: 'Type your email first',
     sendCode: 'Send code',
     sentTo: (email: string) => `We sent a 6-digit code to ${email}.`,
     code: 'Code',
@@ -97,6 +96,7 @@ export const strings = {
     wrongCode: 'That code didn’t work. Check the latest email and try again, or send a new code.',
     tooMany: 'Too many tries for now. Wait a few minutes, then send a new code.',
     badEmail: 'That doesn’t look like an email address.',
+    closed: 'This email isn’t one of the two in this household. smsm is just for the two of you.',
     failed: 'Couldn’t send the code. Check the connection and try again.',
   },
   setup: {
@@ -131,7 +131,7 @@ export const strings = {
     owes: (debtor: string, creditor: string) => `${debtor} owes ${creditor} `,
     nextOneOn: (name: string) => `Next one’s on ${name}`,
     settleUp: 'Settle up',
-    offline: 'offline',
+    offline: 'Offline',
     waiting: 'Waiting for your partner…',
     waitingLine: 'Adding works now. It’s shared between you once they join.',
     shareInvite: 'Share invite',
@@ -160,6 +160,7 @@ export const strings = {
   },
   sync: {
     waiting: (n: number) => (n === 1 ? '1 change waiting to sync' : `${String(n)} changes waiting to sync`),
+    offlineWaiting: (n: number) => `Offline · ${String(n)} waiting to sync`,
     updating: 'Updating the app. Your changes sync after.',
     problem: (label: string, message: string) => `${label} wasn’t saved. ${message}`,
     /** Why the server said no to a waiting change (src/data/problems.ts RefusalReason). */
@@ -337,11 +338,11 @@ export const strings = {
     askedName: (who: string, name: string) => `${who} asked to change their name to ${name}`,
     askedAnimal: (who: string, animal: 'cat' | 'dog') => `${who} asked to be the ${animal}`,
     askedBoth: (who: string, name: string, animal: 'cat' | 'dog') => `${who} asked to change their name to ${name} and be the ${animal}`,
-    askedSplit: (who: string, split: string) => `${who} asked to make the usual split ${split}`,
+    askedSplit: (who: string, split: string) => `${who} would like new entries split ${split}`,
     youAskedName: (name: string) => `You asked to change your name to ${name}.`,
     youAskedAnimal: (animal: 'cat' | 'dog') => `You asked to be the ${animal}.`,
     youAskedBoth: (name: string, animal: 'cat' | 'dog') => `You asked to change your name to ${name} and be the ${animal}.`,
-    youAskedSplit: (split: string) => `You asked to make the usual split ${split}.`,
+    youAskedSplit: (split: string) => `You asked for new entries to be split ${split}.`,
     paying: 'Paying each other',
     monzo: 'monzo.me name',
     monzoHint: (partner: string) => `So ${partner} can pay you from Monzo with the amount filled in.`,
@@ -351,7 +352,7 @@ export const strings = {
     changeSplit: 'Ask to change it',
     splitTitle: 'The usual split',
     splitRequestLine: (partner: string) => `${partner} approves it before new entries use it.`,
-    splitWords: (a: string, ap: number, b: string, bp: number) => `${a} ${String(ap)}%, ${b} ${String(bp)}%`,
+    splitWords: (a: string, ap: number, b: string, bp: number) => `${a} ${String(ap)} · ${b} ${String(bp)}`,
     invite: 'Invite your partner',
     inviteLine: 'They sign in, tap Join with a code, and type this.',
     shareInvite: 'Share invite',

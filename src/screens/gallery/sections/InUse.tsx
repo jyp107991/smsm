@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { demoHousehold, JAE } from '../../../../tests/fixtures/household';
 import { formatDay, todayIn } from '../../../core/dates';
 import { formatPence, pence } from '../../../core/money';
+import { PreviewLinks } from '../Previews';
 import { AddSheetExample } from './AddSheet';
 import { Section } from './Section';
 
@@ -38,6 +39,11 @@ export function InUseSection({ head }: { head?: Slot }) {
 
   return (
     <Section id="g-inuse" title="On the page" ask="A week of Jae and Sam’s spending, the add sheet and last month’s recap.">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-subtitle m-0">Other screens</h3>
+        <PreviewLinks />
+      </div>
+
       <div className="bg-paper rounded-[20px] px-4 py-2">
         {days.map((d) => (
           <div key={d}>

@@ -15,12 +15,3 @@ export function Section({ id, title, ask, children }: { id: string; title: strin
     </section>
   );
 }
-
-/** An option's letter, set large in the margin like a ledger's column mark. */
-export function OptionMark({ letter }: { letter: string }) {
-  return (
-    <span aria-hidden="true" className="text-title text-walnut w-6 shrink-0">
-      {letter}
-    </span>
-  );
-}

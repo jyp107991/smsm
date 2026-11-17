@@ -14,6 +14,11 @@ export interface ButtonProps extends ComponentPropsWithRef<'button'> {
   icon?: LucideIcon;
   /** Stretch to the width of the container. */
   block?: boolean;
+  /**
+   * A text button (quiet, destructive) that starts a line: its words sit on the page margin, not indented
+   * by its padding, while the press area still reaches out round them (Q-L11: Delete, Sign out).
+   */
+  leading?: boolean;
   children: ReactNode;
 }
 
@@ -28,7 +33,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
  * The app's button (DESIGN §3.3: fully rounded; at least 44 px tall). A button says what it does
  * ("Save"); its toast says it did it ("Saved").
  */
-export function Button({ variant = 'primary', loading = false, icon: Icon, block = false, className, children, type = 'button', disabled, onClick, ...rest }: ButtonProps) {
+export function Button({ variant = 'primary', loading = false, icon: Icon, block = false, leading = false, className, children, type = 'button', disabled, onClick, ...rest }: ButtonProps) {
   return (
     <button
       type={type}
@@ -40,9 +45,10 @@ export function Button({ variant = 'primary', loading = false, icon: Icon, block
       // preventDefault also stops a submit button sending its form twice (a duplicate save).
       onClick={loading ? (e) => { e.preventDefault(); } : onClick}
       className={cx(
-        'relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-5 py-2.5',
+        'relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full py-2.5',
+        leading ? '-ml-3 px-3' : 'px-5',
         'text-body font-semibold select-none',
-        'transition-transform duration-150 active:scale-[0.98] disabled:opacity-50 aria-disabled:active:scale-100',
+        'press active:scale-[0.98] disabled:opacity-50 aria-disabled:active:scale-100',
         'forced-colors:border forced-colors:border-[ButtonText]',
         VARIANTS[variant],
         block && 'w-full',

@@ -1,6 +1,7 @@
 import { lazy, Suspense, use } from 'react';
 import { Shell } from './screens/shell/Shell';
 import { UpdatePrompt } from './ui/UpdatePrompt';
+import { ToastProvider } from './ui/primitives';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { createAppDataLayer, DataProvider, type DataLayer } from './data';
 import { Root } from './screens/AppRoot';
@@ -33,16 +34,19 @@ export function App() {
   if (!onGallery) installHistory();
   return (
     <ErrorBoundary>
-      {onGallery ? (
-        <Suspense fallback={null}>
-          <Gallery />
-        </Suspense>
-      ) : (
-        <Suspense fallback={<div className="min-h-dvh" />}>
-          <Started />
-        </Suspense>
-      )}
-      <UpdatePrompt />
+      {/* One toast system for the page: the update prompt and the screens' toasts share its one slot (Q-L1). */}
+      <ToastProvider>
+        {onGallery ? (
+          <Suspense fallback={null}>
+            <Gallery />
+          </Suspense>
+        ) : (
+          <Suspense fallback={<div className="min-h-dvh" />}>
+            <Started />
+          </Suspense>
+        )}
+        <UpdatePrompt />
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

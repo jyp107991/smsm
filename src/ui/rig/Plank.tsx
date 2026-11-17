@@ -3,6 +3,10 @@
  * riding its ends. It tilts toward whoever is owed (their end rises), in proportion to the balance,
  * and re-levels with a spring. Under reduced motion it shows its tilt without animating.
  * The sentence beneath it carries the meaning; the plank is the picture of it.
+ *
+ * Staging (S2 polish Q-L8): the fulcrum is drawn like the animals (the rig's ink outline, rounded joins) and
+ * stands on a quiet ground; the beam is inset to 86 % of the width, so the animals sit inside the column.
+ * Its parts are named like the animals' (`data-part`): `fulcrum`, `ground`.
  */
 import { motion as m } from 'motion/react';
 import { Animal, type AnimalKind, type Mood } from './Animal';
@@ -25,6 +29,8 @@ export interface PlankProps {
   together?: boolean;
   /** The all-square moment: both hop once (nothing under reduced motion). */
   hop?: boolean;
+  /** Called when the beam comes to rest after a change of tilt (not under reduced motion, where it doesn't swing). */
+  onRest?: (tilt: number) => void;
 }
 
 /** Each animal's size on the plank, in px. Fixed, so the plank never changes height. */
@@ -46,7 +52,7 @@ function Beam() {
   );
 }
 
-export function Plank({ left, right, leftNetPence, motion = true, together = false, hop = false }: PlankProps) {
+export function Plank({ left, right, leftNetPence, motion = true, together = false, hop = false, onRest }: PlankProps) {
   const reduced = usePrefersReducedMotion();
   const tilt = plankTilt(leftNetPence);
   const label = strings.rig.plank(strings.rig.kind[left.kind], strings.rig.kind[right.kind], tilt > 0 ? 'left' : tilt < 0 ? 'right' : 'level');
@@ -69,11 +75,25 @@ export function Plank({ left, right, leftNetPence, motion = true, together = fal
 
   return (
     <div className="rig-plank" role="img" aria-label={label}>
+      <svg className="rig-plank-ground" viewBox="0 0 160 12" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <ellipse data-part="ground" cx="80" cy="6" rx="80" ry="6" className="rig-plank-earth" />
+      </svg>
       <svg className="rig-plank-pivot" viewBox="0 0 56 38" aria-hidden="true" focusable="false">
-        <path d="M28 3C30 3 31.4 4.2 32.4 6L50 33C51.4 35.4 50.2 37 47.6 37H8.4C5.8 37 4.6 35.4 6 33L23.6 6C24.6 4.2 26 3 28 3Z" className="rig-plank-oak rig-plank-o" />
+        <g data-part="fulcrum">
+          <path d="M28 3C30 3 31.4 4.2 32.4 6L50 33C51.4 35.4 50.2 37 47.6 37H8.4C5.8 37 4.6 35.4 6 33L23.6 6C24.6 4.2 26 3 28 3Z" className="rig-plank-oak rig-plank-o" />
+          {/* A peg through the top, where the beam turns. */}
+          <circle cx="28" cy="10.5" r="2.6" className="rig-plank-peg" />
+        </g>
       </svg>
       {motion && !reduced ? (
-        <m.div className="rig-plank-beam" data-tilt={tilt} initial={false} animate={{ rotate: tilt }} transition={SPRING}>
+        <m.div
+          className="rig-plank-beam"
+          data-tilt={tilt}
+          initial={false}
+          animate={{ rotate: tilt }}
+          transition={SPRING}
+          onAnimationComplete={() => { onRest?.(tilt); }}
+        >
           {seats}
         </m.div>
       ) : (

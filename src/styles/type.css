@@ -226,8 +226,10 @@
     --leading-sentence: 1.25;
     --size-amount: 2.125rem; /* one step above the sentence it sits in */
     --leading-amount: 1.1;
-    --size-title: 1.5rem;
+    --size-title: 1.5rem; /* screen titles: one token, larger than any section heading (Q-L7) */
     --leading-title: 1.25;
+    --size-heading: 1.25rem; /* section headings, under the screen title and the balance sentence */
+    --leading-heading: 1.3;
     --size-body: 1.0625rem;
     --leading-body: 1.5;
     --size-secondary: 0.9375rem;
@@ -254,7 +256,7 @@
   font-weight: var(--weight-amount);
 }
 
-/* Screen and section titles: the display voice at its written weight, not a bold interface label. */
+/* Screen titles (and a sheet's title): the display voice at its written weight, not a bold interface label. */
 @utility text-title {
   font-family: var(--font-display);
   font-size: var(--size-title);
@@ -262,11 +264,14 @@
   font-weight: var(--weight-title);
 }
 
-/* A page's section heading: the title voice at the sentence's size, so a section opens like a new page. */
+/*
+ * A page's section heading: the title voice one step below the screen title (S2 polish Q-L7), so the
+ * order always reads balance sentence > screen title > section heading > small heading.
+ */
 @utility text-heading {
   font-family: var(--font-display);
-  font-size: var(--size-sentence);
-  line-height: var(--leading-title);
+  font-size: var(--size-heading);
+  line-height: var(--leading-heading);
   font-weight: var(--weight-title);
 }
 

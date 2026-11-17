@@ -1,13 +1,19 @@
-/** The S0 design gallery (DESIGN §7). Demo build only; the owner chooses the mark and the type here and confirms the palette. */
+/**
+ * The design gallery (DESIGN §7). Demo build only. The owner's choices are made (DECISIONS, 17 Nov: mark C,
+ * letters A, bottle green), so it shows what was chosen, not the options: the palette, the plank, the two
+ * animals and the screens on the page, with previews of the screens the demo can't reach (Previews.tsx).
+ */
 import { ColourSection } from './sections/Colour';
 import { InUseSection } from './sections/InUse';
-import { TypeSection } from './sections/Type';
-import { LogoSection, PlankSection, RigSection } from './sections/Look';
+import { PlankSection, RigSection } from './sections/Look';
+import { PreviewPage, previewOf } from './Previews';
 import { Animal } from '../../ui/rig/Animal';
 import { Logo } from '../../ui/Logo';
 import { JAE } from '../../../tests/fixtures/household';
 
 export default function Gallery() {
+  const preview = previewOf(location.pathname);
+  if (preview) return <PreviewPage slug={preview} />;
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-14 px-5 pt-10 pb-16">
       <header className="flex flex-col gap-4">
@@ -15,10 +21,8 @@ export default function Gallery() {
           <Logo size={44} />
           <h1 className="text-wordmark m-0 text-[2.25rem] leading-none">smsm</h1>
         </div>
-        <p className="text-note m-0 max-w-[34ch]">Three things to choose: the mark, the letters and the fifth colour. The rest is here to look at.</p>
+        <p className="text-note m-0 max-w-[34ch]">How smsm looks, by day and by night.</p>
       </header>
-      <LogoSection />
-      <TypeSection />
       <ColourSection />
       <PlankSection />
       <RigSection />
