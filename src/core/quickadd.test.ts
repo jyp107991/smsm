@@ -121,7 +121,7 @@ describe('parseQuickAdd', () => {
         let n = 0;
         const shouted = phrase
           .split(' ')
-          .map((w) => (words.includes(w) ? [...w].map((c) => ((flips[n++ % flips.length] ?? false) ? c.toUpperCase() : c)).join('') : w))
+          .map((w) => (words.includes(w) ? Array.from(w, (c) => ((flips[n++ % flips.length] ?? false) ? c.toUpperCase() : c)).join('') : w))
           .join(' ');
         expect(parseQuickAdd(shouted, CTX)).toEqual(parseQuickAdd(phrase, CTX));
       }),

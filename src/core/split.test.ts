@@ -234,7 +234,10 @@ describe('validateEntry', () => {
     if (v.valid) expect(errors).toEqual([]);
     else {
       expect(errors.length).toBeGreaterThan(0);
-      for (const e of errors) expect(typeof e).toBe('string');
+      for (const e of errors) {
+        expect(typeof e).toBe('string');
+        expect(e.trim().length).toBeGreaterThan(0); // a reason a person or a log can read
+      }
     }
   });
 

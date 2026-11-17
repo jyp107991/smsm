@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * REC-2: the phone's recurring dates must be the database's. post_due_recurring
  * (supabase/migrations/20261116000100_hardening.sql) posts occurrence k on

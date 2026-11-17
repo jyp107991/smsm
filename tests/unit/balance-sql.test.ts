@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * BAL-1: one pure function (src/core/balance.ts) and the member_net view must agree. This builds a scratch
  * database from tests/sql/auth_stub.sql and every supabase/migrations/*.sql in order, creates random households

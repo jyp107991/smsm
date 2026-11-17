@@ -93,7 +93,7 @@ describe('matches', () => {
 
   it('TXT-3 any run of whole words matches, typed in any case or width, in any script', () => {
     const word = fc.oneof(
-      fc.string({ unit: fc.constantFrom(...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), minLength: 1, maxLength: 8 }),
+      fc.string({ unit: fc.constantFrom(...Array.from('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')), minLength: 1, maxLength: 8 }),
       fc.string({ unit: fc.constantFrom('이', '마', '트', '강', '남', '점', '김', '밥'), minLength: 1, maxLength: 4 }),
       fc.string({ unit: fc.constantFrom('セ', 'ブ', 'ン', 'ラ', 'ー', 'メ', '京', '都'), minLength: 1, maxLength: 4 }),
     );
