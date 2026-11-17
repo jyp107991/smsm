@@ -3,11 +3,12 @@
  * the live reading as a button ("£42.50 · Tesco · Groceries · Jae paid · 50/50") that opens the full form
  * prefilled. Enter during composition (Hangul) never saves. A reading that isn't clear opens the form instead.
  */
-import { useMemo, useState, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FocusEvent, type SyntheticEvent } from 'react';
 import { formatPlainPounds } from '../../core/money';
 import {
   addExpense, deleteExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus,
 } from '../../data';
+import { registerFocusFallback } from '../../ui/focus';
 import { tickSaved } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
 import { useToast } from '../../ui/primitives';
@@ -19,7 +20,12 @@ import { usePeople } from '../shared/people';
 import { readingWords, readQuickAdd, type Reading } from '../shared/suggest';
 import { useSheets } from '../sheets';
 
-export function QuickAdd() {
+/**
+ * `onInUse` hears when the person is in quick add (the box or its reading has focus, so on a phone the
+ * keyboard is up): Home moves the add button out of the way meanwhile, so it never covers what is being
+ * typed or its reading (320 px phones). The reading opens the full form, so nothing is lost.
+ */
+export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
   const layer = useDataLayer();
   const toast = useToast();
   const sheets = useSheets();
@@ -29,6 +35,11 @@ export function QuickAdd() {
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const [text, setText] = useState('');
+  const box = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { onInUse?.(focused); }, [focused, onInUse]);
+  // A sheet whose opener has gone (the reading, as it opens the form) gives focus back to this box.
+  useEffect(() => (box.current ? registerFocusFallback(box.current) : undefined), []);
   const { otherWindow } = useSyncStatus();
   const today = layer.today();
   const me = people.me;
@@ -93,9 +104,18 @@ export function QuickAdd() {
   };
 
   return (
-    <form onSubmit={save} className="flex flex-col gap-1.5" autoComplete="off">
+    <form
+      onSubmit={save}
+      onFocus={() => { setFocused(true); }}
+      onBlur={(e: FocusEvent<HTMLFormElement>) => {
+        if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) setFocused(false);
+      }}
+      className="flex flex-col gap-1.5"
+      autoComplete="off"
+    >
       <div className="bg-sunk focus-within:outline-forest flex min-h-14 items-center rounded-[12px] px-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-solid">
         <input
+          ref={box}
           type="text"
           aria-label={strings.home.quickAdd}
           disabled={otherWindow}

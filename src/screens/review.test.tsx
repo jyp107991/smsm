@@ -16,7 +16,10 @@ import { savePending } from './settle/monzo';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let open: DataLayer | null = null;
-beforeEach(() => {
+beforeEach(async () => {
+  // A sheet the last test left closing takes its history entry back a moment later (a deferred step, then
+  // an asynchronous history.go): let that land first, or its popstate would move this test's page.
+  await new Promise((resolve) => setTimeout(resolve, 50));
   history.replaceState(null, '', '/');
   resetHistoryForTests();
   sessionStorage.clear();
@@ -98,6 +101,11 @@ describe('settling up', () => {
     expect(within(samSheet).queryByText(/more than/)).toBeNull();
     fireEvent.change(amount, { target: { value: '30' } });
     expect(within(samSheet).getByText('That’s more than the £20.00 Sam owes Jae.')).toBeTruthy();
+    // A quiet line, not a block: it is no alert, and the amount can still be recorded.
+    expect(within(samSheet).queryByRole('alert')).toBeNull();
+    fireEvent.click(within(samSheet).getByRole('button', { name: 'Record it' }));
+    await settle(owes.layer);
+    expect(owes.controls.tables.settlements).toMatchObject([{ from_user: SAM_ID, to_user: JAE_ID, amount_pence: 3000 }]);
   });
 
   it('SET-2: "Did it go through?" says what Yes will do, without claiming it is already recorded', async () => {

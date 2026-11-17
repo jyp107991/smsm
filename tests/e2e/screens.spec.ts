@@ -52,6 +52,8 @@ test.describe('the S2 screens', () => {
         await expect(page.getByRole('button', { name: /^£42\.50 · tesco · Groceries · Jae paid · / })).toBeVisible();
         await check(page, 'Home with a reading');
         await page.getByRole('textbox', { name: 'Quick add' }).fill('');
+        // Done with quick add (the add button steps aside while it has focus).
+        await page.getByRole('heading', { name: 'Today' }).click();
 
         await page.getByRole('button', { name: 'Add expense', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Add expense' });
@@ -235,5 +237,167 @@ test.describe('the daily loop in the demo', () => {
     await page.waitForTimeout(200);
     await page.goBack();
     await expect(balance(page)).toBeVisible();
+  });
+});
+
+/** True when the two boxes share any area. */
+function overlaps(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+test.describe('the screens review: focus, the add button, chips', () => {
+  test.use({ viewport: { width: 390, height: 800 } });
+
+  test('focus returns to whatever opened a sheet when it closes: Escape, Close, back, Save', async ({ page }) => {
+    await home(page);
+    const add = page.getByRole('button', { name: 'Add expense', exact: true });
+    const sheet = page.getByRole('dialog', { name: 'Add expense' });
+
+    await add.focus();
+    await add.press('Enter');
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(add).toBeFocused();
+
+    await add.click();
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('button', { name: 'Close' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(add).toBeFocused();
+
+    await add.click();
+    await expect(sheet).toBeVisible();
+    await page.goBack();
+    await expect(sheet).toBeHidden();
+    await expect(add).toBeFocused();
+
+    await add.click();
+    await sheet.getByRole('textbox', { name: 'Amount' }).fill('3');
+    await sheet.getByRole('textbox', { name: 'Description' }).fill('Milk');
+    await sheet.getByRole('button', { name: 'Save' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(add).toBeFocused();
+
+    const settle = balance(page).getByRole('button', { name: 'Settle up' });
+    await settle.click();
+    await expect(page.getByRole('dialog', { name: 'Settle up' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Settle up' })).toBeHidden();
+    await expect(settle).toBeFocused();
+  });
+
+  test('a sheet opened from the quick-add reading (which goes as it opens) returns focus to the Quick add box', async ({ page }) => {
+    await home(page);
+    const box = page.getByRole('textbox', { name: 'Quick add' });
+    await box.fill('12 coffee');
+    await page.getByRole('button', { name: /^£12\.00 · coffee/ }).click();
+    const sheet = page.getByRole('dialog', { name: 'Add expense' });
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(box).toBeFocused();
+  });
+
+  test('ADD-7: back closes the "Same as last time" menu (staying on Home); focus goes back to Add expense', async ({ page }) => {
+    await home(page);
+    await page.getByRole('textbox', { name: 'Quick add' }).fill('4 Bakery');
+    await page.getByRole('textbox', { name: 'Quick add' }).press('Enter');
+    await expect(page.getByRole('list', { name: 'Today' }).getByText('Bakery')).toBeVisible();
+    await page.getByRole('heading', { name: 'Today' }).click();
+    const add = page.getByRole('button', { name: 'Add expense', exact: true });
+    const menu = page.getByRole('menu', { name: 'Add' });
+    const longPress = async () => {
+      await add.hover();
+      await page.mouse.down();
+      await page.waitForTimeout(800);
+      await page.mouse.up();
+      await expect(menu).toBeVisible();
+    };
+
+    await longPress();
+    await page.goBack();
+    await expect(menu).toBeHidden();
+    await expect(balance(page)).toBeVisible();
+    await expect(add).toBeFocused();
+
+    await longPress();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(add).toBeFocused();
+
+    // The menu item goes as the sheet opens; closing the sheet comes back to Add expense.
+    await longPress();
+    await page.getByRole('menuitem', { name: 'Same as last time' }).click();
+    const same = page.getByRole('dialog', { name: 'Add expense' });
+    await expect(same).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(same).toBeHidden();
+    await expect(add).toBeFocused();
+  });
+
+  test('at 320×640 Add expense never covers Quick add while it is in use, and the Saved toast never covers Add expense', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await home(page);
+    const box = page.getByRole('textbox', { name: 'Quick add' });
+    const add = page.getByRole('button', { name: 'Add expense', exact: true });
+    const boxRect = await box.locator('..').boundingBox();
+    expect(boxRect).not.toBeNull();
+    const notCovered = async (when: string) => {
+      await expect.poll(async () => {
+        if (!(await add.isVisible())) return false;
+        const addRect = await add.boundingBox();
+        return addRect !== null && boxRect !== null && overlaps(addRect, boxRect);
+      }, { message: `Add expense covers Quick add ${when}` }).toBe(false);
+    };
+    await box.click();
+    await expect(box).toBeFocused();
+    await notCovered('as it is tapped');
+    await box.pressSequentially('5 gum');
+    await notCovered('while typing');
+    await box.press('Enter');
+    const saved = page.getByRole('status').filter({ hasText: /^Saved/ });
+    await expect(saved).toBeVisible();
+    // Done typing: the button is back, and the toast sits clear of it.
+    await page.getByRole('heading', { name: 'Today' }).click();
+    await expect(add).toBeVisible();
+    const addRect = await add.boundingBox();
+    const toastRect = await saved.getByRole('button', { name: 'Undo' }).locator('..').boundingBox();
+    expect(addRect !== null && toastRect !== null && overlaps(addRect, toastRect), 'the Saved toast covers Add expense').toBe(false);
+  });
+
+  test('category chips keep their size and place: unselected, selected, suggested; "Other" is never a tick and a dot', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await home(page);
+    await page.getByRole('button', { name: 'Add expense', exact: true }).click();
+    const sheet = page.getByRole('dialog', { name: 'Add expense' });
+    await expect(sheet).toBeVisible();
+    await page.waitForTimeout(450);
+    const chips = sheet.getByRole('group', { name: 'Category' }).getByRole('button');
+    const boxes = () => chips.evaluateAll((els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width) };
+    }));
+    const start = await boxes();
+    expect(start.length).toBeGreaterThan(3);
+
+    const other = chips.filter({ hasText: 'Other' });
+    await expect(other).toHaveAttribute('aria-pressed', 'true');
+    expect((await other.innerText()).includes('•'), 'Other reads as a tick and a dot').toBe(false);
+
+    // Typing a description moves the guess (and the selection) to Groceries, letter by letter.
+    const description = sheet.getByRole('textbox', { name: 'Description' });
+    for (const typed of ['t', 'te', 'tes', 'tesc', 'tesco']) {
+      await description.fill(typed);
+      expect(await boxes(), `after "${typed}"`).toEqual(start);
+    }
+    const groceries = chips.filter({ hasText: 'Groceries' });
+    await expect(groceries).toHaveAttribute('aria-pressed', 'true');
+    await expect(groceries).toContainText('Suggested');
+    // Picking another by hand: still nothing moves.
+    await chips.filter({ hasText: 'Transport' }).click();
+    await expect(chips.filter({ hasText: 'Transport' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await boxes()).toEqual(start);
   });
 });

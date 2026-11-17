@@ -105,6 +105,21 @@ describe('TXT-7 interface strings', () => {
     expect(findings.map((f) => `${f.file}:${String(f.line)} ${f.text}`)).toEqual([]);
   });
 
+  it('TXT-7: src/core and src/data word nothing for the screen: they return codes and classes, which the screens word', () => {
+    // The one exception: the store's refused() list (its tested contract, OFF-5) carries the plain words for
+    // each refusal reason; the screens themselves word problems from `reason`, never from that text.
+    const ALLOWED = new Set(['src/data/problems.ts']);
+    const importers: string[] = [];
+    for (const root of ['src/core', 'src/data']) {
+      for (const rel of fs.readdirSync(root, { recursive: true })) {
+        const path = `${root}/${rel.replace(/\\/g, '/')}`;
+        if (!/\.tsx?$/.test(path) || /\.test\.tsx?$/.test(path)) continue;
+        if (/from '\.\.\/ui\/strings'/.test(fs.readFileSync(path, 'utf8')) && !ALLOWED.has(path)) importers.push(path);
+      }
+    }
+    expect(importers).toEqual([]);
+  });
+
   it('TXT-7: src/ui/strings.ts exports the strings object', () => {
     expect(typeof strings).toBe('object');
     expect(Object.keys(strings).length).toBeGreaterThan(0);

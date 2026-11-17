@@ -10,7 +10,6 @@
  * Without the Web Locks API (browsers before 2022) there is no way to coordinate windows; the window works
  * as the only one, as it did before (DECISIONS).
  */
-import { strings } from '../ui/strings';
 
 export const QUEUE_LOCK = 'smsm-queue';
 
@@ -26,10 +25,10 @@ export interface QueueLocks {
 /** 'opening' until the lock has answered (milliseconds); then this window owns the queue or follows. */
 export type WindowRole = 'opening' | 'owner' | 'follower';
 
-/** A money write was tried in a window that doesn't own the queue. */
+/** A money write was tried in a window that doesn't own the queue (the screens word it: strings.windows). */
 export class OtherWindowError extends Error {
   constructor() {
-    super(strings.windows.otherWindow);
+    super('another window owns the write queue');
     this.name = 'OtherWindowError';
   }
 }

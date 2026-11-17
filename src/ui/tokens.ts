@@ -88,6 +88,11 @@ export const CATEGORY_COLOURS: Record<CategoryColourName, ThemeColour> = {
 
 export const CATEGORY_COLOUR_NAMES = Object.keys(CATEGORY_COLOURS) as CategoryColourName[];
 
+/** A category row's colour as a token name; one the app doesn't know (a newer version's) shows as stone. */
+export function categoryColour(name: string): CategoryColourName {
+  return (CATEGORY_COLOUR_NAMES as readonly string[]).includes(name) ? (name as CategoryColourName) : 'stone';
+}
+
 export type PairUse = 'text' | 'large-text' | 'graphic';
 
 /** The AA threshold for each use (WCAG 2: 1.4.3 and 1.4.11). */
