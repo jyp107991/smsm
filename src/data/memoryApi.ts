@@ -11,7 +11,7 @@ import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type Use
 import {
   ApiError,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
-  type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
+  type ChapterRow, type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
 } from './api';
 import type { Json } from './database.types';
 
@@ -27,6 +27,8 @@ export interface MemoryTables {
   /** S3: regular payments and the Inbox. */
   recurring: RecurringRow[];
   inboxItems: InboxItemRow[];
+  /** S4a: chapters (trips and projects). */
+  chapters: ChapterRow[];
   minClientVersion: string | null;
 }
 
@@ -105,6 +107,7 @@ export function createMemoryApi(
     categoryMemory: clone(seed.categoryMemory ?? []),
     recurring: clone(seed.recurring ?? []),
     inboxItems: clone(seed.inboxItems ?? []),
+    chapters: clone(seed.chapters ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
   /** The server's UK date (DAT-2: post_due_recurring posts by London's date). */
@@ -326,12 +329,15 @@ export function createMemoryApi(
     upsertExpense: (row: ExpenseWrite) =>
       call('upsertExpense', row, () =>
         writeRow(tables.expenses, row, 'expense', (w) => ({
-          items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
-          fx_rate: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
+          items: null, bill_total_pence: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
           created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
         }), (r) => {
           checkMoney(r);
+          // check_entry_chapter (migration 9): an entry's chapter is one of its own household's.
+          if (r.chapter_id !== null && !tables.chapters.some((c) => c.id === r.chapter_id && c.household_id === r.household_id)) {
+            refuse('that chapter is not one of yours', '23503');
+          }
           if (r.recurring_id !== null && tables.expenses.some((e) => e.id !== r.id && e.recurring_id === r.recurring_id && e.occurrence_date === r.occurrence_date)) {
             refuse('duplicate key value violates unique constraint "expenses_occurrence"', '23505');
           }
@@ -460,6 +466,29 @@ export function createMemoryApi(
         const next: InboxItemRow = { ...existing, ...patch, updated_at: now().toISOString() };
         tables.inboxItems[i] = next;
         log('inbox_item', id, 'edited', diff(existing, next), next.household_id);
+        return next;
+      }),
+    chapters: (hid) => call('chapters', hid, () => mine(tables.chapters).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))),
+    upsertChapter: (row, columns) =>
+      call('upsertChapter', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        const name = row.name.trim();
+        if (name.length < 1 || name.length > 40) refuse('new row violates check constraint "chapters_name_check"', '23514');
+        if (row.end_date !== null && row.start_date !== null && row.end_date < row.start_date) refuse('new row violates check constraint "chapters_check"', '23514');
+        const i = tables.chapters.findIndex((r) => r.id === row.id);
+        const existing = i === -1 ? undefined : tables.chapters[i];
+        if (existing && existing.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        const stamp = now().toISOString();
+        const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<ChapterRow> : row;
+        const next: ChapterRow = existing
+          ? { ...existing, ...sent, updated_at: stamp }
+          : { created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
+        if (existing) tables.chapters[i] = next;
+        else tables.chapters.push(next);
+        // As log_activity: an edit that changes nothing is not logged.
+        const changes = existing ? diff(existing, next) : null;
+        if (!existing) log('chapter', next.id, 'created', { after: next as unknown as Json }, next.household_id);
+        else if (changes && Object.keys(changes as object).length > 0) log('chapter', next.id, 'edited', changes, next.household_id);
         return next;
       }),
     upsertCategory: (row) =>

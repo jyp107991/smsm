@@ -13,14 +13,15 @@ import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
-import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
+import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
 import type { DataLayer } from './queryClient';
 import { OtherWindowError } from './windows';
+import { locateWith, rateWith, setStoredCountry, setStoredUseLocation, storedCountry, storedUseLocation, type Located } from './places';
 import {
-  buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
+  buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, chapterWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
   newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
   type SettlementDraft,
 } from './writes';
@@ -166,8 +167,12 @@ function knownRow(layer: DataLayer, table: 'expenses' | 'settlements', id: strin
  * so it is recorded once. Without it a new id is made.
  */
 export function addExpense(input: ExpenseDraft & { id?: string }, layer = activeDataLayer()): string {
-  const { id, ...draft } = input;
+  const { id, ...given } = input;
   const ctx = context(layer);
+  // CHP-2: while a chapter is current on this phone, a new entry goes into it unless the person chose otherwise.
+  let draft: ExpenseDraft = given.chapterId === undefined ? { ...given, chapterId: currentOpenChapter(layer) } : given;
+  // PLC-3: and this phone's current country (an entry can always be set to another).
+  if (draft.country === undefined) draft = { ...draft, country: currentCountry(layer) };
   if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
   const built = expenseRowFor(ctx, draft);
   const row = id === undefined ? built.row : { ...built.row, id };
@@ -184,8 +189,10 @@ export function editExpense(id: string, patch: Partial<ExpenseDraft>, layer = ac
   const current = currentExpense(layer, id);
   const base = { opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: !current.onServer } as const;
   if (current.input) {
-    // The entry as the person entered it (still waiting, or kept to fix): rebuilt exactly from that.
-    layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...current.input, ...patch }, current.row) });
+    // The entry as the person entered it (still waiting, or kept to fix): rebuilt exactly from that. A new pounds
+    // amount with no new original drops the old one (it no longer describes the entry, PLC-6).
+    const stale = patch.amount !== undefined && patch.amount !== current.input.amount && patch.original === undefined;
+    layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...current.input, ...patch, ...(stale ? { original: null } : {}) }, current.row) });
     return;
   }
   if (!touchesMoney(patch)) {
@@ -443,12 +450,12 @@ export const CATEGORY_COLOURS = ['moss', 'amber', 'walnut', 'honey', 'slate', 'p
 export type CategoryColour = (typeof CATEGORY_COLOURS)[number];
 export interface CategoryDraft { name: string; emoji: string; colour: CategoryColour }
 
-type S3Table = 'recurring' | 'inbox_items' | 'categories';
+type S3Table = 'recurring' | 'inbox_items' | 'categories' | 'chapters';
 
 /** The rows of a table as this phone shows them: the stored copy with every waiting change on top. */
 function shown<R extends { id: string }>(layer: DataLayer, table: S3Table): R[] {
   const uid = layer.me() ?? '';
-  const key = table === 'recurring' ? keys.recurring(uid) : table === 'inbox_items' ? keys.inbox(uid) : keys.categories(uid);
+  const key = table === 'recurring' ? keys.recurring(uid) : table === 'inbox_items' ? keys.inbox(uid) : table === 'chapters' ? keys.chapters(uid) : keys.categories(uid);
   return overlay(layer.client.getQueryData<R[]>(key) ?? [], layer.waiting(), table);
 }
 
@@ -600,4 +607,139 @@ export function reorderCategories(ids: readonly string[], layer = activeDataLaye
     const current = all.find((c) => c.id === id);
     if (current && current.sort !== i + 1) enqueueCategory(layer, ctx.uid, current, { ...current, sort: i + 1, updated_at: layer.now().toISOString() });
   });
+}
+
+// ───────── S4a: chapters (CHP-1…CHP-3) ─────────
+
+export interface ChapterDraft {
+  name: string; emoji: string; kind: 'trip' | 'project'; country: string | null; startDate: IsoDate | null; endDate: IsoDate | null;
+}
+
+/** Queues a chapter write; for an existing chapter only the columns that changed are sent (a stale phone never undoes the partner's edit). */
+function enqueueChapter(layer: DataLayer, uid: string, current: ChapterRow | undefined, next: ChapterRow): boolean {
+  const before = current ? chapterWrite(current) : null;
+  const after = chapterWrite(next);
+  const columns = before
+    ? (Object.keys(after) as (keyof ChapterWrite)[]).filter((k): k is ChapterColumn => k !== 'id' && k !== 'household_id' && !sameJson(before[k], after[k]))
+    : [];
+  if (before && columns.length === 0) return false;
+  layer.enqueue({ opId: newId(), by: uid, table: 'chapters', op: 'upsert', isNew: current === undefined, row: next, input: null, ...(before ? { columns } : {}) });
+  return true;
+}
+
+/** CHP-1: starts a chapter or (with an id) edits one; returns its id at once. Saved through the queue, offline too. */
+export function saveChapter(input: ChapterDraft & { id?: string }, layer = activeDataLayer()): string {
+  const { id, ...draft } = input;
+  const ctx = context(layer);
+  const reasons: InvalidReason[] = [];
+  const name = draft.name.trim();
+  if (name.length < 1 || name.length > 40) reasons.push('chapterName');
+  if ((draft.startDate !== null && !isIsoDate(draft.startDate)) || (draft.endDate !== null && !isIsoDate(draft.endDate))
+    || (draft.startDate !== null && draft.endDate !== null && draft.endDate < draft.startDate)) reasons.push('chapterDates');
+  if (reasons.length > 0) throw new EntryInvalidError(reasons);
+  const current = id === undefined ? undefined : shown<ChapterRow>(layer, 'chapters').find((c) => c.id === id);
+  const stamp = layer.now().toISOString();
+  const country = draft.kind === 'trip' && draft.country !== null && /^[A-Za-z]{2}$/.test(draft.country) ? draft.country.toUpperCase() : null;
+  const next: ChapterRow = {
+    id: id ?? newId(), household_id: ctx.hid, name, emoji: draft.emoji.trim() === '' ? (draft.kind === 'trip' ? '🧳' : '🌿') : draft.emoji.trim(),
+    kind: draft.kind, country, start_date: draft.startDate, end_date: draft.endDate, closed: current?.closed ?? false,
+    created_by: current?.created_by ?? ctx.uid, created_at: current?.created_at ?? stamp, updated_at: stamp,
+  };
+  enqueueChapter(layer, ctx.uid, current, next);
+  return next.id;
+}
+
+/** CHP-3: close a chapter when it is done (or reopen it). Never deleted. True when something changed. */
+export function closeChapter(id: string, closed = true, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const current = shown<ChapterRow>(layer, 'chapters').find((c) => c.id === id);
+  if (!current) throw new EntryNotFoundError(id);
+  const changed = enqueueChapter(layer, ctx.uid, current, { ...current, closed, updated_at: layer.now().toISOString() });
+  if (closed && currentChapterId() === id) setCurrentChapter(null);
+  return changed;
+}
+
+// CHP-2: the chapter new entries go into, per phone (each person sets their own; it never changes the other phone).
+const CURRENT_KEY = 'smsm-current-chapter';
+const currentListeners = new Set<() => void>();
+
+export function currentChapterId(): string | null {
+  try {
+    return localStorage.getItem(CURRENT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setCurrentChapter(id: string | null): void {
+  try {
+    if (id === null) localStorage.removeItem(CURRENT_KEY);
+    else localStorage.setItem(CURRENT_KEY, id);
+  } catch {
+    /* no storage: nothing is current */
+  }
+  for (const l of currentListeners) l();
+}
+
+export function subscribeCurrentChapter(cb: () => void): () => void {
+  currentListeners.add(cb);
+  const onStorage = (e: StorageEvent) => { if (e.key === CURRENT_KEY) cb(); };
+  window.addEventListener('storage', onStorage);
+  return () => { currentListeners.delete(cb); window.removeEventListener('storage', onStorage); };
+}
+
+/** The current chapter's id when it is still there and open, else null (a closed or gone chapter is never current). */
+export function currentOpenChapter(layer = activeDataLayer()): string | null {
+  const id = currentChapterId();
+  if (id === null) return null;
+  const c = shown<ChapterRow>(layer, 'chapters').find((x) => x.id === id);
+  return c && !c.closed ? id : null;
+}
+
+// ───────── S4b: where this phone is, and the day's rate (PLC-2, PLC-3, PLC-6) ─────────
+
+/** PLC-3: this phone's current country (the household's home country unless set). */
+export function currentCountry(layer = activeDataLayer()): string {
+  return storedCountry() ?? homeCountry(layer);
+}
+
+export function homeCountry(layer = activeDataLayer()): string {
+  return layer.household()?.home_country ?? 'GB';
+}
+
+/** PLC-3: "We're in Japan" (null or the home country: home). Per phone; never sent to the server. */
+export function setCurrentCountry(code: string | null, layer = activeDataLayer()): void {
+  setStoredCountry(code === null || code.toUpperCase() === homeCountry(layer) ? null : code);
+}
+
+/** PLC-2: use the phone's location for new entries and trip suggestions (per phone; off until turned on). */
+export function setUseLocation(on: boolean): void {
+  setStoredUseLocation(on);
+}
+
+/** PLC-2: lets the browser ask for location (only from the Settings switch). True when it was allowed. */
+export async function askLocation(layer = activeDataLayer()): Promise<boolean> {
+  try {
+    await layer.geo.position({ prompt: true, timeoutMs: 30000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * PLC-2: where the phone is now, rounded to about 100 m, with the country and town when online; null when location
+ * is off, not allowed, or slower than 4 s. `prompt` lets the browser ask (only when the person turns it on).
+ */
+export async function locate(opts: { prompt?: boolean; timeoutMs?: number } | DataLayer = {}, given?: DataLayer): Promise<Located | null> {
+  // `locate(layer)` as well as `locate(opts, layer)`.
+  const layer = given ?? ('client' in opts ? opts : activeDataLayer());
+  if ('client' in opts) opts = {};
+  if (!storedUseLocation() && opts.prompt !== true) return null;
+  return locateWith(layer.geo, { ...opts, online: layer.network.online });
+}
+
+/** PLC-6, OFF-4: the day's rate (pounds per unit) for a currency; offline, the last one known (`stale`). */
+export async function rateFor(currency: string, date?: string, layer = activeDataLayer()) {
+  return rateWith(layer.rates, currency.toUpperCase(), { online: layer.network.online, today: layer.today(), ...(date ? { date } : {}) });
 }

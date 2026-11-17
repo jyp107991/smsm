@@ -12,13 +12,14 @@
  */
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
-import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay } from '../../core/dates';
+import { currencyOf, currencySymbol } from '../../core/fx';
 import { formatPence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
-  useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
-  type RecurringRow,
+  currentCountry, currentOpenChapter, homeCountry, locate, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
+  type ChapterRow, type RecurringRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { enterMovesTo, enterSavesOnce } from '../../ui/keys';
@@ -35,6 +36,8 @@ import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
+import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
+import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
 import { RecurringHistory, Toggle } from './RecurringParts';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
@@ -72,6 +75,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
   const existing: ExpenseRow | undefined = request.mode === 'edit' ? (entries.find((e) => e.id === request.id) ?? request.row) : undefined;
   const templates = useRecurring().data;
+  const chapters = useChapters().data;
   const online = useOnline();
   // S3: the regular payment being edited (it stays the one opened, even as the list refreshes).
   const [template] = useState((): RecurringRow | undefined =>
@@ -84,7 +88,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     if (template) return formFromTemplate(template, pair, today);
     const split = defaultSplit({ remembered: null, category: undefined, householdRatio: household?.default_ratio, people: pair, me: me?.id ?? '' });
     const blank = blankForm({ me: me?.id ?? '', people: pair, today, split });
-    return { ...blank, categoryId: otherCategoryId(live), ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
+    // CHP-2: a new entry starts in this phone's current chapter (an Inbox bill never does, REC-4).
+    const chapterId = request.mode === 'add' && request.inboxItem === undefined ? currentOpenChapter() : null;
+    // PLC-3: and this phone's current country.
+    const country = currentCountry();
+    return { ...blank, categoryId: otherCategoryId(live), chapterId, country, ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
   });
   // S3 (REC-1): the schedule, when this is a regular payment ("Repeat" turns an expense into one).
   const [initialSchedule] = useState((): ScheduleState | null => {
@@ -95,6 +103,33 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
   const [s, setS] = useState<FormState>(initial);
+  // CHP-1: a chapter started from this form is chosen for this entry (one request object per opening).
+  const [newChapter, setNewChapter] = useState(false);
+  // PLC-2: with location on, a new entry dated today picks up the town and country when the sheet opens (never
+  // blocks saving; a place typed or removed meanwhile wins).
+  const home = useHousehold().data?.home_country ?? homeCountry();
+  const placeRef = useRef<HTMLInputElement>(null);
+  const placeTouched = useRef(false);
+  const capture = request.mode === 'add' && request.inboxItem === undefined && request.prefill?.place === undefined;
+  useEffect(() => {
+    if (!capture) return;
+    let live = true;
+    void locate().then((where) => {
+      if (!live || !where || placeTouched.current) return;
+      setS((prev) => {
+        if (prev.date !== today) return prev;
+        const country = where.country ?? prev.country;
+        // Another currency now: "Paid in" starts again for it (never a stale conversion out of sight).
+        const foreign = prev.foreign && currencyOf(country) !== prev.foreign.currency ? null : prev.foreign;
+        return { ...prev, lat: where.lat, lng: where.lng, place: where.place ?? prev.place ?? null, country, foreign };
+      });
+    });
+    return () => { live = false; };
+  }, [capture, today]);
+  const chapterEditing = useMemo<ChapterEditing>(
+    () => (newChapter ? { mode: 'new', onSaved: (chapterId) => { setS((prev) => ({ ...prev, chapterId })); } } : null),
+    [newChapter],
+  );
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
   const [pickingDate, setPickingDate] = useState(false);
@@ -137,7 +172,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const asked = (f: FormState, r: ScheduleState | null) => {
     const exact = f.splitMode === 'exact' ? f.exactText : null;
     return JSON.stringify(request.mode === 'edit' || template
-      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, r]
+      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, f.place ?? null, f.foreign ?? null, r]
       : [f.amountText, f.description, f.notes, exact, r === null ? null : r.everyText]);
   };
   const dirty = asked(s, rec) !== asked(initial, initialSchedule);
@@ -358,6 +393,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       <Field
         label={strings.entry.amount}
         variant="amount"
+        {...(s.foreign ? { symbol: currencySymbol(s.foreign.currency) } : {})}
         value={s.amountText}
         placeholder={strings.entry.amountPlaceholder}
         trailing={sum}
@@ -366,6 +402,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         enterKeyHint="next"
         autoFocus={request.mode !== 'edit'}
       />
+      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) ? (
+        <ForeignAmount s={s} home={home} setForm={(change) => { setS((prev) => followExact(change(prev))); setErrors([]); }} />
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <Field
@@ -466,6 +505,16 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         </>
       ) : null}
 
+      {/* REC-4: an Inbox bill or a posted regular payment is never in a chapter. */}
+      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) && !existing?.recurring_id ? (
+        <ChapterChoice
+          chapters={chapters ?? []}
+          value={s.chapterId ?? null}
+          onChange={(chapterId) => { update({ ...s, chapterId }); }}
+          onNew={() => { setNewChapter(true); }}
+        />
+      ) : null}
+
       {rec ? (
         <ScheduleFields
           rec={rec}
@@ -491,7 +540,29 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       </Group>
       )}
 
+      {!rec && s.place ? (
+        <PlaceRow
+          place={s.place}
+          onEdit={() => { setShowMore(true); requestAnimationFrame(() => { placeRef.current?.focus(); }); }}
+          onRemove={() => { placeTouched.current = true; update({ ...s, place: null, lat: null, lng: null }); }}
+        />
+      ) : null}
+
       <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
+        {!rec ? (
+          <Field
+            ref={placeRef}
+            label={strings.places.place}
+            hint={strings.places.placeHint}
+            value={s.place ?? ''}
+            autoComplete="off"
+            autoCapitalize="words"
+            maxLength={80}
+            className="mb-4"
+            // A typed place carries no position (PLC-1).
+            onChange={(e) => { placeTouched.current = true; update({ ...s, place: e.target.value, lat: null, lng: null }); }}
+          />
+        ) : null}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${formId}-notes`} className="text-secondary text-ink-2 font-medium">{strings.entry.notes}</label>
           <textarea
@@ -502,10 +573,16 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
+        {/* CHP-1: with no chapter open yet, one can be started from here (it is chosen for this entry). */}
+        {!rec && request.mode === 'add' && request.inboxItem === undefined && !(chapters ?? []).some((c) => !c.closed) ? (
+          <div className="mt-4">
+            <Button variant="plain" onClick={() => { setNewChapter(true); }}>{strings.chapters.start}</Button>
+          </div>
+        ) : null}
         {/* REC-1: an expense can become a regular payment, keeping what was typed. */}
         {request.mode === 'add' && request.inboxItem === undefined && !rec && !isBack ? (
           <div className="mt-4">
-            <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setErrors([]); }}>{strings.recurring.repeat}</Button>
+            <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setS((prev) => ({ ...prev, foreign: null })); setErrors([]); }}>{strings.recurring.repeat}</Button>
           </div>
         ) : null}
       </Disclosure>
@@ -534,6 +611,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       today={today}
       onPick={(date) => { update({ ...s, date }); }}
     />
+    <ChapterSheet editing={chapterEditing} onClose={() => { setNewChapter(false); }} />
     {rec ? (
       <DateSheet
         open={picking !== null}
@@ -576,6 +654,15 @@ function changedFields(from: ExpenseDraft, to: ExpenseDraft, splitTouched: boole
   if (splitTouched || !same(to.split, from.split)) out.split = to.split;
   if (!same(to.notes, from.notes)) out.notes = to.notes ?? null;
   if (!same(to.tags, from.tags)) out.tags = to.tags ?? [];
+  if (to.chapterId !== undefined && (to.chapterId ?? null) !== (from.chapterId ?? null)) out.chapterId = to.chapterId;
+  // PLC-1, PLC-2, PLC-6: the country, the place (with its position) and the original currency, when changed.
+  if (to.country !== undefined && to.country !== from.country) out.country = to.country;
+  if (to.place !== undefined && (to.place ?? null) !== (from.place ?? null)) {
+    out.place = to.place;
+    out.lat = to.lat ?? null;
+    out.lng = to.lng ?? null;
+  }
+  if (to.original !== undefined && !same(to.original, from.original)) out.original = to.original;
   return out;
 }
 
@@ -710,5 +797,34 @@ function EndsAndSwitches({ rec, today, onChange, onPick }: {
         <Toggle label={strings.recurring.subscription} on={rec.isSubscription} onChange={(isSubscription) => { onChange({ isSubscription }); }} />
       </div>
     </>
+  );
+}
+
+/**
+ * CHP-2: which chapter the entry is in: Everyday or an open chapter (and the entry's own, even if closed). Shown
+ * only when there is a chapter to choose; the current one is chosen for a new entry.
+ */
+function ChapterChoice({ chapters, value, onChange, onNew }: {
+  chapters: readonly ChapterRow[]; value: string | null; onChange: (id: string | null) => void; onNew: () => void;
+}) {
+  const options = chapters.filter((c) => !c.closed || c.id === value);
+  if (options.length === 0) return null;
+  return (
+    <Group label={strings.chapters.chapter}>
+      <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.chapters.chapter}>
+        <Chip selected={value === null} onSelectedChange={() => { onChange(null); }}>{strings.chapters.everyday}</Chip>
+        {options.map((c) => (
+          <Chip
+            key={c.id}
+            selected={value === c.id}
+            {...(c.emoji ? { icon: <span className="leading-none">{c.emoji}</span> } : {})}
+            onSelectedChange={() => { onChange(c.id); }}
+          >
+            {c.name}
+          </Chip>
+        ))}
+        <Chip aria-haspopup="dialog" onSelectedChange={onNew}>{strings.chapters.newChip}</Chip>
+      </div>
+    </Group>
   );
 }

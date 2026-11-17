@@ -23,6 +23,7 @@ export function createDemoLayer(now: Date = new Date()): DataLayer {
       settlements: seed.settlements,
       recurring: seed.recurring,
       inboxItems: seed.inboxItems,
+      chapters: seed.chapters,
     },
     { user, today: () => todayIn(now, 'Europe/London') },
   );

@@ -13,6 +13,8 @@ import { Activity } from './activity/Activity';
 import { Bills } from './bills/Bills';
 import { Inbox } from './bills/Inbox';
 import { Categories } from './settings/Categories';
+import { ChapterPage } from './chapters/ChapterPage';
+import { Chapters } from './chapters/Chapters';
 import { EntryPage } from './entry/EntryPage';
 import { EntrySheet } from './entry/EntrySheet';
 import { Home } from './home/Home';
@@ -91,6 +93,10 @@ function Page({ route }: { route: Route }) {
       return <Inbox />;
     case 'categories':
       return <Categories />;
+    case 'chapters':
+      return <Chapters />;
+    case 'chapter':
+      return <ChapterPage key={route.id} id={route.id} />;
   }
 }
 
@@ -115,7 +121,7 @@ function MainApp() {
   if (route.name !== 'entry' && tab !== lastTab) setLastTab(tab);
 
   // A new page starts at its top.
-  const path = route.name === 'entry' ? `entry:${route.id}` : route.name;
+  const path = route.name === 'entry' ? `entry:${route.id}` : route.name === 'chapter' ? `chapter:${route.id}` : route.name;
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [path]);

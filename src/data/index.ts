@@ -11,7 +11,7 @@ export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
   useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {
@@ -21,11 +21,14 @@ export {
   NAME_MAX, OtherWindowError, JOINT_MONEY_EDIT, SPLIT_AGAIN, type ChangeRequest,
   saveRecurring, pauseRecurring, resumeRecurring, endRecurring, keepInboxItem, dismissInboxItem, saveCategory, archiveCategory, reorderCategories,
   CATEGORY_COLOURS, type CategoryColour, type CategoryDraft, type RecurringDraft,
+  saveChapter, closeChapter, setCurrentChapter, currentChapterId, currentOpenChapter, type ChapterDraft,
+  currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor, askLocation,
 } from './mutations';
 export type { WindowRole } from './windows';
-export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type InvalidReason, type SettlementDraft } from './writes';
+export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
-  type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow,
+  type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow,
 } from './api';
 export { REFUSAL_MESSAGES, type WriteProblem, type RefusalReason } from './problems';
+export { browserGeo, frankfurterRates, type GeoService, type RatesService, type Located } from './places';

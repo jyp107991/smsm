@@ -2,6 +2,19 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~21:15 UTC: S4b places and currencies built; S4 as one release (PR #11)
+- S4b: current country and location per phone; town and country captured on new entries (with permission); Paid in another currency with the day's rate (Frankfurter) and exact conversion; trip suggestion and Welcome home; Country and Place filters; entry page details. Tests first by a separate agent (95), all pass.
+- Fresh review: 3 blockers (late rate overwriting typing; stale original on unsynced edits; place/original edits not saved) and 6 smaller items, all fixed with regression tests.
+- S4a and S4b ship together in PR #11 (the S4b commits had to be pushed for safety). Suite 1,530; SQL 115/115; browser tests for bills, chapters and places pass.
+
+## 2026-11-17 ~20:25 UTC: S4a chapters built
+- Built directly; tests first by a separate agent (SQL 21 checks, core 22, data 15, screens 25, e2e 5). Database: no delete, logged, realtime, own-household chapters only (SQL 115/115, refused 37/37). Screens: Settings → Chapters, chapter sheet and page (total, days, per day, by category, who paid, entries), Chapter choice in the Add form, "Adding to …" on Home, Activity Chapter filter, entry page link. Demo: Japan (closed) and New sofa (open).
+- Full suite 1,425 green; chapter and bills browser tests green. Screenshots sent. Fresh review of the money parts running; then CI and release.
+
+## 2026-11-17 ~19:30 UTC: S3 LIVE (Bills, regular payments, Inbox, categories)
+- PR #10 merged (CI run 44151281214 all green, two-user 24/24); deploy run 44153852490 green on re-run (the first attempt hit a GitHub runner port clash before anything deployed); live version.json 9bb65e2. Owner said yes to the screenshots.
+- CI's two-user suite caught one real bug before release (Inbox Keep refused a bill dated "tomorrow" on a phone behind the UK date); fixed with a regression test.
+
 ## 2026-11-17 ~18:15 UTC: S3 built (Bills, regular payments, Inbox, categories)
 - Built directly (no agents), after the owner's instruction. Database: post_due_recurring by the UK date with row locks, varying bills to the Inbox, nightly job 01:17, no deletes; SQL 91/91, refused 30/30. Core: costs a month/year, upcoming, looks-monthly. Data: regular payments, Inbox decisions and categories through the offline queue.
 - Screens: **Bills tab** (what home costs; this month as a calendar with its total; next 30 days; subscriptions with a year's total; paused or ended at the bottom); **regular payment sheet** (How often, Every, **Starts on the day you pick**, Ends, Amount varies, Subscription; Pause, Resume, End; history with price changes); **Repeat** in the Add sheet; **Inbox** on Home; **"looks monthly"** suggestion; **Settings → Categories** (rename, emoji, colour, order, archive, add).

@@ -16,6 +16,8 @@ export interface FieldProps extends Omit<ComponentPropsWithRef<'input'>, 'size'>
    * the person's text, parsed by core/money.
    */
   variant?: 'text' | 'amount';
+  /** The symbol before an amount (PLC-6: "¥" while paying in yen); £ unless given. */
+  symbol?: string;
   /** Amount only: something shown at the line's right end, such as a sum's result ("= £34.50"). */
   trailing?: ReactNode;
 }
@@ -25,7 +27,7 @@ export interface FieldProps extends Omit<ComponentPropsWithRef<'input'>, 'size'>
  * hairline that turns forest while it has focus. `inputMode`, `enterKeyHint`, `autoComplete` and every other
  * input attribute pass straight through.
  */
-export function Field({ label, hint, error, variant = 'text', trailing, id, className, inputMode, enterKeyHint, ...rest }: FieldProps) {
+export function Field({ label, hint, error, variant = 'text', trailing, symbol, id, className, inputMode, enterKeyHint, ...rest }: FieldProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const noteId = `${inputId}-note`;
@@ -56,7 +58,7 @@ export function Field({ label, hint, error, variant = 'text', trailing, id, clas
       >
         {amount ? (
           <span aria-hidden="true" className="text-amount text-ink-2">
-            {strings.ui.currency}
+            {symbol ?? strings.ui.currency}
           </span>
         ) : null}
         <input

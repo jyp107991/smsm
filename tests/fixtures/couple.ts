@@ -5,11 +5,17 @@
  * S3 (docs/slices/S3.md "Interfaces"): regular payments (`recurring`) and Inbox items (`inboxItems`) can be
  * seeded too; the in-memory Api keeps them in `controls.tables.recurring` and `controls.tables.inboxItems`, and
  * its post_due_recurring posts by the fixture's TODAY (the "server's" UK date, option `today`).
+ *
+ * S4a (docs/slices/S4.md "Interfaces"): chapters can be seeded too (`chapters`); the in-memory Api keeps them in
+ * `controls.tables.chapters`.
+ *
+ * S4b (docs/slices/S4b.md "Interfaces → Data"): the place-name and rate services can be passed (`geo`, `rates`) and
+ * reach the data layer's options, so tests use fakes and never the network.
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { createMemoryApi, type MemoryControls, type MemoryTables } from '../../src/data/memoryApi';
 import { manualNetwork } from '../../src/data/network';
-import { createDataLayer, type DataLayer } from '../../src/data/queryClient';
+import { createDataLayer, type DataLayer, type DataLayerOptions } from '../../src/data/queryClient';
 import { fixedSession } from '../../src/data/session';
 import { memoryStorage } from '../../src/data/storage';
 import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from '../../src/data/api';
@@ -17,6 +23,7 @@ import type { Database, Json } from '../../src/data/database.types';
 
 export type RecurringRow = Database['public']['Tables']['recurring']['Row'];
 export type InboxItemRow = Database['public']['Tables']['inbox_items']['Row'];
+export type ChapterRow = Database['public']['Tables']['chapters']['Row'];
 
 export const HID = '00000000-0000-4000-8000-0000000000c1';
 export const JAE_ID = '00000000-0000-4000-8000-0000000000a1';
@@ -90,12 +97,26 @@ export function storedInboxItem(over: Partial<InboxItemRow> = {}): InboxItemRow 
   };
 }
 
+/** A stored chapter (S4a): the Japan trip, 1–9 Nov 2026, open, unless told otherwise. */
+export function storedChapter(over: Partial<ChapterRow> = {}): ChapterRow {
+  return {
+    id: '00000000-0000-4000-8000-00000000c401', household_id: HID, name: 'Japan', emoji: '🗾', kind: 'trip', country: 'JP',
+    start_date: '2026-11-01', end_date: '2026-11-09', closed: false, created_by: JAE_ID, created_at: '2026-10-20T12:00:00.000Z',
+    updated_at: '2026-10-20T12:00:00.000Z',
+    ...over,
+  };
+}
+
 export function couple(
   opts: {
     as?: 'jae' | 'sam'; partnerJoined?: boolean; expenses?: ExpenseRow[]; changeRequests?: ChangeRequestRow[];
     settlements?: SettlementRow[]; activity?: ActivityRow[];
     /** S3: regular payments and Inbox items on the "server". */
     recurring?: RecurringRow[]; inboxItems?: InboxItemRow[];
+    /** S4a: trips and projects. */
+    chapters?: ChapterRow[];
+    /** S4b: fake location / place-name and exchange-rate services (data layer options `geo`, `rates`). */
+    geo?: unknown; rates?: unknown;
     /** The household's approved default split (PPL-5), e.g. { [JAE_ID]: 60, [SAM_ID]: 40 }. */
     defaultRatio?: Record<string, number> | null;
     /** The phone's storage and network, to restart the app over the same storage or start offline. */
@@ -120,10 +141,13 @@ export function couple(
   const seed = {
     households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
     settlements: opts.settlements ?? [], activity: opts.activity ?? [], recurring: opts.recurring ?? [], inboxItems: opts.inboxItems ?? [],
+    chapters: opts.chapters ?? [],
   } as Partial<MemoryTables>;
   const apiOpts = { user: { userId: me, email: null }, today: () => TODAY } as Parameters<typeof createMemoryApi>[1];
   const { api, controls } = createMemoryApi(seed, apiOpts);
   const network = manualNetwork(opts.online ?? true);
-  const layer = createDataLayer({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => TODAY });
+  // `geo` and `rates` are S4b's additions to the data layer options (docs/slices/S4b.md).
+  const services = { ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }) } as Pick<DataLayerOptions, 'geo' | 'rates'>;
+  const layer = createDataLayer(Object.assign({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => TODAY }, services));
   return { layer, controls, network };
 }

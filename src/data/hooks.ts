@@ -4,19 +4,21 @@
  * computed here by the core's one balance function over those rows; screens never do money maths.
  */
 import { useIsRestoring, useMutationState, useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ChapterRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
 import { activeDataLayer, DataContext } from './context';
 import type { Memory } from '../core/categorise';
 import { MEMORY_KEY, MONEY_KEY } from './keys';
 import type { WriteProblem } from './problems';
 import {
-  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
+  activityQuery, categoriesQuery, changesQuery, chaptersQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
   settlementsQuery,
 } from './queries';
+import { currentChapterId, setCurrentChapter, subscribeCurrentChapter } from './mutations';
+import { storedCountry, storedUseLocation, subscribePlaces } from './places';
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
@@ -103,6 +105,38 @@ export function useCategories(): DataResult<CategoryRow[]> {
   // CAT-1: a category added, edited, archived or moved on this phone shows at once, offline too.
   const data = useMemo(() => q.data && overlay(q.data, ops, 'categories').sort((a, b) => a.sort - b.sort), [q.data, ops]);
   return result(q, data);
+}
+
+/** S4a: every chapter (closed ones too), oldest first, with the waiting changes applied (CHP-1). */
+export function useChapters(): DataResult<ChapterRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(chaptersQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(() => q.data && overlay(q.data, ops, 'chapters'), [q.data, ops]);
+  return result(q, data);
+}
+
+/** CHP-2: this phone's current chapter's id, when it is still there and open (a closed one is never current). */
+export function useCurrentChapter(): string | null {
+  const id = useSyncExternalStore(subscribeCurrentChapter, currentChapterId, () => null);
+  const chapters = useChapters().data;
+  // Closed (here or on the other phone): forgotten, so reopening it later never sends entries back into it unseen.
+  const closed = id !== null && chapters?.some((c) => c.id === id && c.closed) === true;
+  useEffect(() => { if (closed) setCurrentChapter(null); }, [closed]);
+  return useMemo(() => (chapters?.some((c) => c.id === id && !c.closed) ? id : null), [chapters, id]);
+}
+
+/** PLC-3: this phone's current country (the household's home country unless set). */
+export function useCurrentCountry(): string {
+  const stored = useSyncExternalStore(subscribePlaces, storedCountry, () => null);
+  const home = useHousehold().data?.home_country ?? 'GB';
+  return stored ?? home;
+}
+
+/** PLC-2: whether this phone uses its location. */
+export function useLocationSetting(): boolean {
+  return useSyncExternalStore(subscribePlaces, storedUseLocation, () => false);
 }
 
 /** S3: every regular payment (paused and ended ones too), with the waiting changes applied (REC-1). */

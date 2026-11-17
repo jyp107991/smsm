@@ -7,7 +7,7 @@ import { queryOptions, skipToken } from '@tanstack/react-query';
 import { z } from 'zod';
 import {
   ApiError,
-  type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
+  type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChapterRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
   type InboxItemRow, type RecurringRow, type SettlementRow,
 } from './api';
 import { keys } from './keys';
@@ -81,6 +81,19 @@ export function categoriesQuery(api: Api, uid: string | null, hid: Hid) {
   return queryOptions({
     queryKey: keys.categories(uid ?? ''),
     queryFn: uid && hid ? async () => check(z.array(categorySchema), 'categories', await api.categories(hid)) as CategoryRow[] : skipToken,
+  });
+}
+
+const chapterSchema = z.looseObject({
+  id, household_id: id, name: z.string(), emoji: z.string(), kind: z.enum(['trip', 'project']), country: z.string().nullable(),
+  start_date: z.string().nullable(), end_date: z.string().nullable(), closed: z.boolean(),
+});
+
+/** S4a: the household's chapters (CHP-1). */
+export function chaptersQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.chapters(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(chapterSchema), 'chapters', await api.chapters(hid)) as ChapterRow[] : skipToken,
   });
 }
 

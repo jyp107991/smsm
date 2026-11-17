@@ -217,5 +217,14 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   }
   expenses.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
-  return { household, members, categories, chapters: [japan], recurring, inboxItems, expenses, settlements };
+  // S4a: an open project; the household's furniture spending of the last six weeks belongs to it.
+  const sofaStart = addDays(today, -42);
+  const sofa: ChapterRow = {
+    id: id(9001), household_id: DEMO_HOUSEHOLD_ID, name: 'New sofa', emoji: '🛋️', kind: 'project', country: null,
+    start_date: sofaStart, end_date: null, closed: false, created_by: JAE, created_at: stamp(addDays(today, -42)), updated_at: stamp(addDays(today, -42)),
+  };
+  for (const e of expenses) {
+    if (e.chapter_id === null && e.category_id === cat('Household') && e.date >= sofaStart && e.kind === 'expense' && e.source !== 'recurring') e.chapter_id = sofa.id;
+  }
+  return { household, members, categories, chapters: [japan, sofa], recurring, inboxItems, expenses, settlements };
 }

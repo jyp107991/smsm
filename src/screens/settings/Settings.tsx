@@ -24,6 +24,7 @@ import { plainError } from '../shared/plain';
 import { ratioWords } from '../shared/words';
 import { RATIO_PRESETS } from '../entry/form';
 import { savePending } from '../settle/monzo';
+import { WhereYouAre } from '../places/WhereYouAre';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId();
@@ -142,6 +143,21 @@ export function Settings() {
           </a>
           <p className="text-secondary text-ink-2 m-0">{strings.categories.linkLine}</p>
         </div>
+        <div className="flex flex-col">
+          <a
+            href="/settings/chapters"
+            onClick={(e) => { e.preventDefault(); go({ name: 'chapters' }); }}
+            className="text-ink text-body press flex min-h-12 items-center justify-between gap-3"
+          >
+            {strings.chapters.link}
+            <ChevronRight size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" className="text-ink-2" />
+          </a>
+          <p className="text-secondary text-ink-2 m-0">{strings.chapters.linkLine}</p>
+        </div>
+      </Section>
+
+      <Section title={strings.places.whereYouAre}>
+        <WhereYouAre />
       </Section>
 
       <Section title={strings.settings.look}>

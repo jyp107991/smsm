@@ -5,6 +5,7 @@
  * (buildExpense), so the form refuses exactly what the database would.
  */
 import { addDays, type IsoDate } from '../../core/dates';
+import { foreignToPence } from '../../core/fx';
 import { formatPence, formatPlainPounds, parseAmount, pence, type Pence } from '../../core/money';
 import { computeEntry, exactRemainder, ratioShares, type SplitParams, type UserId } from '../../core/split';
 import type { ExpenseDraft, ExpenseRow } from '../../data';
@@ -37,6 +38,15 @@ export interface FormState {
    * tie to whoever got it back, as SPL-3). Typing an exact amount yourself stops it.
    */
   exactFollows?: Record<UserId, number>;
+  /** CHP-2: the chapter (null: everyday). Left undefined, a new entry goes into this phone's current chapter. */
+  chapterId?: string | null;
+  /** PLC-1: country, place and rounded position (undefined: left as they are / this phone's current country). */
+  country?: string;
+  place?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  /** PLC-6: paid in another currency: while set, `amountText` is the foreign amount and this holds the rate. */
+  foreign?: { currency: string; rateText: string } | null;
 }
 
 export function blankForm(opts: { me: UserId; people: readonly Person[]; today: IsoDate; split: SplitParams }): FormState {
@@ -94,6 +104,11 @@ export function formFromRow(row: ExpenseRow, people: readonly Person[], input?: 
     notes: input?.notes ?? row.notes ?? '',
     tags: input?.tags ?? row.tags,
     refundOf: input?.refundOf ?? row.refund_of,
+    chapterId: input?.chapterId !== undefined ? input.chapterId : row.chapter_id,
+    country: row.country,
+    place: row.place,
+    lat: row.lat,
+    lng: row.lng,
   };
   if (input) return withSplit(base, input.split, people);
   const mode = row.split_mode;
@@ -164,7 +179,8 @@ export function withExactText(s: FormState, id: UserId, text: string): FormState
  * back, refunding the same original (MB-1, MB-3): it moves the balance the way the one copied did.
  */
 export function copyForm(original: ExpenseRow, people: readonly Person[], today: IsoDate): FormState {
-  return { ...formFromRow(original, people), date: today };
+  // CHP-2: a copy is a new entry: it goes into this phone's current chapter (never a closed one it came from).
+  return { ...formFromRow(original, people), date: today, chapterId: undefined };
 }
 
 /** What Duplicate saves (the entry page's button and Activity's swipe), or null when it can't be read back. */
@@ -173,7 +189,9 @@ export function duplicateDraft(original: ExpenseRow, people: readonly Person[], 
   return 'draft' in r ? r.draft : null;
 }
 
+/** The amount in pounds: as typed, or (paid in another currency, PLC-6) the foreign amount at the rate, exactly. */
 export function parsedAmount(s: FormState): Pence | null {
+  if (s.foreign) return foreignToPence(s.amountText, s.foreign.rateText);
   return parseAmount(s.amountText);
 }
 
@@ -241,6 +259,12 @@ export function draftOf(s: FormState, people: readonly Person[]): { draft: Expen
       notes: s.notes.trim() === '' ? null : s.notes.trim(),
       tags: s.tags,
       refundOf: s.refundOf,
+      ...(s.chapterId !== undefined ? { chapterId: s.chapterId } : {}),
+      ...(s.country !== undefined ? { country: s.country } : {}),
+      ...(s.place !== undefined ? { place: s.place } : {}),
+      ...(s.lat !== undefined ? { lat: s.lat } : {}),
+      ...(s.lng !== undefined ? { lng: s.lng } : {}),
+      ...(s.foreign ? { original: { amount: s.amountText.trim().replace(/,/g, ''), currency: s.foreign.currency, rate: s.foreign.rateText.trim() } } : {}),
     },
   };
 }

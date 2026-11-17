@@ -8,7 +8,7 @@ import { useMemo, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useDataLayer, useEntries, useHistory,
+  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useHistory,
   useOnline, useSettlements, useSyncStatus, type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -17,6 +17,8 @@ import { go, pathOf } from '../../ui/router';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { CategoryMark } from '../shared/CategoryMark';
+import { countryName } from '../chapters/model';
+import { formatForeign } from '../../core/fx';
 import { Head } from '../shared/Head';
 import { useTapAction } from '../shared/once';
 import { usePeople } from '../shared/people';
@@ -69,6 +71,8 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const { pendingIds, otherWindow: readOnly } = useSyncStatus();
   const today = layer.today();
   const category = categories.find((c) => c.id === row.category_id);
+  const chapter = (useChapters().data ?? []).find((c) => c.id === row.chapter_id);
+  const home = useHousehold().data?.home_country ?? 'GB';
   const payer = people.list.find((p) => p.id === payerOf(row.paid, people.list));
   const original = row.refund_of ? entries.find((e) => e.id === row.refund_of) : undefined;
   // Q-U9: money that came back for this entry, each linking to its own page.
@@ -122,6 +126,11 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
             {strings.entry.cameBack(formatPence(pence(m.amount_pence)), formatDay(m.date, today))}
           </a>
         ))}
+        {row.original_amount !== null && row.original_currency && row.fx_rate !== null ? (
+          <p className="text-secondary text-ink-2 nums-list m-0">
+            {strings.places.paidAt(formatForeign(row.original_amount, row.original_currency), row.original_currency, String(row.fx_rate))}
+          </p>
+        ) : null}
         {pendingIds.has(row.id) ? <p className="text-caption text-ink-2 m-0">{strings.entry.notSynced}</p> : null}
         {deleted ? <p className="text-secondary text-berry m-0">{strings.entry.wasDeleted}</p> : null}
       </div>
@@ -135,6 +144,19 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
           ) : strings.entry.categoryNone}
         </Detail>
         <Detail label={strings.entry.date}>{formatDay(row.date, today)}</Detail>
+        {chapter ? (
+          <Detail label={strings.chapters.chapter}>
+            <a
+              href={pathOf({ name: 'chapter', id: chapter.id })}
+              onClick={(e) => { e.preventDefault(); go({ name: 'chapter', id: chapter.id }); }}
+              className="text-forest -my-2 inline-flex min-h-11 items-center underline underline-offset-4"
+            >
+              {chapter.name}
+            </a>
+          </Detail>
+        ) : null}
+        {row.country !== home ? <Detail label={strings.places.country}>{countryName(row.country) ?? row.country}</Detail> : null}
+        {row.place ? <Detail label={strings.places.place}>{row.place}</Detail> : null}
         {row.notes ? <Detail label={strings.entry.note}>{row.notes}</Detail> : null}
       </dl>
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">

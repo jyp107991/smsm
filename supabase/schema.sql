@@ -17,6 +17,22 @@ CREATE SCHEMA public;
 COMMENT ON SCHEMA public IS 'standard public schema';
 
 --
+-- Name: check_entry_chapter(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.check_entry_chapter() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if new.chapter_id is not null
+     and not exists (select 1 from chapters c where c.id = new.chapter_id and c.household_id = new.household_id) then
+    raise exception 'that chapter is not one of yours' using errcode = '23503';
+  end if;
+  return new;
+end $$;
+
+--
 -- Name: check_money(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -221,7 +237,8 @@ CREATE FUNCTION public.log_activity() RETURNS trigger
 declare act text; diff jsonb := '{}'; k text; ent text; o jsonb; n jsonb := to_jsonb(new);
 begin
   ent := case tg_table_name when 'expenses' then 'expense' when 'settlements' then 'settlement'
-                            when 'categories' then 'category' when 'inbox_items' then 'inbox_item' else 'recurring' end;
+                            when 'categories' then 'category' when 'inbox_items' then 'inbox_item'
+                            when 'chapters' then 'chapter' else 'recurring' end;
   if tg_op = 'INSERT' then
     act := 'created';
     diff := jsonb_build_object('after', n - 'split_params' - 'items');
@@ -1121,6 +1138,12 @@ CREATE TRIGGER categories_stamp BEFORE UPDATE ON public.categories FOR EACH ROW 
 CREATE TRIGGER chapters_author BEFORE INSERT OR UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
+-- Name: chapters chapters_log; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER chapters_log AFTER INSERT OR UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.log_activity();
+
+--
 -- Name: chapters chapters_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1131,6 +1154,12 @@ CREATE TRIGGER chapters_stamp BEFORE UPDATE ON public.chapters FOR EACH ROW EXEC
 --
 
 CREATE TRIGGER expenses_author BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
+
+--
+-- Name: expenses expenses_chapter; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER expenses_chapter BEFORE INSERT OR UPDATE OF chapter_id, household_id ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.check_entry_chapter();
 
 --
 -- Name: expenses expenses_check_money; Type: TRIGGER; Schema: public; Owner: -
@@ -1806,6 +1835,13 @@ GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO anon;
 
 --
+-- Name: FUNCTION check_entry_chapter(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.check_entry_chapter() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.check_entry_chapter() TO service_role;
+
+--
 -- Name: FUNCTION check_money(); Type: ACL; Schema: public; Owner: -
 --
 
@@ -2002,7 +2038,7 @@ GRANT SELECT ON TABLE public.change_requests TO authenticated;
 -- Name: TABLE chapters; Type: ACL; Schema: public; Owner: -
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.chapters TO authenticated;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.chapters TO authenticated;
 
 --
 -- Name: TABLE client_errors; Type: ACL; Schema: public; Owner: -

@@ -18,6 +18,7 @@ export type ActivityRow = Tables['activity']['Row'];
 export type CategoryMemoryRow = Tables['category_memory']['Row'];
 export type RecurringRow = Tables['recurring']['Row'];
 export type InboxItemRow = Tables['inbox_items']['Row'];
+export type ChapterRow = Tables['chapters']['Row'];
 /** What the phone writes to `category_memory` (CAT-3, CAT-4); the server stamps `updated_at`. */
 export type CategoryMemoryWrite = Pick<CategoryMemoryRow, 'household_id' | 'key' | 'category_id' | 'split_mode' | 'split_params' | 'uses' | 'source'>;
 
@@ -25,6 +26,7 @@ export type CategoryMemoryWrite = Pick<CategoryMemoryRow, 'household_id' | 'key'
 export const EXPENSE_WRITE_COLUMNS = [
   'id', 'household_id', 'kind', 'description', 'amount_pence', 'date', 'category_id', 'chapter_id', 'paid', 'paid_via',
   'split_mode', 'split_params', 'shares', 'notes', 'tags', 'country', 'refund_of', 'source', 'recurring_id', 'occurrence_date',
+  'place', 'lat', 'lng', 'original_amount', 'original_currency', 'fx_rate',
 ] as const satisfies readonly (keyof ExpenseRow)[];
 export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]>;
 
@@ -47,12 +49,16 @@ export type RecurringColumn = Exclude<(typeof RECURRING_WRITE_COLUMNS)[number], 
 export interface InboxPatch { status: 'kept' | 'dismissed'; expense_id: string | null }
 
 /** The columns the phone owns on a category (CAT-1). */
+/** The columns the phone owns on a chapter (CHP-1; S4a). */
+export type ChapterWrite = Pick<ChapterRow, 'id' | 'household_id' | 'name' | 'emoji' | 'kind' | 'country' | 'start_date' | 'end_date' | 'closed'>;
+export type ChapterColumn = Exclude<keyof ChapterWrite, 'id' | 'household_id'>;
+
 export type CategoryWrite = Pick<CategoryRow, 'id' | 'household_id' | 'name' | 'emoji' | 'colour' | 'archived' | 'sort' | 'default_ratio'>;
 
 export interface AuthUser { userId: string; email: string | null }
 
 /** Tables whose changes the partner's phone needs to hear about (DATA_MODEL §6). */
-export type WatchedTable = 'households' | 'members' | 'categories' | 'expenses' | 'settlements' | 'change_requests' | 'recurring' | 'inbox_items';
+export type WatchedTable = 'households' | 'members' | 'categories' | 'expenses' | 'settlements' | 'change_requests' | 'recurring' | 'inbox_items' | 'chapters';
 export type ChannelStatus = 'subscribed' | 'error' | 'closed';
 
 /**
@@ -98,6 +104,10 @@ export interface Api {
   upsertRecurring(row: RecurringWrite, columns?: readonly RecurringColumn[]): Promise<RecurringRow>;
   patchInboxItem(id: string, patch: InboxPatch): Promise<InboxItemRow>;
   upsertCategory(row: CategoryWrite): Promise<CategoryRow>;
+  /** S4a: the household's chapters (open and closed). */
+  chapters(householdId: string): Promise<ChapterRow[]>;
+  /** With `columns`, an existing chapter's other columns stay as the server has them (a partner's edit stays). */
+  upsertChapter(row: ChapterWrite, columns?: readonly ChapterColumn[]): Promise<ChapterRow>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
   watchHousehold(householdId: string, onChange: (table: WatchedTable) => void, onStatus: (s: ChannelStatus) => void): () => void;
 }
@@ -165,7 +175,7 @@ function authError(err: { message: string; status?: number | undefined; name?: s
 
 const TABLE_FILTER: Record<WatchedTable, string> = {
   households: 'id', members: 'household_id', categories: 'household_id', expenses: 'household_id',
-  settlements: 'household_id', change_requests: 'household_id', recurring: 'household_id', inbox_items: 'household_id',
+  settlements: 'household_id', change_requests: 'household_id', recurring: 'household_id', inbox_items: 'household_id', chapters: 'household_id',
 };
 
 /** The Api over the real Supabase client. Row-level security limits every read to the person's household. */
@@ -227,6 +237,15 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     },
     patchInboxItem: async (id, patch) => must(await db.from('inbox_items').update(patch).eq('id', id).select().single(), 'inbox item'),
     upsertCategory: async (row) => must(await db.from('categories').upsert(row, { onConflict: 'id' }).select().single(), 'category'),
+    chapters: async (hid) => unwrap(await db.from('chapters').select('*').eq('household_id', hid).order('created_at')) ?? [],
+    upsertChapter: async (row, columns) => {
+      if (columns) {
+        const patch = Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<ChapterWrite>;
+        const updated = await db.from('chapters').update(patch).eq('id', row.id).select().maybeSingle();
+        if (updated.error || updated.data) return must(updated, 'chapter');
+      }
+      return must(await db.from('chapters').upsert(row, { onConflict: 'id' }).select().single(), 'chapter');
+    },
     watchHousehold(householdId, onChange, onStatus) {
       // A topic of its own each time: supabase-js hands back an existing channel with the same topic, so a
       // follow right after a stop (whose removal is still in flight) would get the closing one.

@@ -10,7 +10,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatDate, formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
 import {
-  addExpense, deleteExpense, newId, restoreExpense, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus,
+  addExpense, deleteExpense, newId, restoreExpense, useCategories, useChapters, useDataLayer, useEntries, useSettlements, useSyncStatus,
   type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -33,6 +33,10 @@ type Item =
 
 type TypeChoice = 'any' | 'expense' | 'money_back' | 'settlement' | 'deleted';
 
+import { countryName } from '../chapters/model';
+
+const EVERYDAY = '__everyday';
+
 export function Activity() {
   const layer = useDataLayer();
   const entries = useEntries().data;
@@ -45,12 +49,18 @@ export function Activity() {
   const [text, setText] = useState('');
   const [payer, setPayer] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
+  // CHP-2: '' any chapter, EVERYDAY entries in no chapter, or a chapter's id.
+  const [chapter, setChapter] = useState<string>('');
+  // PLC-7, CHP-6: a country ('' any) and a place ('' any).
+  const [country, setCountry] = useState<string>('');
+  const [place, setPlace] = useState<string>('');
+  const chapters = useChapters().data ?? [];
   const [dates, setDates] = useState<DatesChoice>('any');
   // Q-U10: the days picked under "Pick dates".
   const [range, setRange] = useState<DayRange | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [type, setType] = useState<TypeChoice>('any');
-  const [picker, setPicker] = useState<'payer' | 'category' | 'dates' | 'type' | null>(null);
+  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'dates' | 'type' | null>(null);
 
   const items = useMemo((): Item[] => {
     const showDeleted = type === 'deleted';
@@ -83,6 +93,9 @@ export function Activity() {
     ...(text.trim() !== '' ? { text } : {}),
     ...(payer ? { payer } : {}),
     ...(category ? { categories: [category] } : {}),
+    ...(chapter !== '' ? { chapters: [chapter === EVERYDAY ? null : chapter] } : {}),
+    ...(country !== '' ? { countries: [country] } : {}),
+    ...(place !== '' ? { places: [place] } : {}),
     ...datesRange(dates, today, range),
     ...(type === 'expense' || type === 'money_back' || type === 'settlement' ? { kinds: [type] } : {}),
   };
@@ -93,7 +106,7 @@ export function Activity() {
       .sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : -1));
     // `filter` is rebuilt each render from these values.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, text, payer, category, dates, range, type, today]);
+  }, [items, text, payer, category, chapter, country, place, dates, range, type, today]);
 
   const days = useMemo(() => {
     const groups: { date: IsoDate; items: Item[] }[] = [];
@@ -106,18 +119,27 @@ export function Activity() {
   }, [shown]);
 
   // Q-U10: a filter is on (search has its own clear button); "Clear all" and "Clear filters" undo everything.
-  const filtering = payer !== null || category !== null || dates !== 'any' || type !== 'any';
+  const filtering = payer !== null || category !== null || chapter !== '' || country !== '' || place !== '' || dates !== 'any' || type !== 'any';
   const filtered = text.trim() !== '' || filtering;
   const clearAll = () => {
     setText('');
     setPayer(null);
     setCategory(null);
+    setChapter('');
+    setCountry('');
+    setPlace('');
     setDates('any');
     setRange(null);
     setType('any');
   };
   const loading = entries === undefined || settlements === undefined;
   const live = categories.filter((c) => !c.archived);
+  // The countries and places that occur in the household's entries (PLC-7), by name.
+  const countries = useMemo(() => [...new Set((entries ?? []).filter((e) => e.deleted_at === null).map((e) => e.country))]
+    .sort((a, b) => (countryName(a) ?? a).localeCompare(countryName(b) ?? b)), [entries]);
+  const places = useMemo(() => [...new Set((entries ?? []).filter((e) => e.deleted_at === null && e.place).map((e) => e.place ?? ''))]
+    .sort((a, b) => a.localeCompare(b)), [entries]);
+  const chapterLabel = chapter === '' ? null : chapter === EVERYDAY ? strings.chapters.everyday : (chapters.find((c) => c.id === chapter)?.name ?? null);
 
   const payerLabel = payer ? people.name(payer) : null;
   const categoryLabel = category ? (categories.find((c) => c.id === category)?.name ?? null) : null;
@@ -170,6 +192,15 @@ export function Activity() {
       <div role="group" aria-label={strings.activity.filters} className="flex flex-wrap gap-2">
         <FilterButton label={strings.activity.whoPaid} value={payerLabel} onClick={() => { setPicker('payer'); }} />
         <FilterButton label={strings.activity.category} value={categoryLabel} onClick={() => { setPicker('category'); }} />
+        {chapters.length > 0 ? (
+          <FilterButton label={strings.chapters.chapter} value={chapterLabel} onClick={() => { setPicker('chapter'); }} />
+        ) : null}
+        {countries.length > 1 ? (
+          <FilterButton label={strings.places.country} value={country === '' ? null : (countryName(country) ?? country)} onClick={() => { setPicker('country'); }} />
+        ) : null}
+        {places.length > 0 ? (
+          <FilterButton label={strings.places.place} value={place === '' ? null : place} onClick={() => { setPicker('place'); }} />
+        ) : null}
         <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : (dates === 'custom' ? rangeLabel : datesLabels[dates])} onClick={() => { setPicker('dates'); }} />
         <FilterButton label={strings.activity.type} value={type === 'any' ? null : typeLabels[type]} onClick={() => { setPicker('type'); }} />
         {filtering ? (
@@ -236,6 +267,34 @@ export function Activity() {
           ...live.map((c) => ({ value: c.id, label: c.name, icon: <CategoryMark emoji={c.emoji} colour={c.colour} /> })),
         ]}
         onPick={(v) => { setCategory(v === '' ? null : v); }}
+      />
+      <Picker
+        open={picker === 'chapter'}
+        title={strings.chapters.chapter}
+        onClose={() => { setPicker(null); }}
+        value={chapter}
+        options={[
+          { value: '', label: strings.activity.anyChapter },
+          { value: EVERYDAY, label: strings.chapters.everyday },
+          ...chapters.map((c) => ({ value: c.id, label: c.name, icon: <span aria-hidden="true">{c.emoji}</span> })),
+        ]}
+        onPick={setChapter}
+      />
+      <Picker
+        open={picker === 'country'}
+        title={strings.places.country}
+        onClose={() => { setPicker(null); }}
+        value={country}
+        options={[{ value: '', label: strings.places.anyCountry }, ...countries.map((c) => ({ value: c, label: countryName(c) ?? c }))]}
+        onPick={setCountry}
+      />
+      <Picker
+        open={picker === 'place'}
+        title={strings.places.place}
+        onClose={() => { setPicker(null); }}
+        value={place}
+        options={[{ value: '', label: strings.places.anyPlace }, ...places.map((p) => ({ value: p, label: p }))]}
+        onPick={setPlace}
       />
       <DatesPicker
         open={picker === 'dates'}
