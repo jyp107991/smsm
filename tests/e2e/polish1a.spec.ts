@@ -138,7 +138,8 @@ test.describe('Q-F1 ADD-6 SET-1 MB-2: a double tap records once', () => {
     await balance(page).getByRole('button', { name: 'Settle up' }).click();
     const sheet = page.getByRole('dialog', { name: 'Settle up' });
     await sheet.getByRole('textbox', { name: 'Amount' }).fill('1.00');
-    await doubleTap(page, sheet.getByRole('button', { name: 'Record it' }), 15);
+    // Q-U11: the person owed reads "Record Sam’s payment"; the one who owes, "Record it".
+    await doubleTap(page, sheet.getByRole('button', { name: /^Record (it|\S+’s payment)$/ }), 15);
     await expect(sheet).toBeHidden();
     await page.waitForTimeout(600);
     // £1.00 paid by whoever owes, once.
@@ -211,7 +212,7 @@ test.describe('Q-U1: Enter moves on through the form; only Enter in Description 
     const sheet = await openAdd(page);
     await sheet.getByRole('textbox', { name: 'Amount' }).fill('10');
     await sheet.getByRole('textbox', { name: 'Description' }).fill('Exact enter');
-    await sheet.getByRole('radiogroup', { name: 'Split' }).getByRole('radio', { name: 'Exact' }).check();
+    await sheet.getByRole('radiogroup', { name: 'How it’s shared' }).getByRole('radio', { name: 'Exact' }).check(); // Q-U5 (was "Split")
     const jae = sheet.getByRole('textbox', { name: "Jae's share" });
     const sam = sheet.getByRole('textbox', { name: "Sam's share" });
     await jae.fill('4');
@@ -236,7 +237,7 @@ test.describe('Q-U1: Enter moves on through the form; only Enter in Description 
     await page.waitForTimeout(400);
     await expect(sheet).toBeVisible();
     expect(await samOwesJae(page)).toBe(before);
-    await sheet.getByRole('button', { name: 'Record it' }).click();
+    await sheet.getByRole('button', { name: /^Record (it|\S+’s payment)$/ }).click(); // Q-U11
     await expect(sheet).toBeHidden();
     await expect.poll(() => samOwesJae(page)).toBe(before > 0 ? before - 100 : before + 100);
   });

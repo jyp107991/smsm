@@ -13,6 +13,7 @@ import {
   openEntry,
   quickAdd,
   quickAddBox,
+  copiedStatus,
   savedStatus,
   saveSheet,
   setUpCouple,
@@ -55,16 +56,16 @@ test('ADD-1 ADD-2 ADD-3 ADD-6 SPL-2 SPL-3 SPL-4 SPL-5: quick add reads as you ty
   // ADD-6: Undo removes it (a soft delete or never sent; never counted).
   await quickAdd(jae.page, '7 coffee');
   await savedStatus(jae.page).getByRole('button', { name: 'Undo' }).click();
-  await expect(todayList(jae.page).getByText('coffee')).toBeHidden();
+  await expect(todayList(jae.page).getByText('Coffee')).toBeHidden(); // Q-U6: saved tidy
   await jae.page.waitForTimeout(2_000);
-  const coffee = (await expensesOf(household.id)).filter((r) => r.description === 'coffee');
+  const coffee = (await expensesOf(household.id)).filter((r) => r.description === 'Coffee'); // Q-U6: saved tidy (was 'coffee')
   expect(coffee.every((r) => r.deleted_at !== null)).toBe(true);
 
   // The Undo offer lasts 5 seconds.
   await quickAdd(jae.page, '3 gum');
   await jae.page.waitForTimeout(6_000);
   await expect(jae.page.getByRole('button', { name: 'Undo' })).toBeHidden();
-  await rowNamed(household.id, 'gum');
+  await rowNamed(household.id, 'Gum'); // Q-U6 (was 'gum')
 
   // Sam's own quick add: the payer is Sam (me = whoever is holding the phone).
   await quickAdd(sam.page, '10 Pret');
@@ -79,19 +80,20 @@ test('ADD-2 ADD-4 ADD-5 SPL-1 CAT-2 CAT-3 CAT-4: the full form, sums, the four s
   const [J, S] = household.people.map((p) => p.userId) as [string, string];
   const cats = categoriesOf(household.id);
 
-  // ADD-2: tapping the reading opens the full form prefilled.
+  // ADD-2: tapping the reading opens the full form prefilled. (S2 polish: the reading shows the description as
+  // it will be saved, Q-U6, and names the split, Q-U5; was "… · pret · … · 60/40".)
   await goHome(jae.page);
   await quickAddBox(jae.page).fill('12+8.50 pret 60/40 yesterday');
-  const reading = jae.page.getByRole('button', { name: /^£20\.50 · pret · Eating out · Jae paid · 60\/40/ });
+  const reading = jae.page.getByRole('button', { name: /^£20\.50 · Pret · Eating out · Jae paid · Jae 60 · Sam 40/ });
   await expect(reading).toBeVisible();
   await reading.click();
   const prefilled = jae.page.getByRole('dialog', { name: 'Add expense' });
   await expect(prefilled).toBeVisible();
   await expect(prefilled).toContainText('£20.50');
-  await expect(prefilled.getByRole('textbox', { name: 'Description' })).toHaveValue('pret');
+  await expect(prefilled.getByRole('textbox', { name: 'Description' })).toHaveValue('Pret');
   await expect(prefilled.getByRole('group', { name: 'Category' }).getByRole('button', { name: /Eating out/ })).toHaveAttribute('aria-pressed', 'true');
   await saveSheet(jae.page, prefilled);
-  const pret = await rowNamed(household.id, 'pret');
+  const pret = await rowNamed(household.id, 'Pret');
   expect(pret).toMatchObject({ amount_pence: 2050, date: YESTERDAY_LONDON, split_mode: 'ratio', category_id: cats['Eating out'] });
   expect(nonZero(pret.shares)).toEqual({ [J]: 1230, [S]: 820 });
 
@@ -115,7 +117,7 @@ test('ADD-2 ADD-4 ADD-5 SPL-1 CAT-2 CAT-3 CAT-4: the full form, sums, the four s
   // CAT-4: the usual split for a description is learned the same way.
   await quickAdd(jae.page, '10 netflix 70/30');
   await quickAddBox(jae.page).fill('11 netflix');
-  await expect(jae.page.getByRole('button', { name: /^£11\.00 · netflix · .* · Jae paid · 70\/30$/ })).toBeVisible();
+  await expect(jae.page.getByRole('button', { name: /^£11\.00 · Netflix · .* · Jae paid · Jae 70 · Sam 30$/ })).toBeVisible(); // Q-U5 Q-U6
   await quickAddBox(jae.page).fill('');
 
   // SPL-1 Exact: the parts must sum (SPL-5: the phone refuses, nothing is saved), then they do.
@@ -214,12 +216,12 @@ test('ADD-7 ACT-2 ACT-3 ACT-5 MB-1 MB-2 MB-3: the entry page: edit by either per
 
   // ADD-7: duplicate any entry with today's date.
   await quickAdd(jae.page, '20.50 pret yesterday');
-  const pret = await rowNamed(household.id, 'pret');
+  const pret = await rowNamed(household.id, 'Pret'); // Q-U6 (was 'pret')
   expect(pret.date).toBe(YESTERDAY_LONDON);
   await openEntry(jae.page, pret.id);
   await jae.page.getByRole('button', { name: 'Duplicate' }).click();
-  await expect(savedStatus(jae.page)).toBeVisible();
-  const [, copy] = await rowsNamed(household.id, 'pret', 2);
+  await expect(copiedStatus(jae.page)).toBeVisible(); // Q-U8 (was "Saved")
+  const [, copy] = await rowsNamed(household.id, 'Pret', 2);
   expect(copy?.id).not.toBe(pret.id);
   expect(copy).toMatchObject({ amount_pence: 2050, date: TODAY_LONDON, split_mode: pret.split_mode, category_id: pret.category_id });
   expect(copy?.shares).toEqual(pret.shares);
@@ -233,8 +235,8 @@ test('ADD-7 ACT-2 ACT-3 ACT-5 MB-1 MB-2 MB-3: the entry page: edit by either per
   await jae.page.mouse.up();
   await jae.page.getByRole('menuitem', { name: 'Same as last time' }).or(jae.page.getByRole('button', { name: 'Same as last time' })).first().click();
   const same = jae.page.getByRole('dialog', { name: 'Add expense' });
-  await expect(same.getByRole('textbox', { name: 'Description' })).toHaveValue('pret');
+  await expect(same.getByRole('textbox', { name: 'Description' })).toHaveValue('Pret');
   await saveSheet(jae.page, same);
-  await rowsNamed(household.id, 'pret', 3);
+  await rowsNamed(household.id, 'Pret', 3);
   await expect(balanceRegion(jae.page)).toBeVisible();
 });
