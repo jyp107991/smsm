@@ -58,4 +58,11 @@ describe('sign-in email for the two-user suite', () => {
     expect(kept).toMatch(/^\[auth\.email\.template\.confirmation\]/m);
     expect(kept).toMatch(/^\[auth\.sms\]/m);
   });
+
+  it('the CI two-user job opens sign-ups in its own workspace (the live project keeps them closed)', () => {
+    const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+    const job = ci.slice(ci.indexOf('\n  two-users:'), ci.indexOf('npx supabase start', ci.indexOf('\n  two-users:')));
+    expect(job).toMatch(/sed -i -E 's\/\^enable_signup = \.\*\/enable_signup = true\/' supabase\/config\.toml/);
+    expect(readFileSync('supabase/config.toml', 'utf8')).toMatch(/^enable_signup = false$/m);
+  });
 });
