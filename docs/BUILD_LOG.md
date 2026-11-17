@@ -2,6 +2,34 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17: S2 polish 1a: CI fix and fresh-review fixes
+- **CI run 44076630487** failed one browser test ("Yes" tapped twice on "Did it go through?"): nothing was recorded and the quiet banner showed instead. The test measured where Yes was while the sheet could still be sliding up (it opens as the app starts), so both taps landed below the sheet, which put it away ("Not yet"). The test now waits until the button has stopped moving and really receives the tap before tapping. The app was right: a tap outside a sheet closes it, and the question was kept.
+- **Review fixes:** the Monzo question now carries its own settle-up id and who asked, so answering it in the sheet, on the banner, after a restart or in another window records it once; a question from the other person or about someone outside the household is dropped; the banner waits for both names. Quick add: "hot dog stand", "dog and duck", "cat cafe", "dog walking" open the form to check (the cat/dog is still read as who paid); "for sam treat" too. A held Enter doesn't run on through the form. "0,00" is zero in an Exact share. Money back on huge exact splits is worked out in exact whole numbers. The double-tap guard only arms when a sheet really closes, and also ignores a long press's late click. Deleting or restoring twice shows no second message.
+- **Tested:** a failing test first for each (except the huge-split one: no case where the old arithmetic actually gave a wrong penny was found in 500,000 random tries, so it is guarded by a property test against exact arithmetic); `npm run verify` green (1137 tests, trace clean, SQL 47/47); both builds; demo browser tests 39/39 with TZ=UTC and CI=1.
+
+## 2026-11-17: S2 polish 1a built: money and input safety (Q-F1…Q-F5, Q-U1…Q-U3)
+- **A double tap records once.** Save, Record it, "Yes", Duplicate and the Money back Save each make their entry's id once, so tapping twice (or holding Enter) saves one entry, one settle-up, one copy. A second tap at the same spot just after a sheet closes is ignored, so it can't switch you to Activity either.
+- **No dates after today** in the form ("That date is after today."), as quick add already did.
+- **Quick add reads better:** "70/30 for sam" no longer makes Sam the payer (it opens the form to check); "cat"/"dog" mean who paid anywhere in the line, except before words like food, litter, walker; "42,50" is £42.50 (also in the form's Amount); Enter with no amount says "Start with an amount, like 12.50."; the keyboard's key says send.
+- **Enter moves on:** Amount → Description → saves; Exact shares step to the next and then to Save; Enter in Settle up's amount records nothing.
+- **"Did it go through?" survives closing the app.** After "Not yet", a quiet banner on Home asks until you answer Yes (records it) or Forget it.
+- **Money back on an exact split** starts in the same proportion, to the penny, so a partial refund saves at once. Deleting or restoring twice no longer adds a second history line.
+- **Tested:** all 1a tests-first tests pass; `npm run verify` green (1100 unit/component tests, trace clean, SQL 47/47); production and demo builds; demo browser tests 39/39 (the 1a file 3 times over, 33/33). One test fix: the browser tests looked for the balance while a sheet covered it (a sheet correctly hides the page from screen readers); they now look past the sheet, with the same checks.
+- **Not checked here:** the two-user suite (CI only); no accessible name it uses changed.
+- **Next:** fresh review, then merge on green (1a doesn't wait for the screenshots checkpoint).
+
+## 2026-11-17 ~11:00 UTC: full QA pass → S2 polish; owner decisions
+- Owner asked for a full QA (function, use, look; "top of the line and premium"). Three independent audits ran on the demo build; results triaged into `docs/slices/S2-polish.md` (waves 1a money/input safety, 1b visual system, 2 Add sheet/Home/Activity). Most serious: a double tap on Save/Record/Duplicate recorded twice (Q-F1).
+- Local `node_modules` was stale (demo builds fell back to system fonts; live was fine). `npm ci` fixed it; CI now fails any build whose font paths don't resolve.
+- Owner decisions: Quick add is the one way to add (box gets a full-form button; floating button removed); build order stays (S3 Bills next, S5 Insights later); **the owner won't enter real numbers until the app is fully ready**, so sign-ups stay open for now.
+- Running: tests-first agents for waves 1a and 1b (worktrees). Next: builders, then 1a merges on green; 1b and 2 wait for the owner's yes on before/after screenshots.
+
+## 2026-11-17 ~10:15 UTC: S2 LIVE — first-real-use checkpoint ★
+- **PR #4 merged** (head 8acec62, all checks green incl. two-user 21/21); **deploy run 44060979111** green (migrations, app, demo, smoke). Live: https://smsm.jaexpark94.workers.dev (version.json commit 5778062). Opened as a phone (Pixel 7, dark): sign-in screen, no overflow, no errors.
+- **Fresh review** of the final changes: no blockers; fixed with failing tests first: a sign-out isn't undone by the short session wait; a stale last-person note is cleared; docs. `auth-config` now proves the live emails carry the code (run 44059948621: both "yes", custom sender on).
+- **Backup** run 44061902567 green (encrypted artifact, 3 KB: no household yet).
+- **Owner next:** install on both phones, sign in, start/join. **Me next:** once both have joined, tell the owner, then `enable_signup = false` through `auth-config`. Then S3 per BUILD_PLAN.
+
 ## 2026-11-17 ~10:00 UTC: sign-in email live; two-user suite green
 - **Two-user suite: 21/21 green** on CI run 44058300857 (commit 8124048), with all other checks.
 - **Sign-in email applied** (owner said yes): `auth-config` push run 44058977473. Codes now go out from smsm's own Gmail account (address only in the secret), subject "Your smsm code". A test request to the live auth service for the smsm address returned 200 (it would fail if Gmail refused the login); the owner checks that inbox.

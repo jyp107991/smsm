@@ -4,14 +4,24 @@
  * edit, swipes on deleted rows, plain words for every error, and sign-out forgetting a Monzo question.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { categoryId, couple, HID, JAE_ID, SAM_ID, storedExpense, TODAY } from '../../tests/fixtures/couple';
+import { idbData } from '../../tests/fixtures/fake-idb-keyval';
 import { pence } from '../core/money';
 import { addExpense, DataProvider, type DataLayer } from '../data';
 import { resetHistoryForTests } from '../ui/history';
 import { strings } from '../ui/strings';
 import { Root } from './AppRoot';
-import { savePending } from './settle/monzo';
+import * as monzoModule from './settle/monzo';
+import type { PendingMonzo } from './settle/monzo';
+
+// S2 polish Q-U2: the "Did it go through?" question is kept in IndexedDB (idb-keyval), which jsdom lacks.
+vi.mock('idb-keyval', async () => (await import('../../tests/fixtures/fake-idb-keyval')).fakeIdbKeyval);
+/** Q-U2: the question's store is asynchronous (IndexedDB); see src/screens/polish1a.test.tsx. */
+const monzo = monzoModule as unknown as {
+  savePending(p: PendingMonzo | null): Promise<void>;
+  loadPending(): Promise<PendingMonzo | null>;
+};
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,6 +33,7 @@ beforeEach(async () => {
   history.replaceState(null, '', '/');
   resetHistoryForTests();
   sessionStorage.clear();
+  idbData.clear();
 });
 afterEach(async () => { await open?.dispose(); open = null; });
 
@@ -109,7 +120,7 @@ describe('settling up', () => {
   });
 
   it('SET-2: "Did it go through?" says what Yes will do, without claiming it is already recorded', async () => {
-    savePending({ from: SAM_ID, to: JAE_ID, amount: 2000, date: TODAY, note: null });
+    await monzo.savePending({ from: SAM_ID, to: JAE_ID, amount: 2000, date: TODAY, note: null });
     const { layer } = couple({ as: 'sam', expenses: [storedExpense()] });
     show(layer);
     const asked = await screen.findByRole('dialog', { name: 'Did it go through?' });
@@ -237,14 +248,15 @@ describe('plain words for every error (DESIGN §5, TXT-7)', () => {
 });
 
 describe('signing out', () => {
-  it('SET-2: signing out forgets a "Did it go through?" question waiting in this tab', async () => {
+  it('SET-2 Q-U2: signing out forgets a "Did it go through?" question waiting on this phone', async () => {
     const { layer } = couple({ expenses: [storedExpense()] });
     at('/settings');
     show(layer);
     const signOut = await screen.findByRole('button', { name: 'Sign out' });
     // Asked in this tab (it was on its way to Monzo), then the person signs out instead.
-    savePending({ from: SAM_ID, to: JAE_ID, amount: 2000, date: TODAY, note: null });
+    await monzo.savePending({ from: SAM_ID, to: JAE_ID, amount: 2000, date: TODAY, note: null });
     fireEvent.click(signOut);
-    await waitFor(() => { expect(sessionStorage.getItem('smsm-monzo-pending')).toBeNull(); });
+    // Q-U2: kept in IndexedDB now (it survives the app being closed), and still forgotten on sign out.
+    await waitFor(async () => { expect(await monzo.loadPending()).toBeNull(); });
   });
 });

@@ -8,11 +8,11 @@ import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import {
-  addExpense, deleteExpense, editExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
+  addExpense, deleteExpense, editExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
   useEntries, useHousehold, type ExpenseDraft, type ExpenseRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
-import { holdEnterWhileComposing } from '../../ui/keys';
+import { enterMovesTo, enterSavesOnce } from '../../ui/keys';
 import { Button, Chip, Field, Segmented, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
@@ -25,8 +25,8 @@ import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from 
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
 import {
-  blankForm, draftOf, formFromRow, RATIO_PRESETS, refundForm, remainderWords, setPayerShare, sumWords, summaryWords,
-  withSplit, yesterdayOf, type FormState, type SplitChoice,
+  blankForm, draftOf, followExact, formFromRow, RATIO_PRESETS, refundForm, remainderWords, setPayerShare, sumWords, summaryWords,
+  withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
 } from './form';
 
 export function EntrySheet({ request, onClose }: { request: EntryRequest | null; onClose: () => void }) {
@@ -74,8 +74,17 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const guess = useMemo(() => guessFor(s.description, { categories, memory, entries }), [s.description, categories, memory, entries]);
   const suggestions = useMemo(() => descriptionSuggestions(s.description, entries), [s.description, entries]);
 
+  // Q-F1: one row id for this form, and nothing after the first save (a double tap, Enter held).
+  const [rowId] = useState(newId);
+  const done = useRef(false);
+  // Q-U1: Enter moves on through the form; only Enter in Description (or Save) saves.
+  const descriptionRef = useRef<HTMLInputElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const shareRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   const update = (next: FormState) => {
-    setS(next);
+    // Q-F5: money back on an exact split keeps the original's proportion until the person types a share.
+    setS(followExact(next));
     setErrors([]);
   };
   const dirty = JSON.stringify(s) !== JSON.stringify(initial);
@@ -104,6 +113,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
   const save = (e?: SyntheticEvent) => {
     e?.preventDefault();
+    if (done.current) return;
+    // Q-F2: a date after the phone's today is refused, as quick add refuses one (an edit keeps a date it had).
+    if (s.date > today && (request.mode !== 'edit' || s.date !== initial.date)) {
+      setErrors([strings.entry.dateAfterToday]);
+      return;
+    }
     const description = s.description.trim() !== '' ? s.description : (live.find((c) => c.id === s.categoryId)?.name ?? '');
     const result = draftOf({ ...s, description }, pair);
     if ('errors' in result) {
@@ -126,13 +141,14 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           if ('draft' in before) editExpense(id, changedFields(draft, before.draft, false));
         };
       } else {
-        id = addExpense(draft);
+        id = addExpense({ ...draft, id: rowId });
         undo = () => { deleteExpense(id); };
       }
     } catch (err) {
       setErrors([plainError(err)]);
       return;
     }
+    done.current = true;
     // CAT-3, CAT-4: what the person chose teaches the app (never delays the save: it is queued).
     const learned: { categoryId?: string | null; split?: ExpenseDraft['split'] } = {};
     if (picked.current.category) learned.categoryId = draft.categoryId;
@@ -169,7 +185,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     <div className="flex flex-col gap-2">
       <p className="text-secondary text-ink-2 nums-list m-0 min-h-[1.4rem] truncate">{summary}</p>
       {errors.length > 0 ? <p role="alert" className="text-secondary text-berry m-0">{errors.join(' ')}</p> : null}
-      <Button type="submit" form={formId} block>{strings.entry.save}</Button>
+      <Button ref={saveRef} type="submit" form={formId} block>{strings.entry.save}</Button>
     </div>
   );
 
@@ -182,7 +198,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           variant="amount"
           value={s.amountText}
           onChange={(e) => { update({ ...s, amountText: e.target.value }); }}
-          onKeyDown={holdEnterWhileComposing}
+          onKeyDown={(e) => { enterMovesTo(e, descriptionRef.current); }}
           enterKeyHint="next"
           autoFocus={request.mode !== 'edit'}
         />
@@ -191,11 +207,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
       <div className="flex flex-col gap-2">
         <Field
+          ref={descriptionRef}
           label={strings.entry.description}
           value={s.description}
           placeholder={strings.entry.descriptionPlaceholder}
           onChange={(e) => { describe(e.target.value); }}
-          onKeyDown={holdEnterWhileComposing}
+          onKeyDown={enterSavesOnce}
           enterKeyHint="done"
           autoComplete="off"
           autoCapitalize="sentences"
@@ -289,16 +306,18 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             {s.splitMode === 'exact' ? (
               <div className="mt-3 flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-3">
-                  {pair.map((p) => (
+                  {pair.map((p, i) => (
                     <Field
                       key={p.id}
+                      ref={(el) => { shareRefs.current[i] = el; }}
                       label={strings.entry.share(p.name)}
                       inputMode="decimal"
                       enterKeyHint="next"
                       autoComplete="off"
                       value={s.exactText[p.id] ?? ''}
-                      onKeyDown={holdEnterWhileComposing}
-                      onChange={(e) => { update({ ...s, exactText: { ...s.exactText, [p.id]: e.target.value } }); }}
+                      // Q-U1: Enter goes to the next share; on the last one, to Save (it saves nothing itself).
+                      onKeyDown={(e) => { enterMovesTo(e, i + 1 < pair.length ? shareRefs.current[i + 1] : saveRef.current); }}
+                      onChange={(e) => { update(withExactText(s, p.id, e.target.value)); }}
                     />
                   ))}
                 </div>

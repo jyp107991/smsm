@@ -6,7 +6,7 @@
  */
 import { addDays, type IsoDate } from '../../core/dates';
 import { formatPence, formatPlainPounds, parseAmount, pence, type Pence } from '../../core/money';
-import { computeEntry, exactRemainder, type SplitParams, type UserId } from '../../core/split';
+import { computeEntry, exactRemainder, ratioShares, type SplitParams, type UserId } from '../../core/split';
 import type { ExpenseDraft, ExpenseRow } from '../../data';
 import { strings } from '../../ui/strings';
 import { penceOf, payerOf, shareWords, type Person } from '../shared/words';
@@ -31,6 +31,12 @@ export interface FormState {
   notes: string;
   tags: readonly string[];
   refundOf: string | null;
+  /**
+   * S2 polish Q-F5 (MB-1): money back on an exact-split entry starts as the same proportion. These are the
+   * original's shares in pence: while set, the exact amounts follow the amount typed (largest remainder, a
+   * tie to whoever got it back, as SPL-3). Typing an exact amount yourself stops it.
+   */
+  exactFollows?: Record<UserId, number>;
 }
 
 export function blankForm(opts: { me: UserId; people: readonly Person[]; today: IsoDate; split: SplitParams }): FormState {
@@ -118,7 +124,39 @@ export function formFromRow(row: ExpenseRow, people: readonly Person[], input?: 
  */
 export function refundForm(original: ExpenseRow, people: readonly Person[], today: IsoDate): FormState {
   const f = formFromRow(original, people);
-  return { ...f, kind: 'money_back', amountText: '', refundOf: original.id, notes: '', date: today, categoryTouched: true };
+  const back: FormState = { ...f, kind: 'money_back', amountText: '', refundOf: original.id, notes: '', date: today, categoryTouched: true };
+  if (back.splitMode !== 'exact' || people.length !== 2) return back;
+  // Q-F5: an exact split comes back in the same proportion, worked out as the amount is typed.
+  const follows: Record<UserId, number> = {};
+  for (const p of people) follows[p.id] = penceOf(original.shares, p.id);
+  return followExact({ ...back, exactText: {}, exactFollows: follows });
+}
+
+/**
+ * Q-F5: while the exact amounts follow a proportion, they are worked out again from the amount typed and
+ * who got it back (core/split's largest remainder, ties to that person). Otherwise the form as it is.
+ */
+export function followExact(s: FormState): FormState {
+  const follows = s.exactFollows;
+  if (!follows || s.splitMode !== 'exact') return s;
+  const amount = parsedAmount(s);
+  if (amount === null) return { ...s, exactText: {} };
+  let shares;
+  try {
+    shares = ratioShares(amount, follows, s.payer);
+  } catch {
+    return s;
+  }
+  const exactText: Record<UserId, string> = {};
+  for (const [id, p] of Object.entries(shares)) exactText[id] = formatPlainPounds(p);
+  return { ...s, exactText };
+}
+
+/** An exact amount typed by the person: the amounts stop following a proportion (Q-F5). */
+export function withExactText(s: FormState, id: UserId, text: string): FormState {
+  const next: FormState = { ...s, exactText: { ...s.exactText, [id]: text } };
+  delete next.exactFollows;
+  return next;
 }
 
 /**
@@ -146,10 +184,10 @@ export function sumWords(s: FormState): string | null {
   return a === null ? null : strings.entry.sum(formatPence(a));
 }
 
-/** An exact share as typed; empty or a plain zero is £0.00 (parseAmount refuses zero for an entry's amount). */
+/** An exact share as typed; empty or a plain zero ("0", "0.00", "0,00") is £0.00 (parseAmount refuses zero for an entry's amount). */
 function exactPence(text: string | undefined): Pence | null {
   const t = (text ?? '').trim();
-  if (t === '' || /^£?\s*0+(\.0{1,2})?$/.test(t)) return pence(0);
+  if (t === '' || /^£?\s*0+([.,]0{1,2})?$/.test(t)) return pence(0);
   return parseAmount(t);
 }
 

@@ -146,12 +146,30 @@ function currentSettlement(layer: DataLayer, id: string): { row: SettlementRow; 
 
 // ───────────── money: instant, offline, in order ─────────────
 
-/** ADD-*, MB-*: saves a new expense or money-back entry; returns the id made on the phone, at once. */
-export function addExpense(input: ExpenseDraft, layer = activeDataLayer()): string {
+/**
+ * True when this phone already has a row with this id: shown (deleted or not), waiting, or refused and kept.
+ * A second submit of the same form or action (Q-F1) finds its own first one here.
+ */
+function knownRow(layer: DataLayer, table: 'expenses' | 'settlements', id: string): boolean {
+  const rows: readonly { id: string }[] = table === 'expenses' ? layer.entries() : layer.settlements();
+  return rows.some((r) => r.id === id) || kept(layer, table, id) !== undefined;
+}
+
+/**
+ * ADD-*, MB-*: saves a new expense or money-back entry; returns the id made on the phone, at once.
+ *
+ * `id` (S2 polish Q-F1, ADD-6): the row id, made once per form or action instance by the screen. A second
+ * submit with the same id (a double tap, Enter held) finds the row already on this phone and changes nothing,
+ * so it is recorded once. Without it a new id is made.
+ */
+export function addExpense(input: ExpenseDraft & { id?: string }, layer = activeDataLayer()): string {
+  const { id, ...draft } = input;
   const ctx = context(layer);
-  const built = expenseRowFor(ctx, input);
-  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built });
-  return built.row.id;
+  if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
+  const built = expenseRowFor(ctx, draft);
+  const row = id === undefined ? built.row : { ...built.row, id };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
+  return row.id;
 }
 
 /**
@@ -186,18 +204,27 @@ function dropRefusedNew(layer: DataLayer, table: 'expenses' | 'settlements', id:
   return true;
 }
 
-/** ACT-3: soft delete; the entry stays in the database and can be restored. Also Undo of a save (ADD-6). */
-export function deleteExpense(id: string, layer = activeDataLayer()): void {
+/**
+ * ACT-3: soft delete; the entry stays in the database and can be restored. Also Undo of a save (ADD-6).
+ * True when something changed; false when it was already deleted (Q-F4: the screen then says nothing).
+ */
+export function deleteExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row, onServer } = currentExpense(layer, id);
-  if (dropRefusedNew(layer, 'expenses', id, onServer)) return;
+  if (dropRefusedNew(layer, 'expenses', id, onServer)) return true;
+  // Q-F4: already deleted (a second tap, or the other phone got there first): nothing to do, nothing logged.
+  if (row.deleted_at !== null) return false;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: expenseLabel(row) });
+  return true;
 }
 
-export function restoreExpense(id: string, layer = activeDataLayer()): void {
+export function restoreExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row } = currentExpense(layer, id);
+  // Q-F4: not deleted: nothing to restore.
+  if (row.deleted_at === null) return false;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: null }, label: expenseLabel(row) });
+  return true;
 }
 
 function settlementCtx(layer: DataLayer) {
@@ -206,11 +233,17 @@ function settlementCtx(layer: DataLayer) {
   return { ...ctx, pair: ctx.pair };
 }
 
-/** SET-1, SET-2: records "Sam paid Jae £50.00"; returns the id made on the phone, at once. */
-export function addSettlement(input: SettlementDraft, layer = activeDataLayer()): string {
+/**
+ * SET-1, SET-2: records "Sam paid Jae £50.00"; returns the id made on the phone, at once. `id` as for
+ * addExpense (Q-F1): a second submit of the same sheet or "Yes" records nothing more.
+ */
+export function addSettlement(input: SettlementDraft & { id?: string }, layer = activeDataLayer()): string {
+  const { id, ...draft } = input;
   const ctx = settlementCtx(layer);
-  const row = buildSettlement({ householdId: ctx.hid, userId: ctx.uid, members: ctx.pair, now: layer.now() }, input);
-  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'upsert', isNew: true, row, input });
+  if (id !== undefined && knownRow(layer, 'settlements', id)) return id;
+  const built = buildSettlement({ householdId: ctx.hid, userId: ctx.uid, members: ctx.pair, now: layer.now() }, draft);
+  const row = id === undefined ? built : { ...built, id };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'upsert', isNew: true, row, input: draft });
   return row.id;
 }
 
@@ -226,17 +259,21 @@ export function editSettlement(id: string, patch: Partial<SettlementDraft>, laye
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'upsert', isNew: !onServer, row, input });
 }
 
-export function deleteSettlement(id: string, layer = activeDataLayer()): void {
+export function deleteSettlement(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row, onServer } = currentSettlement(layer, id);
-  if (dropRefusedNew(layer, 'settlements', id, onServer)) return;
+  if (dropRefusedNew(layer, 'settlements', id, onServer)) return true;
+  if (row.deleted_at !== null) return false; // Q-F4
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: settlementLabel(row) });
+  return true;
 }
 
-export function restoreSettlement(id: string, layer = activeDataLayer()): void {
+export function restoreSettlement(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row } = currentSettlement(layer, id);
+  if (row.deleted_at === null) return false; // Q-F4
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'patch', id, patch: { deleted_at: null }, label: settlementLabel(row) });
+  return true;
 }
 
 // ───────── learning: what a person's choices teach the app (CAT-3, CAT-4) ─────────

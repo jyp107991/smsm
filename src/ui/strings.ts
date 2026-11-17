@@ -138,6 +138,8 @@ export const strings = {
     quickAdd: 'Quick add',
     quickAddPlaceholder: '42.50 tesco',
     quickAddHint: 'An amount, then anything: 12 lunch yesterday',
+    /** S2 polish Q-U3: Enter in quick add with no amount it can read. */
+    quickAddNeedsAmount: 'Start with an amount, like 12.50.',
     checkReading: 'Some of that isn’t clear. Tap the line to check it.',
     addExpense: 'Add expense',
     sameAsLast: 'Same as last time',
@@ -210,6 +212,8 @@ export const strings = {
     deleted: (label: string) => `Deleted ${label}`,
     restored: (label: string) => `Restored ${label}`,
     amountNeeded: 'Write an amount, like 12.50.',
+    /** S2 polish Q-F2: the form refuses a date after the phone's today, as quick add does. */
+    dateAfterToday: 'That date is after today.',
     summaryShares: (payer: string, amount: string, shares: string) => `${payer} paid ${amount} · ${shares}`,
     summaryTreat: (payer: string, amount: string) => `${payer} paid ${amount} · ${payer}’s treat`,
     summaryFor: (payer: string, amount: string, other: string) => `${payer} paid ${amount} · all of it on ${other}`,
@@ -306,6 +310,9 @@ export const strings = {
     nothingOwed: (from: string, to: string) => `${from} doesn’t owe ${to} anything right now.`,
     yes: 'Yes',
     notYet: 'Not yet',
+    /** S2 polish Q-U2: the quiet Home banner after "Not yet". */
+    banner: (from: string, to: string, amount: string) => `Did ${from}’s ${amount} to ${to} go through?`,
+    forgetIt: 'Forget it',
     settled: 'Settled up',
     allSquare: 'All square',
   },

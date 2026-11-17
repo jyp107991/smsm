@@ -56,6 +56,18 @@ jobs:
         run: |
           if grep -rlE 'smsm gallery|DEMO42' dist/; then echo "Demo-only code reached the production build."; exit 1; fi
           echo "Production bundle is clean."
+      - name: Fonts resolve in both builds (the owner's chosen typeface, not a system fallback)
+        run: |
+          # An unresolved package path (url(@fontsource/...) or /node_modules/...) builds without error but serves
+          # index.html instead of the font, so the app silently falls back to system type (QA, 17 Nov).
+          if grep -rlE "url\((['\"])?@fontsource|/node_modules/" dist/ dist-demo/ --include='*.css' --include='*.html'; then
+            echo "A font path was not resolved by the build."; exit 1
+          fi
+          for d in dist dist-demo; do
+            n=$(ls $d/assets/gowun-*.woff2 2>/dev/null | wc -l)
+            [ "$n" -gt 0 ] || { echo "No Gowun font files in $d/assets."; exit 1; }
+          done
+          echo "Fonts resolve."
       - name: Install Playwright's Chromium
         run: npx playwright install --with-deps chromium
       - name: End-to-end and accessibility

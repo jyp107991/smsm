@@ -16,6 +16,7 @@ import { goBackOrTo } from '../../ui/history';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { Head } from '../shared/Head';
+import { useTapAction } from '../shared/once';
 import { usePeople } from '../shared/people';
 import { entrySentence, historyLine, payerOf } from '../shared/words';
 import { useSheets } from '../sheets';
@@ -71,17 +72,21 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const deleted = row.deleted_at !== null;
   const back = row.kind === 'money_back';
   const label = row.description;
+  const tap = useTapAction();
 
+  // Q-F1 ADD-7: one copy per tap-action (a double tap makes one); a later tap makes another on purpose.
   const duplicate = () => {
-    const draft = duplicateDraft(row, people.list, today);
-    if (!draft) return;
-    const newId = addExpense(draft);
-    tickSaved();
-    toast.show({
-      message: strings.entry.saved,
-      ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
-      action: { label: strings.entry.undo, onAction: () => { deleteExpense(newId); } },
-      duration: 5000,
+    tap((rowId) => {
+      const draft = duplicateDraft(row, people.list, today);
+      if (!draft) return;
+      const copyId = addExpense({ ...draft, id: rowId });
+      tickSaved();
+      toast.show({
+        message: strings.entry.saved,
+        ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
+        action: { label: strings.entry.undo, onAction: () => { deleteExpense(copyId); } },
+        duration: 5000,
+      });
     });
   };
 
@@ -114,8 +119,8 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         {deleted ? (
           <Button
             onClick={() => {
-              restoreExpense(row.id);
-              toast.show({ message: strings.entry.restored(label) });
+              // Q-F4: a second tap restores nothing, and says nothing.
+              if (restoreExpense(row.id)) toast.show({ message: strings.entry.restored(label) });
             }}
           >
             {strings.entry.restore}
@@ -128,7 +133,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
             <Button
               variant="destructive"
               onClick={() => {
-                deleteExpense(row.id);
+                if (!deleteExpense(row.id)) return;
                 toast.show({
                   message: strings.entry.deleted(label),
                   action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
@@ -173,7 +178,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
       </dl>
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
-          <Button onClick={() => { restoreSettlement(row.id); toast.show({ message: strings.entry.restored(heading) }); }}>
+          <Button onClick={() => { if (restoreSettlement(row.id)) toast.show({ message: strings.entry.restored(heading) }); }}>
             {strings.entry.restore}
           </Button>
         ) : (
@@ -182,7 +187,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
             <Button
               variant="destructive"
               onClick={() => {
-                deleteSettlement(row.id);
+                if (!deleteSettlement(row.id)) return;
                 toast.show({
                   message: strings.entry.deleted(heading),
                   action: { label: strings.entry.undo, onAction: () => { restoreSettlement(row.id); } },

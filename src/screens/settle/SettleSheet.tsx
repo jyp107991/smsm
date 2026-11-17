@@ -3,11 +3,11 @@
  * with Monzo" when the person owed has saved a monzo.me name, then "Did it go through?" on return; or
  * "Record it". Editing a settle-up (from its page) uses the same sheet with "Save".
  */
-import { useState, type SyntheticEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, formatPlainPounds, parseAmount, pence } from '../../core/money';
 import {
-  addSettlement, deleteSettlement, editSettlement, useBalance, useDataLayer, type SettlementDraft,
+  addSettlement, deleteSettlement, editSettlement, newId, useBalance, useDataLayer, type SettlementDraft,
 } from '../../data';
 import { tickSettled } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -18,7 +18,8 @@ import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
 import type { SettleRequest } from '../sheets';
 import { yesterdayOf } from '../entry/form';
-import { monzoLink, savePending, type PendingMonzo } from './monzo';
+import { monzoLink, type PendingMonzo } from './monzo';
+import { useMonzoQuestion } from './question';
 
 export function SettleSheet({ request, onClose }: { request: SettleRequest | null; onClose: () => void }) {
   const [opened, setOpened] = useState<{ req: SettleRequest; n: number } | null>(null);
@@ -32,8 +33,12 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
   const toast = useToast();
   const people = usePeople();
   const balance = useBalance();
+  const question = useMonzoQuestion();
   const today = layer.today();
   const [a, b] = people.list;
+  // Q-F1: one row id for this sheet, and nothing after the first save (a double tap, Enter held).
+  const [rowId] = useState(newId);
+  const done = useRef(false);
 
   // Who pays whom: the one who owes pays the one owed (SET-1); an edit keeps what was recorded.
   const [start] = useState(() => {
@@ -79,14 +84,16 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
     return { from: start.from, to: start.to, amount, date, note: note.trim() === '' ? null : note.trim(), method };
   };
 
-  const record = (d: SettlementDraft) => {
+  /** `id`: the row this records; the Monzo question carries its own, so it is recorded once wherever it is answered. */
+  const record = (d: SettlementDraft, rowIdToUse = rowId): boolean => {
     let id: string;
     try {
-      id = addSettlement(d);
+      id = addSettlement({ ...d, id: rowIdToUse });
     } catch (err) {
       setError(plainError(err));
-      return;
+      return false;
     }
+    done.current = true;
     tickSettled();
     toast.show({
       message: strings.settle.settled,
@@ -94,10 +101,12 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
       duration: 5000,
     });
     onDone();
+    return true;
   };
 
   const submit = (e: SyntheticEvent) => {
     e.preventDefault();
+    if (done.current) return;
     if (editing) {
       const d = draft(request.row.method === 'monzo' ? 'monzo' : 'other');
       if (!d) return;
@@ -108,6 +117,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
         setError(plainError(err));
         return;
       }
+      done.current = true;
       toast.show({
         message: strings.entry.saved,
         action: {
@@ -126,16 +136,24 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
   const payWithMonzo = () => {
     const d = draft('monzo');
     if (!d || !monzoName) return;
-    const pending: PendingMonzo = { from: d.from, to: d.to, amount: d.amount, date: d.date, note: d.note ?? null };
-    // The question waits here for the person's return (SET-2); it survives a reload of this tab.
-    savePending(pending);
+    // The question carries this sheet's row id and who asked, so it records one row wherever it is answered.
+    const pending: PendingMonzo = { id: rowId, by: people.me?.id ?? '', from: d.from, to: d.to, amount: d.amount, date: d.date, note: d.note ?? null };
+    // The question waits for the person's return (SET-2); it is kept on the phone, so it survives the app
+    // being closed on the way (Q-U2).
+    question.ask(pending);
     setAsking(pending);
     window.open(monzoLink(monzoName, d.amount), '_blank', 'noopener,noreferrer');
   };
 
-  const close = () => {
-    savePending(null);
+  /** "Not yet" (or the sheet put away): the question stays, as a quiet banner on Home (Q-U2). */
+  const notYet = () => {
+    if (asking && !done.current) question.later(asking);
     onDone();
+  };
+
+  /** Q-U1: Enter in the amount saves nothing (Record it does), composing or not. */
+  const amountKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') e.preventDefault();
   };
 
   if (asking) {
@@ -143,16 +161,19 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
     return (
       <Sheet
         open={open}
-        onOpenChange={(next) => { if (!next) close(); }}
+        onOpenChange={(next) => { if (!next) notYet(); }}
         title={strings.settle.asked}
         footer={
           <div className="flex gap-3">
-            <Button variant="plain" className="flex-1" onClick={close}>{strings.settle.notYet}</Button>
+            <Button variant="plain" className="flex-1" onClick={notYet}>{strings.settle.notYet}</Button>
             <Button
               className="flex-1"
               onClick={() => {
-                savePending(null);
-                record({ from: asking.from, to: asking.to, amount: pence(asking.amount), date: asking.date, note: asking.note, method: 'monzo' });
+                if (done.current) return;
+                const answer = { from: asking.from, to: asking.to, amount: pence(asking.amount), date: asking.date, note: asking.note, method: 'monzo' as const };
+                if (record(answer, asking.id ?? rowId)) {
+                  question.forget();
+                }
               }}
             >
               {strings.settle.yes}
@@ -198,7 +219,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
           variant="amount"
           value={amountText}
           onChange={(e) => { setAmountText(e.target.value); setError(null); }}
-          onKeyDown={holdEnterWhileComposing}
+          onKeyDown={amountKey}
           enterKeyHint="done"
         />
         {/* A fixed place for the line, so it never moves what is under it. */}
