@@ -72,14 +72,16 @@ const HOUSEHOLD = 'cat-household';
 const JAPAN: SummaryChapter = { id: 'ch-japan', kind: 'trip', startDate: '2026-11-01', endDate: '2026-11-09', closed: false };
 const SOFA: SummaryChapter = { id: 'ch-sofa', kind: 'project', startDate: null, endDate: null, closed: false };
 
-function entry(over: Partial<SummaryEntry> & { amount: number; paid?: Record<string, number> }): SummaryEntry {
+function entry(over: Partial<Omit<SummaryEntry, 'amount' | 'paid'>> & { amount: number; paid?: Record<string, number> }): SummaryEntry {
   const { amount, paid, ...rest } = over;
   const paidMap: Record<string, Pence> = {};
   for (const [k, v] of Object.entries(paid ?? { [JAE]: amount })) paidMap[k] = pence(v);
   return { kind: 'expense', date: '2026-11-03', categoryId: GROCERIES, chapterId: JAPAN.id, deleted: false, ...rest, amount: pence(amount), paid: paidMap };
 }
 
-const summary = (chapter: SummaryChapter, entries: readonly SummaryEntry[], today: IsoDate = TODAY) =>
+/** The summary with plain numbers, so expected values can be written as numbers. */
+interface PlainSummary { total: number; days: number; perDay: number | null; byCategory: { categoryId: string | null; total: number }[]; byPerson: Record<string, number> }
+const summary = (chapter: SummaryChapter, entries: readonly SummaryEntry[], today: IsoDate = TODAY): PlainSummary =>
   core().chapterSummary(chapter, entries, PEOPLE, today);
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
 
