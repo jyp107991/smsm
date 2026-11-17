@@ -10,7 +10,10 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - S2 tests-first writer (two-user e2e on the local Supabase stack, data-layer unit tests, CI job proposal in `docs/slices/S2-ci.md`).
 - S2 data layer builder (query client + IndexedDB persistence, ordered offline queue, optimistic writes with rollback, realtime, stale-app check, demo-mode data).
 **Done (cont.):** type, voice and headings reworked (Korean-made type options; copy in smsm's voice; ledger-rule headings); PR #3 merged; deploying.
-**Next:** tell the owner the gallery is updated; merge S2 tests + data layer; build the S2 screens.
+- Gallery live with feedback round 1 (deploy 3).
+- S2 tests written (branch `worktree-agent-a5ac2d3b30ba4fa1a`, sha f27cf4ec): two-user e2e on the local stack (Mailpit), data-layer unit tests with a fake client, CI proposal in `docs/slices/S2-ci.md` (on that branch). Not merged yet: they need the data layer.
+- Data-layer builder told to satisfy those tests' contracts (createStore, createSessionKeeper, version checks).
+**Next:** merge S2 tests + data layer together; S2 CI job (local Supabase stack); S2 screens by builder agents (sign-in/setup; Home + add sheet; entry + Activity; settle + Settings).
 **If restarted:** `git branch | grep worktree-agent` and `git log` each; relaunch any agent whose final commit is missing, from its last WIP commit, with the same instructions (see this log's 17 Nov entries).
 
 ## 2026-11-17: S0 look and S1 core built (PR #2)
