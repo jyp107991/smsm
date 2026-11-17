@@ -29,7 +29,7 @@ describe.skipIf(!process.env.PGHOST)('EXP-2 nightly backup', () => {
       scratch(src, true);
       scratch(dst, false);
       const file = join(dir, 'b.sql.gz.gpg');
-      sh(`pg_dump -d ${src} --data-only --schema=public 2>/dev/null | gzip -9 | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 --passphrase-fd 3 --output ${file} 3<<<"$P"`, { P: pass });
+      sh(`$(test -x /usr/lib/postgresql/16/bin/pg_dump && echo /usr/lib/postgresql/16/bin/pg_dump || echo pg_dump) -d ${src} --data-only --schema=public 2>/dev/null | gzip -9 | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 --passphrase-fd 3 --output ${file} 3<<<"$P"`, { P: pass });
       expect(sh(`head -c 200 ${file} | grep -c "insert\\|COPY" || true`).trim()).toBe('0');
       const url = `postgresql:///${dst}?host=${process.env.PGHOST ?? ''}`;
       expect(() => sh(`bash scripts/restore-backup.sh ${file} "${url}"`, { BACKUP_PASSPHRASE: 'wrong passphrase' })).toThrow();
