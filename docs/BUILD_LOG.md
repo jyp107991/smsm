@@ -12,12 +12,19 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - Logo redrawn from real Hangul letterforms after owner feedback ("does not resemble the two Korean characters enough").
 - Migration 3 (S2 groundwork): 10 wrong join codes per hour per account.
 
-**In progress**
-- PR #2: CI and a fresh review. Then merge → deploy → the owner message.
+- PR #2 reviewed by a fresh agent (no blockers; fixes in DECISIONS 17 Nov) and **merged; deploy 2 passed** (migration 3 applied, smoke test passed). Gallery: https://smsm-demo.jaexpark94.workers.dev/gallery
+- S0 and S1 done. Remaining from the review, scheduled into S2: sheet history coordinator, toast live region (OPEN_ITEMS).
+- Owner message sent (17 Nov, ~04:20 UTC): gallery choices, the Auth changes, sign-in email recommendation.
 
-**Next**
-- Owner message: gallery link; the 4 Auth changes (DECISIONS / this log 16 Nov); sign-in email recommendation.
-- While waiting: S2 tests-first agent from `docs/slices/S2.md` (after adding its interfaces), S2 data layer.
+**Next (doesn't need the owner's answers)**
+- S2 brief: add interfaces (routes, accessible names, data hooks) to `docs/slices/S2.md`; launch the S2 tests-first agent.
+- S2 data layer: TanStack Query + IndexedDB persistence, offline mutation queue, realtime, stale-app check (new packages named in the brief first).
+- Second keep-alive via a Cloudflare Cron Trigger (OPEN_ITEMS known risk).
+
+**Waiting on the owner**
+- Logo A/B/C, type A/B/C, fifth colour A/B.
+- Approve the 4 Auth changes (site address, 6-digit codes, 15-minute expiry, secure password change).
+- Sign-in email: recommended a new Gmail account just for smsm with an app password (two GitHub secrets: SUPABASE_SMTP_USER, SUPABASE_SMTP_PASS). Then uncomment the SMTP block in `supabase/config.toml`, run `auth-config` diff, then push.
 
 ## 2026-11-16: S0 and S1 in progress (handoff)
 **Done**
