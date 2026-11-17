@@ -72,6 +72,54 @@ jobs:
           path: dist-demo
           retention-days: 7
 
+  # The two-user end-to-end suite (docs/slices/S2-ci.md): the production build against the Supabase local
+  # stack, two phones with fixed clocks, sign-in codes from the local mail catcher. Nothing here is deployed.
+  two-users:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Local sign-in limits high enough for the suite (CI workspace only, never committed)
+        run: |
+          sed -i -E 's/^(sign_in_sign_ups|token_verifications) = .*/\1 = 1000/' supabase/config.toml
+          git diff --stat supabase/config.toml
+      - name: Supabase local stack (applies supabase/migrations)
+        run: npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta
+      - name: Stack addresses and keys for the tests and the app build
+        run: |
+          # `status -o env` prints NAME="value"; GITHUB_ENV wants NAME=value. The local stack's keys are its
+          # fixed development keys, but are masked anyway because logs are public.
+          npx supabase status -o env | sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' > stack.env
+          while IFS='=' read -r name value; do
+            case "$name" in *KEY*|*SECRET*) echo "::add-mask::$value";; esac
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done < stack.env
+          rm stack.env
+      - name: App build points at the local stack
+        run: |
+          echo "VITE_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY" >> "$GITHUB_ENV"
+      - name: Install Playwright's Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Two-user end-to-end (two phones, fixed clock, real database)
+        run: npx playwright test -c tests/e2e/two-users/playwright.config.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-two-users
+          path: |
+            playwright-report/two-users
+            test-results/two-users
+          retention-days: 7
+      - name: Stop the stack
+        if: always()
+        run: npx supabase stop --no-backup
+
   # Proves the secrets and variables work before anything reaches main: links the project, lists the
   # migrations a deploy would apply (changes nothing), and checks the Cloudflare token.
   remote-check:
