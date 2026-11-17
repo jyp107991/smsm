@@ -15,10 +15,13 @@ import { Minus, Plus } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay } from '../../core/dates';
 import { currencyOf, currencySymbol } from '../../core/fx';
-import { formatPence } from '../../core/money';
+import type { ScanReply } from '../../core/aiReplies';
+import { checkTotal, itemise } from '../../core/itemise';
+import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
-  currentCountry, currentOpenChapter, homeCountry, locate, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
+  currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
+  useSmartFeatures, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -38,6 +41,7 @@ import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
 import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
 import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
+import { Itemise, PhotoButton, ReceiptPhoto, type ReadingState } from './ReceiptParts';
 import { RecurringHistory, Toggle } from './RecurringParts';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
@@ -50,6 +54,11 @@ import {
  * for an expense "For Sam" / "My treat"; for money back, whose money it all is ("All Jae’s").
  */
 type SplitValue = `ratio:${string}` | 'other' | `all:${string}` | SplitChoice;
+
+/** A receipt's amount in its own currency, as typed in the Amount box ("648", "12.50"). */
+function foreignText(p: Pence): string {
+  return formatPlainPounds(p).replace(/\.00$/, '');
+}
 
 export function EntrySheet({ request, onClose }: { request: EntryRequest | null; onClose: () => void }) {
   // A new key per request, so every opening starts from its own prefill; the last one stays while closing.
@@ -130,6 +139,16 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     () => (newChapter ? { mode: 'new', onSaved: (chapterId) => { setS((prev) => ({ ...prev, chapterId })); } } : null),
     [newChapter],
   );
+  // S6a (SCAN-1…5): the receipt photo, its reading, and what the person has touched (a reading fills only the rest).
+  const smart = useSmartFeatures();
+  const photoMode = request.mode === 'add' && !rec;
+  const fromInboxScan = request.mode === 'add' ? request.receiptPath : undefined;
+  const [photo, setPhoto] = useState<{ path: string; url: string | null; queued: boolean } | null>(
+    () => (fromInboxScan ? { path: fromInboxScan, url: null, queued: true } : null));
+  const [reading, setReading] = useState<ReadingState>('idle');
+  const [receipt, setReceipt] = useState<{ discount: Pence; service: Pence } | null>(null);
+  const touched = useRef({ amount: false, description: false, date: false });
+  const scanRun = useRef(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
   const [pickingDate, setPickingDate] = useState(false);
@@ -175,7 +194,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, f.place ?? null, f.foreign ?? null, r]
       : [f.amountText, f.description, f.notes, exact, r === null ? null : r.everyText]);
   };
-  const dirty = asked(s, rec) !== asked(initial, initialSchedule);
+  const dirty = asked(s, rec) !== asked(initial, initialSchedule) || (photo !== null && fromInboxScan === undefined);
   const changeSchedule = (next: Partial<ScheduleState>) => {
     if (rec) setRec({ ...rec, ...next });
     setErrors([]);
@@ -195,6 +214,112 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     update(next);
   };
 
+  // ───────── S6a: the receipt ─────────
+  const pendingPhoto = useRef<Promise<string | null> | null>(null);
+  /** SCAN-1: a reading fills only what the person hasn't touched since; lines that don't add up fill no amount. */
+  const fill = (reply: ScanReply) => {
+    const total = reply.total_pence === null ? null : pence(reply.total_pence);
+    const items = reply.items.map((l) => ({ label: l.label, pence: pence(l.pence), shared: true }));
+    const discount = pence(reply.discount_pence);
+    const service = pence(reply.service_pence);
+    setReceipt({ discount, service });
+    setS((prev) => {
+      const t = touched.current;
+      let next: FormState = { ...prev, items: items.length > 0 ? items : null, billTotal: total };
+      if (!t.description && reply.merchant) next = { ...next, description: reply.merchant };
+      if (!t.date && reply.date) next = { ...next, date: reply.date };
+      if (!prev.categoryTouched) {
+        const named = reply.category === null ? undefined : live.find((c) => c.name === reply.category)?.id;
+        const g = guessFor(next.description, { categories, memory, entries });
+        next = { ...next, categoryId: named ?? g.categoryId ?? prev.categoryId };
+        if (!prev.splitTouched) {
+          const category = live.find((c) => c.id === next.categoryId);
+          next = withSplit(next, defaultSplit({ remembered: g.split, category, householdRatio: household?.default_ratio, people: pair, me: me?.id ?? '' }), pair);
+        }
+      }
+      if (!t.amount) {
+        // PLC-6: a receipt in the currency of where this entry is turns on "Paid in", with the amount in that currency.
+        const currency = reply.currency !== null && reply.currency !== 'GBP' && currencyOf(next.country ?? home) === reply.currency ? reply.currency : null;
+        const adds = items.length === 0 || (total !== null && checkTotal(items, discount, service, total).adds);
+        if (currency) next = { ...next, foreign: { currency, rateText: '' } };
+        next = { ...next, amountText: total !== null && adds ? (currency ? foreignText(total) : formatPlainPounds(total)) : '' };
+      }
+      return followExact(next);
+    });
+    setErrors([]);
+  };
+  const scan = (blob: Blob) => {
+    scanRun.current += 1;
+    const run = scanRun.current;
+    setReading('reading');
+    void readReceipt(blob).then((r) => {
+      if (run !== scanRun.current) return;
+      if (r.ok) {
+        fill(r.data);
+        setReading('idle');
+      } else setReading(r.reason === 'limit' ? 'limit' : r.reason === 'off' ? 'idle' : 'failed');
+    });
+  };
+  /** SCAN-1: the photo is kept on this phone at once (shown straight away); read too when scanning. */
+  const pick = (file: File, read: boolean) => {
+    const url = URL.createObjectURL(file);
+    setPhoto({ path: '', url, queued: false });
+    const kept = keepPhoto(file).then(
+      (path) => { setPhoto((p) => (p && p.url === url ? { ...p, path } : p)); return path; },
+      () => { setPhoto(null); setErrors([strings.errors.generic]); return null; },
+    );
+    pendingPhoto.current = kept;
+    if (read) scan(file);
+  };
+  const removePhoto = () => {
+    scanRun.current += 1;
+    pendingPhoto.current = null;
+    setPhoto(null);
+    setReading('idle');
+  };
+  /** SCAN-4: to the Inbox to sort later; nothing else is saved. */
+  const sortLaterNow = () => {
+    if (!photo || done.current) return;
+    if (photo.path === '') {
+      void pendingPhoto.current?.then((path) => { if (path) sortLaterNow(); });
+      return;
+    }
+    try {
+      sortPhotoLater(photo.path);
+    } catch (err) {
+      setErrors([plainError(err)]);
+      return;
+    }
+    done.current = true;
+    toast.show({ message: strings.smart.sortedLater });
+    onDone();
+  };
+  // SCAN-4: a receipt sorted later shows its photo, and is read now if it can be.
+  useEffect(() => {
+    if (!fromInboxScan) return;
+    let live = true;
+    void photoUrl(fromInboxScan).then((url) => { if (live && url) setPhoto((p) => (p ? { ...p, url } : p)); });
+    if (smart && online) void photoBlob(fromInboxScan).then((blob) => { if (live && blob) scan(blob); });
+    return () => { live = false; };
+    // Once, when the sheet opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** SCAN-2: ticking a line shares it; the amount follows while the lines add up and the person hasn't typed one. */
+  const toggleItem = (index: number) => {
+    setS((prev) => {
+      const items = prev.items?.map((l, i) => (i === index ? { ...l, shared: !l.shared } : l)) ?? null;
+      let next: FormState = { ...prev, items };
+      if (items && receipt && prev.billTotal != null && !touched.current.amount && checkTotal(items, receipt.discount, receipt.service, prev.billTotal).adds) {
+        const { amount } = itemise(items, items.map((l) => l.shared), receipt.discount, receipt.service);
+        next = { ...next, amountText: prev.foreign ? foreignText(amount) : formatPlainPounds(amount) };
+      }
+      return followExact(next);
+    });
+    setErrors([]);
+  };
+  const mismatch = s.items && s.items.length > 0 && receipt && s.billTotal != null && !checkTotal(s.items, receipt.discount, receipt.service, s.billTotal).adds
+    ? { lines: checkTotal(s.items, receipt.discount, receipt.service, s.billTotal).lines, total: s.billTotal } : null;
+
   const title = rec ? (template ? strings.recurring.edit : strings.recurring.title)
     : request.mode === 'refund' ? strings.entry.moneyBack
     : request.mode === 'edit' ? (existing?.kind === 'money_back' ? strings.entry.editMoneyBack : strings.entry.edit)
@@ -207,6 +332,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const save = (e?: SyntheticEvent) => {
     e?.preventDefault();
     if (done.current) return;
+    // A photo still being kept on the phone (a moment at most): save as soon as it is.
+    if (photo && photo.path === '') {
+      void pendingPhoto.current?.then(() => { saveRef.current?.click(); });
+      return;
+    }
     if (rec) {
       saveSchedule(rec);
       return;
@@ -220,7 +350,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       return;
     }
     const description = s.description.trim() !== '' ? s.description : (live.find((c) => c.id === s.categoryId)?.name ?? '');
-    const result = draftOf({ ...s, description }, pair);
+    const result = draftOf({ ...s, description, ...(photoMode ? { receiptPath: photo?.path ?? null } : {}) }, pair);
     if ('errors' in result) {
       setErrors(result.errors);
       return;
@@ -245,6 +375,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         id = keepInboxItem(request.inboxItem, { ...draft, id: rowId });
         undo = () => { /* kept bills are edited or deleted from their entry page */ };
       } else {
+        // OFF-2: the photo's upload goes into the queue just ahead of its entry.
+        if (photo && !photo.queued) queuePhotoUpload(photo.path);
         id = addExpense({ ...draft, id: rowId });
         // Q-U8: Undo says what it took away.
         undo = () => {
@@ -268,6 +400,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       }
     }
     tickSaved();
+    // CAT-2 step 4: nothing known about the words, so the AI may guess a moment later (marked as a guess).
+    if (request.mode === 'add' && !isBack) void guessCategory(id);
     // Q-U8: the toast says what happened, and keeps clear of the row it reports.
     toast.show({
       message: isBack ? strings.entry.moneyBackSaved : strings.entry.savedWhat(draft.description, formatPence(draft.amount)),
@@ -397,13 +531,23 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         value={s.amountText}
         placeholder={strings.entry.amountPlaceholder}
         trailing={sum}
-        onChange={(e) => { update({ ...s, amountText: e.target.value }); }}
+        onChange={(e) => { touched.current.amount = true; update({ ...s, amountText: e.target.value }); }}
         onKeyDown={(e) => { enterMovesTo(e, descriptionRef.current); }}
         enterKeyHint="next"
         autoFocus={request.mode !== 'edit'}
       />
       {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) ? (
         <ForeignAmount s={s} home={home} setForm={(change) => { setS((prev) => followExact(change(prev))); setErrors([]); }} />
+      ) : null}
+      {photoMode && photo ? (
+        <ReceiptPhoto
+          url={photo.url}
+          reading={reading}
+          onRemove={removePhoto}
+          onSortLater={request.inboxItem === undefined ? sortLaterNow : null}
+        />
+      ) : photoMode && smart && online ? (
+        <div><PhotoButton label={strings.smart.scan} scan onPicked={(file) => { pick(file, true); }} /></div>
       ) : null}
 
       <div className="flex flex-col gap-2">
@@ -412,7 +556,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           label={strings.entry.description}
           value={s.description}
           placeholder={strings.entry.descriptionPlaceholder}
-          onChange={(e) => { describe(e.target.value); }}
+          onChange={(e) => { touched.current.description = true; describe(e.target.value); }}
           onKeyDown={enterSavesOnce}
           enterKeyHint="done"
           autoComplete="off"
@@ -422,7 +566,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         {hasHistory ? (
           <div className="-mx-1 flex h-11 min-w-0 items-center gap-2 overflow-x-auto px-1" role="group" aria-label={strings.entry.suggestions}>
             {suggestions.map((d) => (
-              <Chip key={d} onSelectedChange={() => { describe(d); }} className="shrink-0">{d}</Chip>
+              <Chip key={d} onSelectedChange={() => { touched.current.description = true; describe(d); }} className="shrink-0">{d}</Chip>
             ))}
           </div>
         ) : null}
@@ -526,10 +670,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       ) : (
       <Group label={strings.entry.date}>
         <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
-          <Chip selected={s.date === today} onSelectedChange={() => { update({ ...s, date: today }); }}>
+          <Chip selected={s.date === today} onSelectedChange={() => { touched.current.date = true; update({ ...s, date: today }); }}>
             {strings.entry.today}
           </Chip>
-          <Chip selected={s.date === yesterday} onSelectedChange={() => { update({ ...s, date: yesterday }); }}>
+          <Chip selected={s.date === yesterday} onSelectedChange={() => { touched.current.date = true; update({ ...s, date: yesterday }); }}>
             {strings.entry.yesterday}
           </Chip>
           {/* Q-L13: the app's own month grid, in a small sheet; the chip then reads the day ("Tue 10 Nov"). */}
@@ -549,6 +693,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       ) : null}
 
       <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
+        {photoMode && !photo ? (
+          <div className="mb-4"><PhotoButton label={strings.smart.addPhoto} scan={false} onPicked={(file) => { pick(file, false); }} /></div>
+        ) : null}
+        {photoMode && s.items && s.items.length > 0 ? <Itemise items={s.items} mismatch={mismatch} onToggle={toggleItem} /> : null}
         {!rec ? (
           <Field
             ref={placeRef}
@@ -609,7 +757,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       onClose={() => { setPickingDate(false); }}
       value={s.date}
       today={today}
-      onPick={(date) => { update({ ...s, date }); }}
+      onPick={(date) => { touched.current.date = true; update({ ...s, date }); }}
     />
     <ChapterSheet editing={chapterEditing} onClose={() => { setNewChapter(false); }} />
     {rec ? (

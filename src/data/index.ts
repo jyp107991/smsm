@@ -11,7 +11,7 @@ export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
   useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts, useSmartFeatures,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {
@@ -26,7 +26,9 @@ export {
   addComment, editComment, deleteComment, restoreComment, setSettleDay,
 } from './mutations';
 export type { WindowRole } from './windows';
-export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type InvalidReason, type SettlementDraft } from './writes';
+export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, photoBlob, photoUrl, sortLater, sortPhotoLater, parseLoose, guessCategory, type LooseReading } from './smartActions';
+export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';
+export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
   type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow,

@@ -4,11 +4,11 @@
  * the database's log. A deleted entry says so and offers Restore. Settle-ups open here too.
  */
 import { ArrowLeft } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useHistory,
+  addExpense, deleteExpense, photoUrl, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useHistory,
   useOnline, useSettlements, useSyncStatus, type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -141,7 +141,8 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
           {category ? (
             <>
               <CategoryMark emoji={category.emoji} colour={category.colour} className="mr-1.5" />
-              {category.name}
+              {/* CAT-2 step 4: an AI guess says so until a person chooses. */}
+              {row.category_guess ? strings.smart.guess(category.name) : category.name}
             </>
           ) : strings.entry.categoryNone}
         </Detail>
@@ -161,6 +162,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         {row.place ? <Detail label={strings.places.place}>{row.place}</Detail> : null}
         {row.notes ? <Detail label={strings.entry.note}>{row.notes}</Detail> : null}
       </dl>
+      {row.receipt_path ? <ReceiptImage path={row.receipt_path} /> : null}
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
           <Button
@@ -285,5 +287,26 @@ function History({ id }: { id: string }) {
         </ol>
       )}
     </section>
+  );
+}
+
+/** SCAN-1: the receipt kept with the entry (this phone's copy, else a short-lived address from the server). */
+function ReceiptImage({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void photoUrl(path).then((u) => { if (live) setUrl(u); });
+    return () => { live = false; };
+  }, [path]);
+  return (
+    <figure className="m-0">
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" className="block w-fit">
+          <img src={url} alt={strings.smart.photo} className="bg-sunk max-h-72 max-w-full rounded-[12px] object-contain" />
+        </a>
+      ) : (
+        <span role="img" aria-label={strings.smart.photo} className="bg-sunk block h-40 w-32 rounded-[12px]" />
+      )}
+    </figure>
   );
 }

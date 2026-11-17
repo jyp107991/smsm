@@ -14,7 +14,8 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import { formatPence, formatPlainPounds } from '../../core/money';
 import {
-  addExpense, deleteExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus, locate, type Located } from '../../data';
+  addExpense, deleteExpense, guessCategory, newId, parseLoose, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold,
+  useOnline, useSmartFeatures, useSyncStatus, locate, type Located } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { useKeyboardOpen } from '../../ui/keyboard';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -25,7 +26,7 @@ import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { blankForm, withSplit, type FormState } from '../entry/form';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
-import { readingWords, readQuickAdd, type Reading } from '../shared/suggest';
+import { defaultSplit, readingWords, readQuickAdd, type Reading } from '../shared/suggest';
 import { useSheets } from '../sheets';
 import { AddButton } from './AddButton';
 
@@ -51,6 +52,11 @@ export function QuickAdd() {
   const box = useRef<HTMLDivElement>(null);
   const today = layer.today();
   const me = people.me;
+  const smart = useSmartFeatures();
+  const online = useOnline();
+  /** ADD-9: the usual split for a category the reading named (the household's, or the category's own). */
+  const defaultSplitFor = (categoryId: string | null) =>
+    defaultSplit({ remembered: null, category: categories.find((c) => c.id === categoryId), householdRatio: household?.default_ratio, people: people.list, me: me?.id ?? '' });
 
   const reading: Reading | null = useMemo(() => {
     if (!me || text.trim() === '') return null;
@@ -96,7 +102,28 @@ export function QuickAdd() {
     e.preventDefault();
     if (savedText.current === text) return;
     if (!reading) {
-      if (text.trim() !== '') setNeedsAmount(true);
+      if (text.trim() === '') return;
+      // ADD-9: words the grammar can't read go to the AI, with smart features on and a connection; the reading
+      // opens the full form (never saves by itself). Otherwise, or if it fails, today's answer.
+      if (smart && online && me) {
+        const words = text;
+        void parseLoose(words).then((r) => {
+          if (!r.ok || (r.data.amount === null && r.data.description === null)) { setNeedsAmount(true); return; }
+          const d = r.data;
+          const base = blankForm({ me: me.id, people: people.list, today, split: defaultSplitFor(d.categoryId) });
+          sheets.openEntry({
+            mode: 'add',
+            prefill: {
+              ...base, amountText: d.amount === null ? '' : formatPlainPounds(d.amount), description: d.description ?? '',
+              categoryId: d.categoryId ?? base.categoryId, categoryTouched: d.categoryId !== null, payer: d.payer ?? me.id,
+              date: d.date ?? today, tags: d.tags, ...(d.chapterId ? { chapterId: d.chapterId } : {}),
+            },
+          });
+          setText((now) => (now === words ? '' : now));
+        });
+        return;
+      }
+      setNeedsAmount(true);
       return;
     }
     if (!complete) {
@@ -120,6 +147,8 @@ export function QuickAdd() {
       return;
     }
     savedText.current = text;
+    // CAT-2 step 4: nothing known about the words, so the AI may guess a moment later (marked as a guess).
+    void guessCategory(id);
     // The next entry looks again (the phone may have moved).
     here.current = null;
     looking.current = false;

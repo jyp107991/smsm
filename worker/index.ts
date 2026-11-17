@@ -12,12 +12,15 @@
 import { buildRequest, capFor, isDailyLimit, MODELS, readReply, timeoutFor, type Outcome, type Task, type TaskInput } from './ai-core';
 
 export interface AiBinding { run(model: string, input: Record<string, unknown>): Promise<unknown> }
-export interface Env {
-  AI: AiBinding;
-  ASSETS: { fetch(req: Request): Promise<Response> };
+/** What the AI route needs: the binding, Supabase's URL and public key (deploy vars), the app's own origin. */
+export interface AiEnv {
+  AI?: AiBinding;
   SUPABASE_URL?: string;
-  SUPABASE_KEY?: string;
+  SUPABASE_ANON_KEY?: string;
+  /** Defaults to the Worker's own origin. */
+  APP_ORIGIN?: string;
 }
+export interface Env extends AiEnv { ASSETS: { fetch(req: Request): Promise<Response> } }
 
 const TASKS: readonly Task[] = ['scan', 'parse', 'categorise'];
 const MAX_IMAGE_CHARS = 2_800_000; // a 1280 px JPEG as base64 is far below this
@@ -34,8 +37,8 @@ function inputFrom(body: Record<string, unknown>): TaskInput | null {
     case 'scan': {
       const image = text(body.image, MAX_IMAGE_CHARS);
       const today = text(body.today, 10);
-      if (!image || !today || body.mimeType !== 'image/jpeg') return null;
-      return { task: 'scan', image, mimeType: 'image/jpeg', categories, today, homeCountry: text(body.homeCountry, 2) ?? 'GB' };
+      if (!image || !today) return null;
+      return { task: 'scan', image, categories, today, country: text(body.country, 2) ?? 'GB' };
     }
     case 'parse': {
       const t = text(body.text, 300);
@@ -52,7 +55,7 @@ function inputFrom(body: Record<string, unknown>): TaskInput | null {
 }
 
 /** One model's answer, or why not, within `ms`. */
-async function ask(env: Env, model: string, request: Record<string, unknown>, ms: number): Promise<{ reply: unknown } | { error: string }> {
+async function ask(env: Required<Pick<AiEnv, 'AI'>>, model: string, request: Record<string, unknown>, ms: number): Promise<{ reply: unknown } | { error: string }> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<{ error: string }>((resolve) => { timer = setTimeout(() => { resolve({ error: 'timeout' }); }, ms); });
   try {
@@ -64,46 +67,51 @@ async function ask(env: Env, model: string, request: Record<string, unknown>, ms
   }
 }
 
-export async function handleAi(req: Request, env: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
+export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch = fetch): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
   // Only the app itself may use the allowance: browsers always send Origin on a POST.
-  if (req.headers.get('origin') !== new URL(req.url).origin) return json({ error: 'forbidden' }, 403);
+  if (req.headers.get('origin') !== (env.APP_ORIGIN ?? new URL(req.url).origin)) return json({ error: 'forbidden' }, 403);
   const auth = req.headers.get('authorization') ?? '';
-  if (!/^Bearer \S+$/.test(auth) || !env.SUPABASE_URL || !env.SUPABASE_KEY) return json({ error: 'sign in' }, 401);
-  let body: Record<string, unknown>;
-  try { body = (await req.json()) as Record<string, unknown>; } catch { return json({ ok: false, reason: 'invalid' } satisfies Outcome<never>); }
+  if (!/^Bearer \S+$/.test(auth)) return json({ error: 'sign in' }, 401);
+  let parsed: unknown;
+  try { parsed = await req.json(); } catch { return json({ error: 'bad request' }, 400); }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return json({ error: 'bad request' }, 400);
+  const body = parsed as Record<string, unknown>;
   const task = TASKS.find((t) => t === body.task);
   const input = inputFrom(body);
-  if (!task || !input) return json({ ok: false, reason: 'invalid' } satisfies Outcome<never>);
+  if (!task || !input) return json({ error: 'bad request' }, 400);
+  const ai = env.AI;
+  if (!ai || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return json({ ok: false, reason: 'off' } satisfies Outcome<never>);
 
   // The household's count for today, as the caller (a refused call counts too, so a loop can't run on).
   const counted = await fetchImpl(`${env.SUPABASE_URL}/rest/v1/rpc/increment_ai_usage`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', apikey: env.SUPABASE_KEY, authorization: auth },
+    headers: { 'content-type': 'application/json', apikey: env.SUPABASE_ANON_KEY, authorization: auth },
     body: JSON.stringify({ p_kind: task }),
   }).catch(() => null);
-  if (!counted) return json({ ok: false, reason: 'error' } satisfies Outcome<never>);
-  if (counted.status === 401 || counted.status === 403) return json({ error: 'sign in' }, 401);
-  const calls: unknown = counted.ok ? await counted.json().catch(() => null) : null;
+  if (counted?.status === 401) return json({ error: 'sign in' }, 401);
+  const calls: unknown = counted?.ok ? await counted.json().catch(() => null) : null;
   if (typeof calls !== 'number') return json({ ok: false, reason: 'error' } satisfies Outcome<never>);
   if (calls > capFor(task)) return json({ ok: false, reason: 'limit' } satisfies Outcome<never>);
 
   const deadline = Date.now() + timeoutFor(task);
-  let reason: Outcome<never> = { ok: false, reason: 'error' };
+  let threw = 0;
+  let invalid = 0;
   for (const model of MODELS[task]) {
     const left = deadline - Date.now();
     if (left <= 0) return json({ ok: false, reason: 'timeout' } satisfies Outcome<never>);
-    const got = await ask(env, model, buildRequest(input, model), left);
+    const got = await ask({ AI: ai }, model, buildRequest(input, model), left);
     if ('error' in got) {
       if (isDailyLimit(got.error)) return json({ ok: false, reason: 'limit' } satisfies Outcome<never>);
-      reason = { ok: false, reason: got.error === 'timeout' ? 'timeout' : 'error' };
+      if (got.error === 'timeout') return json({ ok: false, reason: 'timeout' } satisfies Outcome<never>);
+      threw += 1;
       continue;
     }
     const read = readReply(task, got.reply);
     if (read.ok) return json(read);
-    reason = read;
+    invalid += 1;
   }
-  return json(reason);
+  return json({ ok: false, reason: invalid > 0 ? 'invalid' : threw > 0 ? 'error' : 'timeout' } satisfies Outcome<never>);
 }
 
 export default {

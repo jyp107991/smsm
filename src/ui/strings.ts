@@ -621,6 +621,25 @@ export const strings = {
       `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${amount} on average. A standing order of ${amount} a month would keep you about square.`,
   },
   /** S5b: comments on an entry (ACT-4). */
+  /** S6a: smart features (SCAN-1…5, ADD-9, CAT-2 step 4). */
+  smart: {
+    switchLabel: 'Smart features',
+    switchLine: 'Reads receipts and loose wording with Cloudflare’s AI. Only the photo or the words are sent, never names or balances.',
+    scan: 'Scan receipt',
+    addPhoto: 'Add photo',
+    photo: 'Receipt photo',
+    removePhoto: 'Remove photo',
+    sortLater: 'Sort it later',
+    reading: 'Reading the receipt…',
+    couldnt: 'Couldn’t read that. Fill it in by hand.',
+    enough: 'That’s enough reading for today. Fill it in by hand.',
+    itemise: 'Itemise',
+    itemiseHint: 'Untick what was just one person’s.',
+    mismatch: (lines: string, total: string) => `The lines add up to ${lines} but the total says ${total}. Set the amount.`,
+    sortedLater: 'In the Inbox to sort later.',
+    receiptToSort: 'Receipt to sort',
+    guess: (name: string) => `${name} (a guess)`,
+  },
   comments: {
     title: 'Comments',
     none: 'No comments yet.',

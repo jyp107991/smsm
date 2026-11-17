@@ -3,6 +3,7 @@
  * is the data layer as one object: what the hooks wrap, what the tests drive. Built from the real client in
  * the app; from a fake one in tests.
  */
+import { idbPhotos, workerAi } from './smart';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { IsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
@@ -95,6 +96,9 @@ export function createStore(deps: StoreDeps): Store {
     ...(deps.report ? { report: deps.report } : {}),
     ...(deps.onSignedIn ? { onSignedIn: deps.onSignedIn } : {}),
     ...(deps.locks ? { locks: deps.locks } : {}),
+    // S6a: the Worker's /api/ai with this person's sign-in; photos kept in IndexedDB until uploaded.
+    ai: workerAi(async () => (await client.auth.getSession()).data.session?.access_token ?? null),
+    photos: idbPhotos(),
   });
   return storeOver(layer, () => { session.dispose(); });
 }

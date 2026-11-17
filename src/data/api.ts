@@ -21,6 +21,8 @@ export type InboxItemRow = Tables['inbox_items']['Row'];
 export type ChapterRow = Tables['chapters']['Row'];
 export type CommentRow = Tables['comments']['Row'];
 /** The columns the phone owns on a comment (ACT-4). */
+/** S6a: an Inbox item the phone adds (a receipt to sort later, SCAN-4). */
+export type InboxItemWrite = Pick<InboxItemRow, 'id' | 'household_id' | 'source' | 'status' | 'payload' | 'receipt_path'>;
 export type CommentWrite = Pick<CommentRow, 'id' | 'household_id' | 'expense_id' | 'author' | 'body' | 'deleted_at'>;
 export type CommentColumn = 'body' | 'deleted_at';
 /** What the phone writes to `category_memory` (CAT-3, CAT-4); the server stamps `updated_at`. */
@@ -31,6 +33,9 @@ export const EXPENSE_WRITE_COLUMNS = [
   'id', 'household_id', 'kind', 'description', 'amount_pence', 'date', 'category_id', 'chapter_id', 'paid', 'paid_via',
   'split_mode', 'split_params', 'shares', 'notes', 'tags', 'country', 'refund_of', 'source', 'recurring_id', 'occurrence_date',
   'place', 'lat', 'lng', 'original_amount', 'original_currency', 'fx_rate',
+  // S6a: the receipt photo, its lines (each marked shared or not), the receipt's own total, and whether the category
+  // was an AI guess.
+  'receipt_path', 'items', 'bill_total_pence', 'category_guess',
 ] as const satisfies readonly (keyof ExpenseRow)[];
 export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]>;
 
@@ -117,6 +122,11 @@ export interface Api {
   upsertComment(row: CommentWrite, columns?: readonly CommentColumn[]): Promise<CommentRow>;
   /** SET-4: the household's settle day (1–28) or null. */
   setSettleDay(day: number | null): Promise<void>;
+  /** S6a: a receipt photo into the private bucket (never replaced or deleted), and an address to show one. */
+  uploadReceipt(path: string, photo: Blob): Promise<void>;
+  receiptUrl(path: string): Promise<string>;
+  /** S6a (SCAN-4): a receipt to sort later. */
+  insertInboxItem(row: InboxItemWrite): Promise<InboxItemRow>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
   watchHousehold(householdId: string, onChange: (table: WatchedTable) => void, onStatus: (s: ChannelStatus) => void): () => void;
 }
@@ -256,6 +266,20 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
       return must(await db.from('comments').upsert(row, { onConflict: 'id' }).select().single(), 'comment');
     },
     setSettleDay: async (day) => { unwrap(await db.rpc('set_settle_day', { p_day: day as number })); },
+    uploadReceipt: async (path, photo) => {
+      const res = await db.storage.from('receipts').upload(path, photo, { contentType: 'image/jpeg', upsert: false });
+      if (!res.error) return;
+      // Already there (a retry after the answer was lost): the same photo, so it is done.
+      if (/already exists|duplicate/i.test(res.error.message)) return;
+      const status = Number((res.error as { statusCode?: string | number }).statusCode ?? 0);
+      throw new ApiError(status === 0 ? 'network' : classifyStatus(status), res.error.message, status);
+    },
+    receiptUrl: async (path) => {
+      const res = await db.storage.from('receipts').createSignedUrl(path, 60 * 60);
+      if (res.error) throw new ApiError('server', res.error.message);
+      return res.data.signedUrl;
+    },
+    insertInboxItem: async (row) => must(await db.from('inbox_items').upsert(row, { onConflict: 'id' }).select().single(), 'inbox item'),
     chapters: async (hid) => unwrap(await db.from('chapters').select('*').eq('household_id', hid).order('created_at')) ?? [],
     upsertChapter: async (row, columns) => {
       if (columns) {

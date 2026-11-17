@@ -4,12 +4,16 @@
  * caps, timeouts and the models asked in order. No Worker or browser APIs, so Vitest runs it, and the phone reuses
  * the same validation (AI.md rule 3: validated on the server and again on the phone).
  */
-import { z } from 'zod';
-import * as categorisePrompt from './prompts/categorise.ts';
-import * as parsePrompt from './prompts/parse.ts';
-import * as scanPrompt from './prompts/scan.ts';
+import { categoriseSchema, parseSchema, scanSchema, type CategoriseReply, type ParseReply, type ScanReply } from '../src/core/aiReplies';
+import categoriseText from './prompts/categorise.md';
+import categoriseSchemaJson from './prompts/categorise.schema.json';
+import parseText from './prompts/parse.md';
+import parseSchemaJson from './prompts/parse.schema.json';
+import scanText from './prompts/scan.md';
+import scanSchemaJson from './prompts/scan.schema.json';
 
 export type Task = 'scan' | 'parse' | 'categorise';
+export type { CategoriseReply, ParseReply, ScanReply };
 export type Reason = 'off' | 'limit' | 'timeout' | 'invalid' | 'error';
 export type Outcome<T> = { ok: true; data: T } | { ok: false; reason: Reason };
 
@@ -45,43 +49,20 @@ export function timeoutFor(task: Task): number {
   return task === 'scan' ? 25_000 : 8_000;
 }
 
-const pence = z.number().int().min(0).max(100_000_000);
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-
-export const scanSchema = z.object({
-  merchant: z.string().max(200).nullable(),
-  date: day.nullable(),
-  currency: z.string().max(3).nullable(),
-  total_pence: pence.nullable(),
-  items: z.array(z.object({ label: z.string().min(1).max(200), pence })).max(200),
-  discount_pence: pence,
-  service_pence: pence,
-  category: z.string().max(80).nullable(),
-  confidence: z.enum(['high', 'medium', 'low']),
-}).strict();
-export type ScanReply = z.infer<typeof scanSchema>;
-
-export const parseSchema = z.object({
-  amount_pence: pence.nullable(),
-  description: z.string().max(200).nullable(),
-  category: z.string().max(80).nullable(),
-  payer: z.enum(['A', 'B']).nullable(),
-  split: z.object({ mode: z.enum(['ratio', 'treat', 'for_other']), ratio: z.number().int().min(0).max(100).nullable().optional() }).strict().nullable(),
-  date: day.nullable(),
-  tags: z.array(z.string().max(40)).max(10).nullable(),
-  chapter: z.string().max(80).nullable(),
-}).strict();
-export type ParseReply = z.infer<typeof parseSchema>;
-
-export const categoriseSchema = z.object({ category: z.string().max(80).nullable() }).strict();
-export type CategoriseReply = z.infer<typeof categoriseSchema>;
-
 const SCHEMAS = { scan: scanSchema, parse: parseSchema, categorise: categoriseSchema } as const;
 
-const PROMPTS: Record<Task, { system: string; version: number }> = { scan: scanPrompt, parse: parsePrompt, categorise: categorisePrompt };
+/** A prompt file: its first line is "version: n"; the rest is the system message. */
+function prompt(text: string, schema: unknown): { system: string; version: number } {
+  const [first = '', ...rest] = text.split('\n');
+  const version = Number(/^version: (\d+)$/.exec(first.trim())?.[1] ?? 0);
+  return { system: `${rest.join('\n').trim()}\nThe reply's JSON Schema: ${JSON.stringify(schema)}`, version };
+}
+const PROMPTS: Record<Task, { system: string; version: number }> = {
+  scan: prompt(scanText, scanSchemaJson), parse: prompt(parseText, parseSchemaJson), categorise: prompt(categoriseText, categoriseSchemaJson),
+};
 
 export type TaskInput =
-  | { task: 'scan'; image: string; mimeType: string; categories: readonly string[]; today: string; homeCountry: string }
+  | { task: 'scan'; image: string; categories: readonly string[]; today: string; country: string }
   | { task: 'parse'; text: string; categories: readonly string[]; chapters: readonly string[]; today: string }
   | { task: 'categorise'; description: string; categories: readonly string[] };
 
@@ -92,8 +73,8 @@ export function buildRequest(input: TaskInput, model: string): Record<string, un
   switch (input.task) {
     case 'scan':
       user = [
-        { type: 'text', text: [`Categories: ${JSON.stringify(input.categories)}`, `Today: ${input.today}`, `Home country: ${input.homeCountry}`].join('\n') },
-        { type: 'image_url', image_url: { url: `data:${input.mimeType};base64,${input.image}` } },
+        { type: 'text', text: [`Categories: ${JSON.stringify(input.categories)}`, `Today: ${input.today}`, `Home country: ${input.country}`].join('\n') },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${input.image}` } },
       ];
       break;
     case 'parse':
@@ -120,13 +101,13 @@ function unfence(text: string): string {
 
 /**
  * The reply's answer: Workers AI gives `{response: string}` (or the object itself) for most models and
- * `{choices: [{message: {content}}]}` for OpenAI-style ones. A string comes back unfenced; an object as it is.
+ * `{choices: [{message: {content}}]}` for OpenAI-style ones. Text comes back unfenced; an object as its JSON text.
  */
-export function extractText(reply: unknown): string | Record<string, unknown> | null {
+export function extractText(reply: unknown): string | null {
   if (!reply || typeof reply !== 'object') return null;
   const r = reply as { response?: unknown; choices?: unknown };
   if (typeof r.response === 'string') return r.response.trim() === '' ? null : unfence(r.response);
-  if (r.response && typeof r.response === 'object' && !Array.isArray(r.response)) return r.response as Record<string, unknown>;
+  if (r.response && typeof r.response === 'object' && !Array.isArray(r.response)) return JSON.stringify(r.response);
   if (Array.isArray(r.choices)) {
     const content = (r.choices[0] as { message?: { content?: unknown } } | undefined)?.message?.content;
     if (typeof content === 'string' && content.trim() !== '') return unfence(content);

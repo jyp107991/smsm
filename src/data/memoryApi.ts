@@ -31,6 +31,8 @@ export interface MemoryTables {
   chapters: ChapterRow[];
   /** S5b: comments on entries. */
   comments: CommentRow[];
+  /** S6a: receipt photos in the private bucket (what was uploaded, not the bytes). */
+  receipts?: { path: string; size: number; type: string }[];
   minClientVersion: string | null;
 }
 
@@ -332,7 +334,7 @@ export function createMemoryApi(
     upsertExpense: (row: ExpenseWrite) =>
       call('upsertExpense', row, () =>
         writeRow(tables.expenses, row, 'expense', (w) => ({
-          items: null, bill_total_pence: null, receipt_path: null, category_guess: false, external_id: null, merchant: null, external_category: null, account_id: null,
+          external_id: null, merchant: null, external_category: null, account_id: null,
           created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
         }), (r) => {
@@ -496,6 +498,30 @@ export function createMemoryApi(
           log('comment', next.id, existing.deleted_at === null && next.deleted_at !== null ? 'deleted' : 'edited', changes, next.household_id);
         }
         return next;
+      }),
+    uploadReceipt: (path, photo) =>
+      call('uploadReceipt', { path, size: photo.size, type: photo.type }, () => {
+        if (!path.startsWith(`${myHousehold() ?? '-'}/`)) refuse('new row violates row-level security policy for table "objects"', '42501');
+        tables.receipts ??= [];
+        if (!tables.receipts.some((r) => r.path === path)) tables.receipts.push({ path, size: photo.size, type: photo.type });
+      }),
+    receiptUrl: (path) =>
+      call('receiptUrl', { path }, () => {
+        if (!(tables.receipts ?? []).some((r) => r.path === path) && !path.startsWith(`${myHousehold() ?? '-'}/`)) refuse('Object not found', '404');
+        return `https://storage.example/receipts/${path}?token=memory`;
+      }),
+    insertInboxItem: (row) =>
+      call('insertInboxItem', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy for table "inbox_items"', '42501');
+        const existing = tables.inboxItems.find((r) => r.id === row.id);
+        if (existing) return existing;
+        const stamp = now().toISOString();
+        const made: InboxItemRow = {
+          recurring_id: null, occurrence_date: null, external_id: null, expense_id: null,
+          created_by: me().userId, created_at: stamp, updated_at: stamp, ...row,
+        };
+        tables.inboxItems.push(made);
+        return made;
       }),
     setSettleDay: (day) =>
       call('setSettleDay', day, () => {

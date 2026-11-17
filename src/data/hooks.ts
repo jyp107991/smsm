@@ -19,6 +19,7 @@ import {
 } from './queries';
 import { currentChapterId, setCurrentChapter, subscribeCurrentChapter } from './mutations';
 import { storedCountry, storedUseLocation, subscribePlaces } from './places';
+import { storedSmart, subscribeSmart } from './smartActions';
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
@@ -165,6 +166,11 @@ export function useCurrentCountry(): string {
 }
 
 /** PLC-2: whether this phone uses its location. */
+/** S6a: whether this phone uses the smart features (off until turned on). */
+export function useSmartFeatures(): boolean {
+  return useSyncExternalStore(subscribeSmart, storedSmart, () => false);
+}
+
 export function useLocationSetting(): boolean {
   return useSyncExternalStore(subscribePlaces, storedUseLocation, () => false);
 }

@@ -23,6 +23,7 @@
  * A write that was discarded (sign-out) stops at its next try and is never sent.
  */
 import { browserGeo, frankfurterRates, type GeoService, type RatesService } from './places';
+import { defaultDownscale, memoryPhotoStore, offAi, type AiService, type Downscale, type PhotoStore } from './smart';
 import {
   MutationObserver, QueryClient, dehydrate, hashKey, hydrate,
   type DehydratedState, type DehydrateOptions, type QueryKey,
@@ -93,6 +94,10 @@ export interface DataLayerOptions {
   geo?: GeoService;
   /** S4b: the day's exchange rates; Frankfurter by default. */
   rates?: RatesService;
+  /** S6a: the smart features (off by default), the phone's photo store (memory by default) and the shrinker. */
+  ai?: AiService;
+  photos?: PhotoStore;
+  downscale?: Downscale;
 }
 
 export interface DataLayer {
@@ -100,6 +105,10 @@ export interface DataLayer {
   /** S4b: place and rate services (fakes in tests). */
   geo: GeoService;
   rates: RatesService;
+  /** S6a: smart features, the phone's photos and the photo shrinker (fakes in tests). */
+  ai: AiService;
+  photos: PhotoStore;
+  downscale: Downscale;
   api: Api;
   session: SessionKeeper;
   network: Network;
@@ -207,6 +216,7 @@ const tick = () => new Promise<void>((r) => { setTimeout(r, 0); });
 const noop = () => undefined;
 
 export function createDataLayer(opts: DataLayerOptions): DataLayer {
+  const photos = opts.photos ?? memoryPhotoStore();
   const { api, storage, network, session } = opts;
   const now = opts.now ?? (() => new Date());
   const report = opts.report ?? (() => undefined);
@@ -392,7 +402,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     return completedRow(op, [a.user_id, b.user_id], defaultRatioOf(household), now());
   }
 
-  async function sendOnce(op: MoneyOp): Promise<QueuedRow> {
+  async function sendOnce(op: MoneyOp): Promise<QueuedRow | null> {
     switch (op.table) {
       case 'expenses': {
         if (op.op === 'patch') return api.patchExpense(op.id, op.patch);
@@ -404,7 +414,14 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'recurring':
         return api.upsertRecurring(recurringWrite(op.row), op.isNew ? undefined : op.columns);
       case 'inbox_items':
-        return api.patchInboxItem(op.id, op.patch);
+        return op.op === 'patch' ? api.patchInboxItem(op.id, op.patch) : api.insertInboxItem({ id: op.row.id, household_id: op.row.household_id, source: op.row.source, status: op.row.status, payload: op.row.payload, receipt_path: op.row.receipt_path });
+      case 'receipts': {
+        // The photo goes up from the phone's photo store; a photo the phone no longer has can't be sent.
+        const photo = await photos.get(op.id);
+        if (!photo) throw new ApiError('refused', 'the photo is no longer on this phone', 0, 'photo-missing');
+        await api.uploadReceipt(op.id, photo);
+        return null;
+      }
       case 'categories':
         return api.upsertCategory(categoryWrite(op.row));
       case 'chapters':
@@ -419,7 +436,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     return client.getMutationCache().getAll().some((m) => isQueuedMutation(m) && opOf(m)?.opId === op.opId);
   }
 
-  async function send(op: MoneyOp): Promise<QueuedRow> {
+  async function send(op: MoneyOp): Promise<QueuedRow | null> {
     return sendWith(op, () => sendOnce(op));
   }
 
@@ -445,7 +462,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     }
   }
 
-  function keyFor(table: MoneyOp['table'], id: string): QueryKey {
+  function keyFor(table: MoneyOp['table'], id: string): QueryKey | null {
     switch (table) {
       case 'expenses': return keys.expenses(id);
       case 'settlements': return keys.settlements(id);
@@ -454,6 +471,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'categories': return keys.categories(id);
       case 'chapters': return keys.chapters(id);
       case 'comments': return keys.comments(id);
+      case 'receipts': return null;
     }
   }
 
@@ -461,6 +479,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     const id = uid();
     if (!id) return;
     const key = keyFor(op.table, id);
+    if (key === null) return; // a photo upload: no list to update
     const wasFetching = client.isFetching({ queryKey: key }) > 0;
     // A refetch that started before this write finished could bring back the old row; cancel it, then
     // fetch again afterwards so nothing the partner changed meanwhile is missed.
@@ -498,9 +517,9 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     networkMode: 'always',
     retry: 0, // transient failures are retried inside `send`; what reaches TanStack as an error is a refusal
     mutationFn: (op: MoneyOp) => send(op),
-    onSuccess: async (row: QueuedRow, op: MoneyOp) => {
+    onSuccess: async (row: QueuedRow | null, op: MoneyOp) => {
       problems.resolveRow(opRowId(op));
-      await applyServerRow(op, row);
+      if (row) await applyServerRow(op, row);
     },
     onError: (err: Error, op: MoneyOp) => {
       if (err instanceof DiscardedError) return; // dropped on purpose: nothing to tell or keep
@@ -791,6 +810,9 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     client,
     geo: opts.geo ?? browserGeo(),
     rates: opts.rates ?? frankfurterRates(),
+    ai: opts.ai ?? offAi,
+    photos,
+    downscale: opts.downscale ?? defaultDownscale,
     api,
     session,
     network,

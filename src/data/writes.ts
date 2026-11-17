@@ -39,6 +39,27 @@ export interface ExpenseDraft {
   lng?: number | null;
   /** PLC-6: paid in another currency: the amount and rate as typed (reference only; `amount` is the pounds). */
   original?: ForeignOriginal | null;
+  /** S6a (SCAN-1): the receipt photo's path in the bucket. */
+  receiptPath?: string | null;
+  /** S6a (SCAN-2): the receipt's lines, each marked shared or one person's own; and the receipt's own total. */
+  items?: readonly ReceiptItem[] | null;
+  billTotal?: Pence | null;
+  /** S6a (CAT-2 step 4): the category is an AI guess (set only by guessCategory; a person's choice clears it). */
+  categoryGuess?: boolean;
+}
+
+export interface ReceiptItem { label: string; pence: Pence; shared: boolean }
+
+/** S6a: the receipt columns of a draft over a base row, and the guess mark (any other category change clears it). */
+function receiptColumns(draft: Partial<ExpenseDraft>, fresh: ExpenseRow) {
+  const categoryChanged = draft.categoryId !== undefined && draft.categoryId !== fresh.category_id;
+  return {
+    receipt_path: draft.receiptPath === undefined ? fresh.receipt_path : draft.receiptPath,
+    items: draft.items === undefined ? fresh.items
+      : draft.items === null ? null : draft.items.map((l) => ({ label: l.label, pence: l.pence, shared: l.shared })),
+    bill_total_pence: draft.billTotal === undefined ? fresh.bill_total_pence : draft.billTotal,
+    category_guess: draft.categoryGuess ?? (categoryChanged ? false : fresh.category_guess),
+  };
 }
 
 export interface ForeignOriginal { amount: string; currency: string; rate: string }
@@ -120,6 +141,14 @@ export type MoneyOp = OpBase & (
   | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[] }
   /** S3: an Inbox decision (INB-2). */
   | { table: 'inbox_items'; op: 'patch'; id: string; patch: InboxPatch; label: string }
+  /** S6a (SCAN-4): a receipt to sort later, added to the Inbox. */
+  | { table: 'inbox_items'; op: 'upsert'; isNew: true; row: InboxItemRow; input: null }
+  /**
+   * S6a: a receipt photo going up to the private bucket (`id` is its path). It sits in the same ordered queue, ahead
+   * of the entry or Inbox item that names it, so the photo is always there first; the bytes stay in the phone's
+   * photo store, not in the queue.
+   */
+  | { table: 'receipts'; op: 'upload'; id: string; label: string }
   /** S3: a category added, edited, archived or moved (CAT-1). */
   | { table: 'categories'; op: 'upsert'; isNew: boolean; row: CategoryRow; input: null }
   /** S4a: a chapter started, edited, closed or reopened (CHP-1, CHP-3); never deleted. */
@@ -187,6 +216,7 @@ export function buildProvisionalExpense(ctx: { householdId: string; userId: User
     refund_of: draft.refundOf === undefined ? fresh.refund_of : draft.refundOf,
     chapter_id: draft.chapterId === undefined ? fresh.chapter_id : draft.chapterId,
     ...placeColumns(draft, fresh, base !== undefined && base.amount_pence !== draft.amount),
+    ...receiptColumns(draft, fresh),
     updated_by: ctx.userId,
     updated_at: stamp,
   };
@@ -340,6 +370,7 @@ export function withDetails(row: ExpenseRow, patch: Partial<ExpenseDraft>, ctx: 
     refund_of: patch.refundOf === undefined ? row.refund_of : patch.refundOf,
     chapter_id: patch.chapterId === undefined ? row.chapter_id : patch.chapterId,
     ...placeColumns(patch as ExpenseDraft, row, false),
+    ...receiptColumns(patch, row),
     updated_by: ctx.userId,
     updated_at: ctx.now.toISOString(),
   };
@@ -381,6 +412,7 @@ export function buildExpense(ctx: WriteContext, draft: ExpenseDraft, base?: Expe
     refund_of: draft.refundOf === undefined ? fresh.refund_of : draft.refundOf,
     chapter_id: draft.chapterId === undefined ? fresh.chapter_id : draft.chapterId,
     ...placeColumns(draft, fresh, base !== undefined && base.amount_pence !== draft.amount),
+    ...receiptColumns(draft, fresh),
     updated_by: ctx.userId,
     updated_at: stamp,
   };
@@ -443,7 +475,8 @@ export function opRowId(op: MoneyOp): string {
 }
 
 export function opLabel(op: MoneyOp): string {
-  if (op.op === 'patch') return op.label;
+  if (op.op === 'patch' || op.op === 'upload') return op.label;
+  if (op.table === 'inbox_items') return 'Receipt to sort';
   if (op.table === 'expenses') return expenseLabel(op.row);
   if (op.table === 'settlements') return settlementLabel(op.row);
   if (op.table === 'recurring') return op.row.description;
@@ -469,7 +502,7 @@ export function overlay<R extends { id: string }>(
   for (const op of relevant) {
     if (op.op === 'upsert') {
       byId.set(op.row.id, (complete?.(op) ?? op.row) as unknown as R);
-    } else {
+    } else if (op.op === 'patch') {
       const base = byId.get(op.id);
       if (base) byId.set(op.id, { ...base, ...op.patch });
     }

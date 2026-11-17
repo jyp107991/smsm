@@ -29,14 +29,15 @@ function shareOut(total: number, weights: readonly number[]): number[] {
   return out;
 }
 
-/** SCAN-2: each line's figure after discount and service, and the shared amount (the ticked lines). */
+/** SCAN-2: each ticked line's figure after its part of the discount and service (0 when unticked), and their sum. */
 export function itemise(items: readonly ReceiptLine[], ticked: readonly boolean[], discount: Pence, service: Pence): { amount: Pence; perLine: Pence[] } {
   const weights = items.map((l) => Math.max(0, l.pence));
-  const off = shareOut(Math.max(0, discount), weights);
+  // A discount can't take off more than the lines come to (each line's part then never exceeds the line).
+  const off = shareOut(Math.min(Math.max(0, discount), weights.reduce((t, w) => t + w, 0)), weights);
   const on = shareOut(Math.max(0, service), weights);
-  const perLine = items.map((l, i) => pence(Math.max(0, l.pence - (off[i] ?? 0) + (on[i] ?? 0))));
-  const amount = pence(perLine.reduce((t, p, i) => t + (ticked[i] === true ? p : 0), 0));
-  return { amount, perLine };
+  // An unticked line is one person's own: it shares nothing (0).
+  const perLine = items.map((_l, i) => pence(ticked[i] === true ? Math.max(0, (weights[i] ?? 0) - (off[i] ?? 0) + (on[i] ?? 0)) : 0));
+  return { amount: pence(perLine.reduce((t, p) => t + p, 0)), perLine };
 }
 
 /** SCAN-3: do the lines (− discount + service) make the receipt's total? */
@@ -57,17 +58,6 @@ export interface ScanRaw {
   confidence: 'high' | 'medium' | 'low';
 }
 
-export interface ScanResult {
-  merchant: string | null;
-  date: IsoDate | null;
-  currency: string | null;
-  total: Pence | null;
-  items: ReceiptLine[];
-  discount: Pence;
-  service: Pence;
-  category: string | null;
-}
-
 const isPence = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -75,26 +65,31 @@ function twoYearsBefore(d: IsoDate): IsoDate {
   return `${String(Number(d.slice(0, 4)) - 2)}${d.slice(4)}`;
 }
 
+function realDay(s: string): boolean {
+  if (!ISO.test(s)) return false;
+  const t = Date.parse(`${s}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s;
+}
+
 /**
- * AI.md §3.1 guards: amounts are non-negative whole pence; the date is a real day, not after today and not more
- * than two years before it; the category is one of the household's; low confidence fills nothing (null).
+ * AI.md §3.1 guards, on the phone, after validation: the same shape, cleaned. Amounts are whole, non-negative
+ * hundredths of the receipt's own currency; the date is a real day, not after today and not more than two years
+ * before it; the category is one of the household's; labels and the merchant are kept as printed (trimmed); low
+ * confidence fills nothing (null).
  */
-export function scanGuards(raw: ScanRaw, today: IsoDate, categoryNames: readonly string[]): ScanResult | null {
+export function scanGuards(raw: ScanRaw, today: IsoDate, categoryNames: readonly string[]): ScanRaw | null {
   if (raw.confidence === 'low') return null;
-  const realDay = (s: string) => ISO.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
-  const date = raw.date !== null && realDay(raw.date) && raw.date <= today && raw.date >= twoYearsBefore(today) ? raw.date : null;
-  const items = raw.items.filter((l) => typeof l.label === 'string' && l.label.trim() !== '' && isPence(l.pence))
-    .map((l) => ({ label: l.label.trim(), pence: pence(l.pence) }));
-  const currency = raw.currency !== null && /^[A-Z]{3}$/.test(raw.currency) ? raw.currency : null;
-  const merchant = raw.merchant !== null && raw.merchant.trim() !== '' ? raw.merchant.trim().slice(0, 120) : null;
+  const merchant = typeof raw.merchant === 'string' && raw.merchant.trim() !== '' ? raw.merchant.trim() : null;
+  const date = typeof raw.date === 'string' && realDay(raw.date) && raw.date <= today && raw.date >= twoYearsBefore(today) ? raw.date : null;
   return {
     merchant,
     date,
-    currency,
-    total: isPence(raw.total_pence) ? pence(raw.total_pence) : null,
-    items,
-    discount: pence(isPence(raw.discount_pence) ? raw.discount_pence : 0),
-    service: pence(isPence(raw.service_pence) ? raw.service_pence : 0),
-    category: raw.category !== null && categoryNames.includes(raw.category) ? raw.category : null,
+    currency: typeof raw.currency === 'string' && raw.currency.trim() !== '' ? raw.currency.trim() : null,
+    total_pence: isPence(raw.total_pence) ? raw.total_pence : null,
+    items: raw.items.filter((l) => typeof l.label === 'string' && isPence(l.pence)).map((l) => ({ label: l.label, pence: l.pence })),
+    discount_pence: isPence(raw.discount_pence) ? raw.discount_pence : 0,
+    service_pence: isPence(raw.service_pence) ? raw.service_pence : 0,
+    category: typeof raw.category === 'string' && categoryNames.includes(raw.category) ? raw.category : null,
+    confidence: raw.confidence,
   };
 }
