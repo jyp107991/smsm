@@ -106,6 +106,7 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
   let ratio: [number, number] | null = null;
   let mode: 'ratio' | 'treat' | 'for_other' | null = null;
   let beneficiary: UserId | null = null;
+  let forThem = false;
   let date: IsoDate | null = null;
   const tags: string[] = [];
   const words: string[] = [];
@@ -130,14 +131,19 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
       if (r) { mode = 'ratio'; ratio = r; continue; }
       if (word === 'treat') { mode = 'treat'; continue; }
       if (word === 'for') {
-        const b = next === 'them' ? ctx.partner : personFor(next);
+        // "for them" means for whoever didn't pay, decided once the payer is known.
+        if (next === 'them') { mode = 'for_other'; beneficiary = null; forThem = true; i += 1; continue; }
+        const b = personFor(next);
         if (b !== null) { mode = 'for_other'; beneficiary = b; i += 1; continue; }
       }
     }
-    if (payer === null) {
+    {
+      // Person words are commands: the first names the payer; a repeat of the same person is dropped; a
+      // different second person is something the grammar can't read.
       const p = personFor(word);
       if (p !== null) {
-        payer = p;
+        if (payer === null) payer = p;
+        else if (payer !== p) unsure = true;
         if (next === 'paid') i += 1;
         continue;
       }
@@ -151,6 +157,9 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
 
   if (amount === null) return null;
 
+  if (mode === 'for_other' && forThem) {
+    beneficiary = (payer ?? ctx.me) === ctx.me ? ctx.partner : ctx.me;
+  }
   if (mode === 'for_other' && beneficiary !== null) {
     if (payer === null) payer = beneficiary === ctx.me ? ctx.partner : ctx.me;
     else if (payer === beneficiary) { unsure = true; mode = null; }
@@ -162,12 +171,9 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
   else if (mode === 'treat') split = { mode: 'treat' };
   else if (mode === 'for_other') split = { mode: 'for_other' };
 
-  let description = words.join(' ');
-  if (description === '') {
-    const cat = ctx.categories.find((c) => c.id === categoryId);
-    if (cat) description = cat.name;
-    else unsure = true;
-  }
+  // Not typed stays empty: the form shows the category name in its place (ADD-3 leaves filling to the caller).
+  const description = words.join(' ');
+  if (description === '' && categoryId === null) unsure = true;
   // Leftover numbers or slashes look like something the grammar didn't understand.
   if (words.some((w) => /^[\d.,+/£]+$/u.test(w))) unsure = true;
 
