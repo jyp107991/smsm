@@ -2,7 +2,7 @@ import { strings } from './strings';
 /**
  * smsm's mark (DESIGN §2.2): ㅅ (the roof) stacked on ㅁ (the walls) so the pair reads as a house, while
  * each stays a recognisable Hangul letter. One constant stroke, round caps and joins; the ㅅ is about 120%
- * of the ㅁ's width; the mark sits inside the central 66% (maskable safe zone).
+ * of the ㅁ's width; the mark is placed by LOGO_PLACEMENT inside the maskable safe zone.
  * Three variants for the owner to choose between in the gallery:
  *   a: plain, sans-serif letterforms.
  *   b: as A, with a door: a gap in ㅁ's bottom stroke.
@@ -13,6 +13,15 @@ export type LogoVariant = 'a' | 'b' | 'c';
 
 /** 9% of the icon (DESIGN said about 12%; at 12 the two letters merged into one shape: owner feedback). */
 export const LOGO_STROKE = 9;
+
+/**
+ * Where the mark sits in its 100-unit tile (owner, 17 Nov: drawn edge to edge it sat too close to the top and
+ * bottom and didn't look centred; Android's launcher mask could clip it). The approved drawing is scaled to
+ * 74% (strokes too, so it looks the same), centred across, and placed a little above the middle because ㅁ
+ * carries more ink than ㅅ. It then sits inside the maskable safe zone (a circle of radius 40).
+ */
+export const LOGO_PLACEMENT = { scale: 0.74, x: 13, y: 11.5 } as const;
+const PLACEMENT_TRANSFORM = `matrix(${String(LOGO_PLACEMENT.scale)} 0 0 ${String(LOGO_PLACEMENT.scale)} ${String(LOGO_PLACEMENT.x)} ${String(LOGO_PLACEMENT.y)})`;
 
 export interface LogoMark {
   roof: string;
@@ -35,7 +44,7 @@ export function Logo({ size = 48, variant = 'c', title = strings.app.name }: { s
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title} data-variant={variant}>
       <rect width="100" height="100" rx="22" fill="var(--forest)" />
-      <g fill="none" stroke="var(--on-forest)" strokeWidth={LOGO_STROKE} strokeLinecap="round" strokeLinejoin="round">
+      <g transform={PLACEMENT_TRANSFORM} fill="none" stroke="var(--on-forest)" strokeWidth={LOGO_STROKE} strokeLinecap="round" strokeLinejoin="round">
         <path d={mark.roof} />
         <path d={mark.walls} />
       </g>
