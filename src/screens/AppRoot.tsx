@@ -12,6 +12,8 @@ import { strings } from '../ui/strings';
 import { Activity } from './activity/Activity';
 import { Bills } from './bills/Bills';
 import { Insights } from './insights/Insights';
+import { RecapPage } from './insights/RecapPage';
+import { YearPage } from './insights/YearPage';
 import { Inbox } from './bills/Inbox';
 import { Categories } from './settings/Categories';
 import { ChapterPage } from './chapters/ChapterPage';
@@ -74,7 +76,7 @@ const TABS = MAIN_TABS.filter((t) => t.value === 'home' || t.value === 'activity
 function tabOf(route: Route, last: MainTab): MainTab {
   if (route.name === 'activity') return 'activity';
   if (route.name === 'bills') return 'bills';
-  if (route.name === 'insights') return 'insights';
+  if (route.name === 'insights' || route.name === 'recap' || route.name === 'year') return 'insights';
   if (route.name === 'entry') return last;
   return 'home';
 }
@@ -93,6 +95,10 @@ function Page({ route }: { route: Route }) {
       return <Bills />;
     case 'insights':
       return <Insights />;
+    case 'recap':
+      return <RecapPage key={route.month} month={route.month} />;
+    case 'year':
+      return <YearPage key={route.year} year={Number(route.year)} />;
     case 'inbox':
       return <Inbox />;
     case 'categories':
@@ -125,7 +131,8 @@ function MainApp() {
   if (route.name !== 'entry' && tab !== lastTab) setLastTab(tab);
 
   // A new page starts at its top.
-  const path = route.name === 'entry' ? `entry:${route.id}` : route.name === 'chapter' ? `chapter:${route.id}` : route.name;
+  const path = route.name === 'entry' ? `entry:${route.id}` : route.name === 'chapter' ? `chapter:${route.id}`
+    : route.name === 'recap' ? `recap:${route.month}` : route.name === 'year' ? `year:${route.year}` : route.name;
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [path]);
