@@ -77,28 +77,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
  * The stack itself (also usable on its own, e.g. in the gallery). It is the one persistent live region
  * (`role="status"`, always in the page), so every toast is announced politely without moving focus:
  * a live region created together with its message is often not read at all.
+ *
+ * It has one slot. A new toast takes the slot at once, replacing what it shows, and never waits for the old
+ * toast to animate out: "Saved" appears the moment a save is made, and a replaced toast's Undo is gone the
+ * same moment (ADD-6). Only when the slot empties does the toast animate out.
  */
 export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDismiss: (id: number) => void }) {
   const reduce = useReducedMotion() ?? false;
+  const current = toasts.at(-1);
   return (
     <div
       role="status"
       aria-label={strings.ui.notifications}
       className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+var(--toast-lift,1rem))] z-[60] flex flex-col items-center gap-2 px-4"
     >
-      <AnimatePresence initial={false} mode="wait">
-        {toasts.map((t) => (
-          <ToastSlot key={t.id} toast={t} reduce={reduce} onDismiss={onDismiss} />
-        ))}
+      <AnimatePresence initial={false}>
+        {current ? <ToastSlot key="toast" toast={current} reduce={reduce} onDismiss={onDismiss} /> : null}
       </AnimatePresence>
     </div>
   );
 }
 
 /**
- * One toast in the stack. While a replaced toast plays its exit it is still on screen, so it is made inert
- * and hidden from assistive tech: a tap on Undo just after a new save must undo that save, never the
- * previous one (ADD-6).
+ * The slot. While the last toast plays its exit it is still on screen, so it is made inert and hidden from
+ * assistive tech: its Undo can't be pressed once it is going. A toast shown meanwhile takes the slot back.
  */
 function ToastSlot({ toast, reduce, onDismiss }: { toast: ToastEntry; reduce: boolean; onDismiss: (id: number) => void }) {
   const present = useIsPresent();
@@ -112,7 +114,15 @@ function ToastSlot({ toast, reduce, onDismiss }: { toast: ToastEntry; reduce: bo
       className={cx('w-full max-w-md', present ? 'pointer-events-auto' : 'pointer-events-none')}
     >
       <div inert={!present} aria-hidden={present ? undefined : true}>
-        <Toast {...toast} onDismiss={() => { onDismiss(toast.id); }} />
+        {/* Keyed by toast: a replacement starts its own timer and makes its own small arrival. */}
+        <motion.div
+          key={toast.id}
+          initial={reduce ? false : { scale: 0.98 }}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
+        >
+          <Toast {...toast} onDismiss={() => { onDismiss(toast.id); }} />
+        </motion.div>
       </div>
     </motion.div>
   );
