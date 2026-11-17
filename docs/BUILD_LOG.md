@@ -9,7 +9,8 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - Type, voice and headings rework (new type options incl. Korean-made families with Latin; gallery/shell copy in smsm's voice; ledger-like headings).
 - S2 tests-first writer (two-user e2e on the local Supabase stack, data-layer unit tests, CI job proposal in `docs/slices/S2-ci.md`).
 - S2 data layer builder (query client + IndexedDB persistence, ordered offline queue, optimistic writes with rollback, realtime, stale-app check, demo-mode data).
-**Next:** merge the type/voice work → PR → deploy → tell the owner the gallery is updated. Then merge S2 tests + data layer, build the S2 screens.
+**Done (cont.):** type, voice and headings reworked (Korean-made type options; copy in smsm's voice; ledger-rule headings); PR #3 merged; deploying.
+**Next:** tell the owner the gallery is updated; merge S2 tests + data layer; build the S2 screens.
 **If restarted:** `git branch | grep worktree-agent` and `git log` each; relaunch any agent whose final commit is missing, from its last WIP commit, with the same instructions (see this log's 17 Nov entries).
 
 ## 2026-11-17: S0 look and S1 core built (PR #2)
