@@ -189,7 +189,8 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean,
       changed();
     });
     // Sheets coming and going (their state and their marks), the tab bar hiding for the keyboard.
-    mutated.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state', 'data-toast-avoid', 'data-row', 'hidden'] });
+    // Text changing (a total, a line that wraps) can move what the toast avoids too.
+    mutated.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-state', 'data-toast-avoid', 'data-row', 'hidden'] });
     const viewport = window.visualViewport;
     window.addEventListener('resize', changed);
     window.addEventListener('scroll', changed, { capture: true, passive: true });
