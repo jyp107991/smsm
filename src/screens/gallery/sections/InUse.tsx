@@ -49,6 +49,7 @@ export function InUseSection({ head }: { head?: Slot }) {
                   <span className="min-w-0 flex-1 truncate">
                     {e.description}
                     {e.split_mode === 'treat' && <span className="text-ink-2 ml-2 text-[0.8125rem]">treat</span>}
+                    {e.split_mode === 'for_other' && <span className="text-ink-2 ml-2 text-[0.8125rem]">for {name(Object.entries(e.shares as Record<string, number>).find(([, v]) => v > 0)?.[0] ?? '')}</span>}
                     {e.kind === 'money_back' && <span className="text-ink-2 ml-2 text-[0.8125rem]">money back</span>}
                   </span>
                   {head ? head(payerOf(e.paid)) : <span className="text-ink-2 text-[0.8125rem]">{name(payerOf(e.paid))}</span>}

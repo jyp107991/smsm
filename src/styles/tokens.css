@@ -3,8 +3,8 @@
  * Light and dark are switched with light-dark(); the system theme is followed unless data-theme is set.
  * Reference sRGB values are the owner's "Forest Green and Walnut" palette and its derived steps.
  */
-:root {
-  color-scheme: light dark;
+:root,
+[data-scheme] {
 
   --paper: light-dark(#eef0e5, #1d221a);
   --surface: light-dark(#fafaf5, #272d23);
@@ -22,5 +22,10 @@
 
   --shadow-float: 0 8px 28px rgb(42 33 24 / 0.12);
 }
+/* light-dark() resolves where a token is declared, so the tokens are declared again on any element that
+   sets its own scheme (the gallery shows both themes side by side this way). */
+:root { color-scheme: light dark; }
+[data-scheme='light'] { color-scheme: light; }
+[data-scheme='dark'] { color-scheme: dark; }
 :root[data-theme='light'] { color-scheme: light; }
 :root[data-theme='dark'] { color-scheme: dark; }

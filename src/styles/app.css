@@ -2,7 +2,7 @@
 @import './tokens.css';
 
 /* Tailwind may only use the design tokens: the default palette is removed. */
-@theme {
+@theme inline {
   --color-*: initial;
   --color-paper: var(--paper);
   --color-surface: var(--surface);

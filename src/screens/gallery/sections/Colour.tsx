@@ -19,7 +19,7 @@ const TOKEN_ROWS: readonly { name: string; use: string }[] = [
 
 function Panel({ scheme }: { scheme: 'light' | 'dark' }) {
   return (
-    <div style={{ colorScheme: scheme }} className="bg-paper text-ink min-w-0 flex-1 rounded-[20px] p-4">
+    <div data-scheme={scheme} className="bg-paper text-ink min-w-0 flex-1 rounded-[20px] p-4">
       <p className="mb-3 font-semibold">{scheme === 'light' ? 'Light' : 'Dark (the wood at night)'}</p>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {TOKEN_ROWS.map((t) => (
