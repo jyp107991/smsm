@@ -20,9 +20,9 @@
  *   }
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
-import { createSessionKeeper } from './session';
+import { createSessionKeeper, LAST_USER_KEY } from './session';
 import { FakeNetwork, FakeServer, FakeStorage, type FakePhone, type FakeUser } from '../../tests/fixtures/fake-supabase';
 
 /** The contract above as a type: createSessionKeeper's result must be assignable to it. */
@@ -201,6 +201,39 @@ describe('session (OFF-6)', () => {
     await vi.waitFor(() => {
       expect(k.state()).toEqual({ status: 'signed-out' });
     });
+  });
+
+  it('OFF-6 with the real auth-js: an expired saved sign-in, offline, after a restart opens at once', async () => {
+    // auth-js 2.119 itself, its saved session expired a day ago, every request failing as with no connection.
+    const saved = new Map<string, string>();
+    const storageKey = 'sb-test-auth-token';
+    const expiredAt = Math.floor(Date.now() / 1000) - 86_400;
+    saved.set(storageKey, JSON.stringify({
+      access_token: 'expired-access', refresh_token: 'still-good-refresh', token_type: 'bearer',
+      expires_in: 3600, expires_at: expiredAt,
+      user: { id: 'u-jae', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: new Date(0).toISOString() },
+    }));
+    let requests = 0;
+    const client = createClient<Database>('http://127.0.0.1:9', 'publishable-key', {
+      auth: {
+        storageKey, persistSession: true, autoRefreshToken: false, detectSessionInUrl: false,
+        storage: { getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => { saved.set(k, v); }, removeItem: (k) => { saved.delete(k); } },
+      },
+      global: { fetch: () => { requests += 1; return Promise.reject(new TypeError('Failed to fetch')); } },
+    });
+    const storage = new FakeStorage();
+    await storage.setItem(LAST_USER_KEY, 'u-jae');
+    const network = new FakeNetwork(false);
+
+    const answered = client.auth.getSession().then(() => true);
+    const k = createSessionKeeper({ client, storage, network });
+    keepers.push(k);
+    expect(await settlesWithin(k.ready, 500)).toBe(true);
+    expect(k.state()).toEqual({ status: 'signed-in', userId: 'u-jae', refreshPending: true });
+    // The cause: auth-js is still retrying the refresh with back-off and hasn't answered.
+    expect(await settlesWithin(answered, 1)).toBe(false);
+    expect(requests).toBeGreaterThan(0);
+    expect(saved.has(storageKey)).toBe(true);
   });
 
   it('nobody signed in on this phone before: it waits for auth-js, and is signed out', async () => {
