@@ -42,7 +42,7 @@ The first screen answers "are we square?" and lets you add.
 - BAL-6 Before the partner joins: "Waiting for your partner" with a share-invite button; adding still works.
 
 ### 3.2 Adding [ADD]
-- ADD-1 **Quick add.** One box on Home. `42.50 tesco` and Enter saves. Grammar (any order after the amount): amount (required: `42.5`, `£42.50`, `1,200`, simple sums `12+8.50`); category word or prefix (`groc`); payer (`me`, a name, `cat`/`dog`); split (`60/40`, `treat`, `for sam`); date (`yesterday`, `mon`, `12/11`); `#tag`; the remaining words are the description.
+- ADD-1 **Quick add.** One box on Home. `42.50 tesco` and Enter saves. Grammar (any order after the amount): amount (required: `42.5`, `£42.50`, `1,200`, simple sums `12+8.50`); category word or prefix (`groc`); payer (`me`, a name, `paid by <name>`; `cat` and `dog` are ordinary words, never the payer); split (`60/40`, `treat`, `for sam`); date (`yesterday`, `mon`, `12/11`); `#tag`; the remaining words are the description.
 - ADD-2 A live reading appears under the box as you type ("£42.50 · Tesco · Groceries · Jae paid · 50/50"); tapping it opens the full form prefilled.
 - ADD-3 Anything not typed is filled from what the household has taught the app: category and usual split for that description (3.6), payer = me, date = today, chapter and country = the current ones (4.2, 4.3).
 - ADD-4 **Full form** (a bottom sheet): amount, description (autocomplete from history), category, who paid, split, date; under "More": chapter, place, notes, tags, photo, itemise, paid in another currency, repeat.

@@ -4,9 +4,8 @@
  *
  * No new interface: `parseQuickAdd(text, ctx)` as it is.
  *
- * Note for the builder: src/core/review.test.ts keeps "12 cat food", "18 dog food" and "30 dog walker" as
- * descriptions (payer me, unsure). Q-U3 asks for `cat`/`dog` to read as the payer in any position, so
- * "20 cat pizza" must name the cat while those pet-product phrases still stay words: both sets hold.
+ * Owner, 17 Nov: "cat" and "dog" are ordinary words and never decide who paid (the people are named Jae and
+ * Sam, not the cat and the dog). This replaces the earlier Q-U3 rule that read them as the payer.
  */
 import { describe, expect, it } from 'vitest';
 import { parseQuickAdd, type QuickAddContext } from './quickadd';
@@ -38,21 +37,30 @@ describe('Q-F3 ADD-1: "for <person>" after another split word is not read as the
   });
 });
 
-describe('Q-U3 ADD-1: cat and dog name the payer in any position', () => {
+describe('ADD-1 (owner, 17 Nov): "cat" and "dog" are ordinary words; they never decide who paid', () => {
   it.each([
-    ['20 cat pizza', 'S', 'pizza'],
-    ['42.50 cat tesco', 'S', 'tesco'],
-    ['42.50 tesco cat big shop', 'S', 'tesco big shop'],
-    ['20 dog pizza', 'J', 'pizza'],
-  ])('Q-U3 ADD-1 %j: payer %s, description %j', (text, payer, description) => {
-    const r = parseQuickAdd(text, ctx);
-    expect(r?.payer).toBe(payer);
-    expect(r?.description).toBe(description);
+    ['20 cat pizza', 'cat pizza'],
+    ['42.50 cat tesco', 'cat tesco'],
+    ['42.50 tesco cat', 'tesco cat'],
+    ['20 dog pizza', 'dog pizza'],
+    ['12 hot dog stand', 'hot dog stand'],
+    ['30 dog and duck', 'dog and duck'],
+    ['8 cat cafe', 'cat cafe'],
+    ['20 dog walking', 'dog walking'],
+    ['12 cat food', 'cat food'],
+  ])('ADD-1 %j: payer is the person typing, description %j, confident', (text, description) => {
+    expect(parseQuickAdd(text, ctx)).toMatchObject({ payer: 'J', description, confident: true });
   });
 
-  it('Q-U3 ADD-1: from the cat\'s own phone, "dog" names the partner', () => {
+  it('ADD-1: on the other phone too, "dog" is just a word', () => {
     const sams = { ...ctx, me: 'S', partner: 'J' };
-    expect(parseQuickAdd('20 dog pizza', sams)).toMatchObject({ payer: 'J', description: 'pizza' });
+    expect(parseQuickAdd('20 dog pizza', sams)).toMatchObject({ payer: 'S', description: 'dog pizza', confident: true });
+  });
+
+  it('ADD-1: names still decide who paid', () => {
+    expect(parseQuickAdd('42.50 tesco sam', ctx)).toMatchObject({ payer: 'S', description: 'tesco' });
+    expect(parseQuickAdd('9 jae paid pret', ctx)).toMatchObject({ payer: 'J', description: 'pret' });
+    expect(parseQuickAdd('42 tesco paid by sam', ctx)).toMatchObject({ payer: 'S', description: 'tesco' });
   });
 });
 
@@ -73,26 +81,7 @@ describe('Q-U3 ADD-1 TXT-4: a comma decimal with exactly two digits', () => {
   });
 });
 
-describe('S2 polish 1a review: confidence around cat/dog and a second split word', () => {
-  it.each([
-    ['12 hot dog stand', 'J'],
-    ['30 dog and duck', 'J'],
-    ['8 cat cafe', 'S'],
-    ['20 dog walking', 'J'],
-  ])('Q-U3 ADD-1 %j: cat/dog followed by an ordinary word names the payer but is unsure', (text, payer) => {
-    expect(parseQuickAdd(text, ctx)).toMatchObject({ payer, confident: false });
-  });
-
-  it.each([
-    ['tesco 20 cat', 'S'],
-    ['42.50 tesco cat', 'S'],
-    ['cat 25 dinner', 'S'],
-    ['42.50 cat paid tesco', 'S'],
-    ['9 dog paid pret', 'J'],
-  ])('Q-U3 ADD-1 %j: cat/dog followed by the amount, a command word or the end of the line is confident', (text, payer) => {
-    expect(parseQuickAdd(text, ctx)).toMatchObject({ payer, confident: true });
-  });
-
+describe('S2 polish 1a review: a second split word', () => {
   it.each([['25 dinner for sam treat'], ['25 dinner for sam 70/30']])('Q-F3 ADD-1 %j: a split word after "for <name>" is unsure', (text) => {
     expect(parseQuickAdd(text, ctx)).toMatchObject({ payer: 'J', confident: false });
   });

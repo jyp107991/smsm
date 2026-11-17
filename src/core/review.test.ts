@@ -9,9 +9,6 @@ const ctx = { today: '2026-11-17', me: 'J', partner: 'S', names: { J: 'Jae', S: 
 
 describe('ADD-1 quick add: words that look like commands but are part of the description', () => {
   it.each([
-    ['12 cat food', 'cat food'],
-    ['18 dog food', 'dog food'],
-    ['30 dog walker', 'dog walker'],
     ['35 dinner with sam', 'dinner with sam'],
   ])('%s keeps "%s" as the description, payer me, and is unsure', (text, description) => {
     const r = parseQuickAdd(text, ctx);
