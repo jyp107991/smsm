@@ -1,6 +1,20 @@
 # smsm: deploy
 
-GitHub (`jyp107991/smsm`) → GitHub Actions runs the checks → Supabase (database, sign-in, functions) and Cloudflare Workers (the app). The owner does the one-time setup in §1–3; after that every merge to `main` deploys itself. Claude Code writes the workflow files in S0 and should replace this outline with exact, phone-friendly steps once they are proven.
+GitHub (`jyp107991/smsm`, public) → GitHub Actions runs the checks → Supabase (database, sign-in, functions) and Cloudflare Workers (the app). The owner did the one-time setup in §1–3; every merge to `main` now deploys itself (proven 16 Nov 2026, deploy run 1).
+
+**Live:** app https://smsm.jaexpark94.workers.dev · demo and gallery https://smsm-demo.jaexpark94.workers.dev/gallery
+
+**What runs where (`.github/workflows/`)**
+| Workflow | When | What |
+|---|---|---|
+| `ci` | every push to a branch other than main | checks (types, lint, tests, trace, SQL, generated files, build, browser tests); `remote-check` proves the secrets work (project link, migration dry run, Cloudflare token status); a preview of the demo build for that branch |
+| `deploy` | push to main (or by hand, main only) | the same checks → build → `supabase db push` (migrations only) → Edge Functions → `wrangler deploy` of `smsm` and `smsm-demo` → smoke test of the live app (version matches the commit, service worker and manifest served, database health check answers) |
+| `keepalive` | every 2 days | calls `health()` so the free project never pauses |
+| `auth-config` | by hand only | `mode=diff` shows exactly what a sign-in settings push would change (read-only); `mode=push` applies them, only after the owner approves |
+
+**If something fails:** the run's log names the step. A missing or malformed secret or variable is reported by name by `scripts/check-deploy-settings.sh`; fix it under GitHub → the repo → Settings → Secrets and variables → Actions. Logs are public: tool output passes through `scripts/redact.sh`, and no step prints a secret.
+
+**Rollback:** `npx wrangler rollback` (app) restores the previous version in seconds; migrations are expand-then-contract, so the older app still works with the newer database.
 
 ## 1. Supabase (done by hand, verified against Supabase's docs 16 Nov 2026)
 The owner has created the project `smsm` (West Europe (London); Data API on; automatic table exposure off; automatic RLS on). By hand, the owner only collects:
