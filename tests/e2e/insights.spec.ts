@@ -101,7 +101,7 @@ test.describe('S5a screens', () => {
         await check(page, 'Insights, everyday only');
 
         // INS-4: a definition sheet.
-        await page.getByRole('region', { name: 'Total' }).getByRole('button', { name: "What's this?" }).first().click();
+        await page.getByRole('region', { name: 'Total' }).getByRole('button', { name: /^What[’']s this\?$/ }).first().click();
         const sheet = page.getByRole('dialog');
         await expect(sheet).toBeVisible();
         await check(page, 'What’s this? sheet');
