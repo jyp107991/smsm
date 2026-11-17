@@ -615,3 +615,22 @@ describe('categories (CAT-1)', () => {
     expect(c.controls.tables.categories.find((r) => r.name === 'Pets')).toMatchObject({ emoji: '🐾', colour: 'fern', archived: false });
   });
 });
+
+// ───────── CI two-user finding: a bill dated "tomorrow" on a phone behind the UK date ─────────
+describe('the Inbox on a phone behind the UK date (DAT-1, INB-2)', () => {
+  it('Keep saves the bill on its own day even when that day is after the phone’s today', async () => {
+    const tomorrow = storedInboxItem({
+      recurring_id: ENERGY, occurrence_date: '2026-11-15',
+      payload: { description: 'Energy', estimate_pence: 9000, date: '2026-11-15', category_id: categoryId('Utilities') },
+    });
+    const c = couple({ recurring: TEMPLATES, inboxItems: [tomorrow] });
+    show(c.layer);
+    await goInbox();
+    fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Keep' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add expense' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Add expense' })).toBeNull(); });
+    await settle(c.layer);
+    expect(c.controls.tables.expenses.filter((e) => e.recurring_id === ENERGY)).toMatchObject([{ date: '2026-11-15', occurrence_date: '2026-11-15' }]);
+  });
+});

@@ -308,6 +308,71 @@ begin
 end $$;
 
 --
+-- Name: post_due_recurring_all(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.post_due_recurring_all() RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare h uuid; total int := 0;
+begin
+  for h in select id from households order by id loop
+    begin
+      total := total + post_due_recurring(h);
+    exception when others then
+      raise warning 'post_due_recurring failed for household %: %', h, sqlerrm;
+    end;
+  end loop;
+  return total;
+end $$;
+
+--
+-- Name: recurring_guard(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.recurring_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare uk_today date := (now() at time zone 'Europe/London')::date; nxt date; n int := 0;
+begin
+  if tg_op = 'INSERT' then
+    if current_user = 'authenticated' then new.posted_count := 0; end if;
+    return new;
+  end if;
+  if current_user = 'authenticated' and new.posted_count is distinct from old.posted_count then
+    raise exception 'posted_count is kept by the server' using errcode = '42501';
+  end if;
+  if old.posted_count > 0 and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
+    nxt := (old.start_date + recurring_step(old.frequency, old.every) * old.posted_count)::date;
+    new.start_date := greatest(new.start_date, nxt);
+    new.posted_count := 0;
+  end if;
+  if not old.active and new.active then
+    loop
+      exit when (new.start_date + recurring_step(new.frequency, new.every) * new.posted_count)::date >= uk_today or n >= 10000;
+      new.posted_count := new.posted_count + 1;
+      n := n + 1;
+    end loop;
+  end if;
+  return new;
+end $$;
+
+--
+-- Name: recurring_step(text, integer); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.recurring_step(p_frequency text, p_every integer) RETURNS interval
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO 'public'
+    AS $$
+  select case p_frequency when 'weekly' then make_interval(weeks => p_every)
+                          when 'monthly' then make_interval(months => p_every)
+                          else make_interval(years => p_every) end
+$$;
+
+--
 -- Name: request_change(text, jsonb); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1128,6 +1193,12 @@ CREATE TRIGGER recurring_author BEFORE INSERT OR UPDATE ON public.recurring FOR 
 CREATE TRIGGER recurring_check_money BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.check_money();
 
 --
+-- Name: recurring recurring_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER recurring_guard BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.recurring_guard();
+
+--
 -- Name: recurring recurring_log; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1822,6 +1893,28 @@ GRANT ALL ON FUNCTION public.my_household() TO service_role;
 REVOKE ALL ON FUNCTION public.post_due_recurring(p_household uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO authenticated;
 GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO service_role;
+
+--
+-- Name: FUNCTION post_due_recurring_all(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.post_due_recurring_all() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.post_due_recurring_all() TO service_role;
+
+--
+-- Name: FUNCTION recurring_guard(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.recurring_guard() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.recurring_guard() TO service_role;
+
+--
+-- Name: FUNCTION recurring_step(p_frequency text, p_every integer); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) TO authenticated;
+GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) TO service_role;
 
 --
 -- Name: FUNCTION request_change(p_kind text, p_payload jsonb); Type: ACL; Schema: public; Owner: -

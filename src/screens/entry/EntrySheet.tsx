@@ -177,7 +177,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       return;
     }
     // Q-F2: a date after the phone's today is refused, as quick add refuses one (an edit keeps a date it had).
-    if (s.date > today && (request.mode !== 'edit' || s.date !== initial.date)) {
+    // A bill kept from the Inbox keeps the bill's own day, set by the server's UK date, which can be "tomorrow" on a
+    // phone behind the UK (abroad, or just before midnight).
+    const fromInbox = request.mode === 'add' && request.inboxItem !== undefined && s.date === initial.date;
+    if (s.date > today && !fromInbox && (request.mode !== 'edit' || s.date !== initial.date)) {
       setErrors([strings.entry.dateAfterToday]);
       return;
     }
