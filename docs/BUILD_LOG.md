@@ -2,6 +2,23 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17: S0 look and S1 core built (PR #2)
+**Done**
+- After the restart, I built the S1 core in the main thread (money, split, balance, dates, recurring, text, categorise + `content/merchants.json`, quick-add, filters) while four agents worked; all pushed as I went.
+- Independent tests (S0 and S1 writers) merged: 911 tests pass, including 500 random recurring schedules matching PostgreSQL and the balance matching `member_net`. Four disagreements found by them, resolved in their favour (see DECISIONS).
+- Mutation score 91.8% (in CI, fails below 85%).
+- Tokens (OKLCH), 12 category colours, three type options, primitives (Button, Field, Chip, Sheet, Toast, Tabs, Segmented); the cat and dog rig and the plank; demo household; row validation (`src/data/rows.ts`).
+- Gallery (demo build only; CI checks production never contains it): Logo, Type, Colour (both themes, fifth-colour choice), The plank, The cat and the dog, In use. Gallery e2e: axe clean, no overflow at 320, both themes, reduced motion.
+- Logo redrawn from real Hangul letterforms after owner feedback ("does not resemble the two Korean characters enough").
+- Migration 3 (S2 groundwork): 10 wrong join codes per hour per account.
+
+**In progress**
+- PR #2: CI and a fresh review. Then merge → deploy → the owner message.
+
+**Next**
+- Owner message: gallery link; the 4 Auth changes (DECISIONS / this log 16 Nov); sign-in email recommendation.
+- While waiting: S2 tests-first agent from `docs/slices/S2.md` (after adding its interfaces), S2 data layer.
+
 ## 2026-11-16: S0 and S1 in progress (handoff)
 **Done**
 - Briefs: `docs/slices/S0.md`, `S1.md`, `S2.md` (S2 drafted).
