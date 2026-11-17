@@ -187,10 +187,10 @@ function DiscardConfirm({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: 
       </p>
       <div className="mt-3 flex flex-wrap gap-3">
         {/* Focus goes to the safe choice. */}
-        <Button variant="plain" onClick={onKeep} autoFocus className="flex-1">
+        <Button variant="plain" onClick={onKeep} autoFocus className="flex-auto">
           {strings.ui.keepEditing}
         </Button>
-        <Button variant="destructive" onClick={onDiscard} className="flex-1">
+        <Button variant="destructive" onClick={onDiscard} className="flex-auto">
           {strings.ui.discard}
         </Button>
       </div>

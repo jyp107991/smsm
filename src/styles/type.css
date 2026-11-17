@@ -116,7 +116,7 @@
     /* Text voice: optical size follows the font size (font-optical-sizing: auto), full width. */
     --font-text-variation: 'wdth' 100;
     /* Display voice: the largest optical size and a little narrower, for the hand-cut look in the balance sentence. */
-    --font-display-variation: 'opsz' 96, 'wdth' 90;
+    --font-display-variation: 'opsz' 72, 'wdth' 94;
   }
 
   .type-b {

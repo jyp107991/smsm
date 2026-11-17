@@ -60,7 +60,7 @@ export interface BottomTabsProps<T extends string> {
   items: readonly TabItem<T>[];
   value: T;
   onValueChange: (value: T) => void;
-  /** <TabPanel> elements, one per item. */
+  /** <TabPanel> elements, one per item. They are wrapped in the page's <main>. */
   children: ReactNode;
   className?: string;
 }
@@ -81,12 +81,10 @@ export function BottomTabs<T extends string>({ items, value, onValueChange, chil
       activationMode="automatic"
       className={cx('flex min-h-dvh flex-col', className)}
     >
-      <div className="min-w-0 flex-1">{children}</div>
-      <RadixTabs.List
-        aria-label={strings.tabs.label}
-        hidden={typing}
-        className="border-walnut bg-paper sticky bottom-0 z-30 flex border-t-[3px] pb-[env(safe-area-inset-bottom)]"
-      >
+      {/* The page's main landmark: screens inside a tab panel do not add their own <main>. */}
+      <main className="min-w-0 flex-1">{children}</main>
+      <nav aria-label={strings.tabs.label} hidden={typing} className="border-walnut bg-paper sticky bottom-0 z-30 border-t-[3px] pb-[env(safe-area-inset-bottom)]">
+        <RadixTabs.List className="flex">
         {items.map(({ value: v, label, icon: Icon }) => (
           <RadixTabs.Trigger
             key={v}
@@ -103,7 +101,8 @@ export function BottomTabs<T extends string>({ items, value, onValueChange, chil
             <span className="text-caption max-w-full truncate font-medium group-data-[state=active]:font-semibold">{label}</span>
           </RadixTabs.Trigger>
         ))}
-      </RadixTabs.List>
+        </RadixTabs.List>
+      </nav>
     </RadixTabs.Root>
   );
 }
@@ -134,7 +133,7 @@ export interface SegmentedProps<T extends string> {
 /**
  * Choose one of a few (Radix ToggleGroup, single: a radio group with arrow-key movement), e.g.
  * "Split · Exact · For Sam · My treat". One is always chosen: pressing the chosen one again does nothing.
- * Selected shows as a forest outline on a raised segment, with forest, bolder text.
+ * Selected shows as a forest outline on a raised segment with forest text (same weight, so nothing moves).
  */
 export function Segmented<T extends string>({ label, options, value, onValueChange, className }: SegmentedProps<T>) {
   return (
@@ -153,11 +152,12 @@ export function Segmented<T extends string>({ label, options, value, onValueChan
           key={o.value}
           value={o.value}
           className={cx(
-            'text-secondary text-ink min-h-11 min-w-0 flex-1 rounded-[9px] border-2 border-transparent px-1.5 font-medium',
-            'data-[state=on]:border-forest data-[state=on]:bg-surface data-[state=on]:text-forest data-[state=on]:font-semibold',
+            // Widths follow the labels, so "For Sam" and "My treat" fit at 320 px; a long name wraps rather than hides.
+            'text-secondary text-ink min-h-11 min-w-0 flex-auto rounded-[9px] border-2 border-transparent px-2 py-1 font-medium text-balance',
+            'data-[state=on]:border-forest data-[state=on]:bg-surface data-[state=on]:text-forest',
           )}
         >
-          <span className="block truncate">{o.label}</span>
+          <span className="block break-words">{o.label}</span>
         </ToggleGroup.Item>
       ))}
     </ToggleGroup.Root>
