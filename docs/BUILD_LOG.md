@@ -13,7 +13,9 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - Gallery live with feedback round 1 (deploy 3).
 - S2 tests written (branch `worktree-agent-a5ac2d3b30ba4fa1a`, sha f27cf4ec): two-user e2e on the local stack (Mailpit), data-layer unit tests with a fake client, CI proposal in `docs/slices/S2-ci.md` (on that branch). Not merged yet: they need the data layer.
 - Data-layer builder told to satisfy those tests' contracts (createStore, createSessionKeeper, version checks).
-**Next:** merge S2 tests + data layer together; S2 CI job (local Supabase stack); S2 screens by builder agents (sign-in/setup; Home + add sheet; entry + Activity; settle + Settings).
+- S2 data layer merged with the S2 tests (store over Supabase with an ordered, persisted offline queue; session keeper that never signs out offline; version check; realtime incl. migration 4; demo store). 965 unit tests, 35 SQL checks, 13 browser tests pass.
+**In progress:** fresh review of the data layer; one builder for all S2 screens + the `two-users` CI job (branch `worktree-agent-a6a2472cb41b4d544`, WIP every 20 min).
+**Next:** review fixes; merge screens; first CI run of the two-user suite; PR → deploy; then the owner's answers unlock the live sign-in email.
 **If restarted:** `git branch | grep worktree-agent` and `git log` each; relaunch any agent whose final commit is missing, from its last WIP commit, with the same instructions (see this log's 17 Nov entries).
 
 ## 2026-11-17: S0 look and S1 core built (PR #2)
