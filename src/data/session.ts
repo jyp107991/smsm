@@ -82,10 +82,19 @@ export function createSessionKeeper(deps: {
     // A retryable failure (the connection dropped again): stay signed in; try on the next reconnect.
   }
 
+  /** True once auth-js has given a definite answer; the short wait in `ready` then has nothing to add. */
+  let decided = false;
+  const isDecided = () => decided;   // read through a function: it is set in callbacks the type checker can't follow
+
   const { data: sub } = client.auth.onAuthStateChange((event, session) => {
     // Never await inside this callback (supabase-js holds a lock while it runs).
-    if (event === 'SIGNED_OUT') signedOut();
-    else if (session) signedIn(session.user.id, false);
+    if (event === 'SIGNED_OUT') {
+      decided = true;
+      signedOut();
+    } else if (session) {
+      decided = true;
+      signedIn(session.user.id, false);
+    }
     // A null session on INITIAL_SESSION is what auth-js reports for an expired token offline: ignored.
   });
   const offNetwork = network.subscribe((online) => {
@@ -97,6 +106,7 @@ export function createSessionKeeper(deps: {
     try {
       const { data, error } = await client.auth.getSession();
       if (data.session) {
+        decided = true;
         signedIn(data.session.user.id, false);
         return;
       }
@@ -104,8 +114,10 @@ export function createSessionKeeper(deps: {
         signedIn(last, true);
         return;
       }
-      if (error && !isAuthRetryableFetchError(error)) signedOut();
-      else set(SIGNED_OUT);
+      // A definite "no", or no saved sign-in at all: signed out, and a stale "last person" note is cleared so
+      // the next offline open doesn't briefly open as them.
+      decided = true;
+      signedOut();
     } catch {
       if (last) signedIn(last, true);
     }
@@ -129,7 +141,7 @@ export function createSessionKeeper(deps: {
     });
     const first = await Promise.race([answered.then(() => 'answered' as const), waited]);
     clearTimeout(timer);
-    if (first === 'waited' && state.status === 'signed-out') signedIn(last, true);
+    if (first === 'waited' && !isDecided() && state.status === 'signed-out') signedIn(last, true);
   })();
 
   return {

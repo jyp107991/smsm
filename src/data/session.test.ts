@@ -203,6 +203,48 @@ describe('session (OFF-6)', () => {
     });
   });
 
+  it('review: a definite sign-out that arrives while auth-js is still answering is not undone by the short wait', async () => {
+    const { server, jae } = people();
+    const storage = new FakeStorage();
+    const phone = server.phone('jae', jae);
+    await signedInOnce(phone, storage);
+
+    phone.auth.expire();
+    const release = slowGetSession(phone);
+    const k = createSessionKeeper({ client: phone.client as SupabaseClient<Database>, storage, network: phone.network, patienceMs: 50 });
+    keepers.push(k);
+    const seen: string[] = [];
+    k.subscribe(() => { seen.push(k.state().status); });
+    await Promise.resolve();
+    await phone.auth.signOut(); // signed out (e.g. from Settings in another window) before the wait ends
+    await k.ready;
+    await new Promise((r) => setTimeout(r, 80));
+    expect(k.state()).toEqual({ status: 'signed-out' });
+    expect(seen).not.toContain('signed-in');
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(k.state()).toEqual({ status: 'signed-out' });
+    expect(await storage.getItem(LAST_USER_KEY)).toBeNull();
+  });
+
+  it('review: a remembered person with no saved sign-in at all (one store cleared) ends signed out, and the note is cleared', async () => {
+    const { server, jae } = people();
+    const storage = new FakeStorage();
+    const network = new FakeNetwork(true);
+    const phone = server.phone('jae', jae, network);
+    await signedInOnce(phone, storage);
+    expect(await storage.getItem(LAST_USER_KEY)).toBe(jae.id);
+
+    phone.auth.session = null; // auth-js's own store was cleared; ours still names Jae
+    network.set(false);
+    const k = keeper(phone, storage);
+    await k.ready;
+    await vi.waitFor(() => {
+      expect(k.state()).toEqual({ status: 'signed-out' });
+    });
+    expect(await storage.getItem(LAST_USER_KEY)).toBeNull();
+  });
+
   it('OFF-6 with the real auth-js: an expired saved sign-in, offline, after a restart opens at once', async () => {
     // auth-js 2.119 itself, its saved session expired a day ago, every request failing as with no connection.
     const saved = new Map<string, string>();
