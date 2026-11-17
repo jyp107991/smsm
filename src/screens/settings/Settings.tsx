@@ -28,7 +28,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId();
   return (
     <section aria-labelledby={id} className="flex flex-col gap-4">
-      <h2 id={id} className="text-title rule-ledger m-0">{title}</h2>
+      <h2 id={id} className="text-heading rule-ledger m-0">{title}</h2>
       {children}
     </section>
   );
@@ -53,7 +53,7 @@ export function Settings() {
           <button
             type="button"
             onClick={() => { go({ name: 'home' }); }}
-            className="text-ink -ml-2.5 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5"
+            className="text-ink press -ml-2.5 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5"
           >
             <ArrowLeft size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
             {strings.settings.back}
@@ -133,8 +133,9 @@ export function Settings() {
 
       <Section title={strings.settings.about}>
         <p className="text-note m-0">{strings.app.tagline}</p>
-        <p className="text-caption text-ink-2 m-0" data-testid="version">{strings.app.version(build.version, build.commit)}</p>
         <SignOut />
+        {/* Quiet: for the two of you to quote if something goes wrong, not to read (Q-L11). */}
+        <p className="text-caption text-ink-2 nums-list m-0 mt-2" data-testid="version">{strings.app.version(build.version, build.commit)}</p>
       </Section>
 
       {partner ? <RequestSheet open={requesting} onClose={() => { setRequesting(false); }} /> : null}
@@ -233,7 +234,7 @@ function SignOut() {
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <Button variant="destructive" loading={busy && !confirm} onClick={() => {
+        <Button variant="destructive" leading loading={busy && !confirm} onClick={() => {
             if (waiting > 0 || problems.length > 0) {
               setCounts({ waiting, refused: problems.length });
               setConfirm(true);

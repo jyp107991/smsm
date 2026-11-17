@@ -9,6 +9,7 @@ import type { CategoryRow, ExpenseRow, SettlementRow } from '../../data';
 import { cx } from '../../ui/primitives/util';
 import { go, pathOf } from '../../ui/router';
 import { strings } from '../../ui/strings';
+import { CategoryMark } from './CategoryMark';
 import { Head } from './Head';
 import { payerOf, penceOf, type Person } from './words';
 
@@ -36,9 +37,13 @@ export function EntryRowView({ row, categories, people, pending = false }: {
     <a
       href={pathOf({ name: 'entry', id: row.id })}
       onClick={(e) => { open(e, row.id); }}
-      className={cx('flex min-h-14 min-w-0 items-center gap-3 py-2 no-underline text-ink', row.deleted_at !== null && 'opacity-60')}
+      className={cx('press flex min-h-14 min-w-0 items-center gap-3 py-2 no-underline text-ink', row.deleted_at !== null && 'opacity-60')}
     >
-      <span aria-hidden="true" className="w-7 shrink-0 text-center text-[1.125rem]">{category?.emoji ?? ''}</span>
+      {category ? (
+        <CategoryMark emoji={category.emoji} colour={category.colour} className="w-7 shrink-0 text-center text-[1.125rem]" />
+      ) : (
+        <span aria-hidden="true" className="w-7 shrink-0" />
+      )}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="min-w-0 truncate">{row.description}</span>
         {back ? <Tag>{strings.entry.moneyBackTag}</Tag> : null}
@@ -59,7 +64,7 @@ export function SettlementRowView({ row, people }: { row: SettlementRow; people:
     <a
       href={pathOf({ name: 'entry', id: row.id })}
       onClick={(e) => { open(e, row.id); }}
-      className={cx('text-ink flex min-h-14 min-w-0 items-center gap-3 py-2 no-underline', row.deleted_at !== null && 'opacity-60')}
+      className={cx('text-ink press flex min-h-14 min-w-0 items-center gap-3 py-2 no-underline', row.deleted_at !== null && 'opacity-60')}
     >
       <span className="flex w-7 shrink-0 justify-center -space-x-2" aria-hidden="true">
         {from ? <Head animal={from.animal} size={18} /> : null}

@@ -24,6 +24,12 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - **Not checked here:** the two-user suite (CI only); no accessible name it uses changed.
 - **Next:** fresh review, then merge on green (1a doesn't wait for the screenshots checkpoint).
 
+## 2026-11-17 ~16:00 UTC: S2 polish 1b built (the visual system and the chrome)
+- **Built** (Q-L1…Q-L11, Q-U4): one way to show "chosen" (soft green fill and a tick; outlines only for the keyboard); a dark, warm shade behind sheets; Add expense now sits inside the Quick add box (no floating button); tabs grouped in the middle; toasts never cover the tab bar, Quick add or Save, and the update notice is one of them ("A new version is ready"); the tab bar hides only when the keyboard is really up; the plank stands on a ground, inset, and "All square" appears when it lands, in green; sign-in has the plank and the two animals, and the code signs in by itself; setup cards line up; the approval banner has the animal peeking over it; one "Offline · 1 waiting to sync" pill; Delete and Sign out on the margin; "Other" shows its dot; the gallery keeps only what's still open and previews sign-in, setup, an approval and offline. Kinder "curious" and "sheepish" faces.
+- **Tested:** all of wave 1b's new tests pass (unit 1078, demo e2e 57 incl. polish-1b 29); `npm run verify` green. The two-user suite wasn't run here (needs the local Supabase); its sign-in helper no longer taps Sign in, since the code now signs in by itself.
+- **For the owner:** before/after screenshots of every screen, both themes, 390 and 320 wide. One question: by night, a chosen chip inside a sheet is quite faint (see DECISIONS); a slightly stronger tint by night would fix it.
+- **Next:** fresh review, then the owner's yes on the screenshots before 1b merges; wave 2.
+
 ## 2026-11-17 ~11:00 UTC: full QA pass → S2 polish; owner decisions
 - Owner asked for a full QA (function, use, look; "top of the line and premium"). Three independent audits ran on the demo build; results triaged into `docs/slices/S2-polish.md` (waves 1a money/input safety, 1b visual system, 2 Add sheet/Home/Activity). Most serious: a double tap on Save/Record/Duplicate recorded twice (Q-F1).
 - Local `node_modules` was stale (demo builds fell back to system fonts; live was fine). `npm ci` fixed it; CI now fails any build whose font paths don't resolve.

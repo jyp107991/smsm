@@ -104,12 +104,12 @@ How the faces are used:
 
 Loading: self-hosted from the `@fontsource` packages. Latin is declared by hand, the default's files preloaded and every Latin file precached by the service worker. Korean comes as about ninety small files per face, each with a `unicode-range`, so a phone fetches only the files holding the Hangul on screen; those rules are generated (`scripts/fonts-korean.ts`), load after first paint, are never preloaded and are cached by the service worker as they are used. Each web font has a metric-matched local fallback (`size-adjust` and ascent/descent overrides), so Latin text keeps its line length and baseline when the web font arrives. Until a Korean file arrives, Hangul shows in the phone's own Korean font.
 
-Scale (rem, so the phone's text-size setting is respected): balance sentence and section headings 1.75/1.25; amount in the sentence one step larger (2.125); screen titles 1.5/1.25; body 1.0625/1.5; secondary 0.9375/1.4; captions 0.8125/1.3. Weights follow the chosen faces (A: display 400, amount 700, text 400). Sentence case everywhere; no all-caps labels; no letter-spaced eyebrows.
+Scale (rem, so the phone's text-size setting is respected): balance sentence 1.75/1.25; amount in the sentence one step larger (2.125); screen titles 1.5/1.25; section headings 1.25/1.3 (always below the screen title, S2 polish Q-L7); body 1.0625/1.5; secondary 0.9375/1.4; captions 0.8125/1.3. Weights follow the chosen faces (A: display 400, amount 700, text 400). Sentence case everywhere; no all-caps labels; no letter-spaced eyebrows.
 
 ### 3.3 Shape, space, depth
 - 4 px grid; 20 px screen margins.
 - Radii differ by what a thing is: fields and chips 12 px; buttons fully rounded; sheets 28 px top corners; the recap card 20 px; chapter cards have a square left edge with a walnut spine (like a notebook) and 16 px on the right. Not one radius everywhere.
-- Depth: rules and tone, not shadows. One soft shadow exists, for things that float above the page (sheets, toasts, the add button): `0 8px 28px rgb(42 33 24 / 0.12)`.
+- Depth: rules and tone, not shadows. One soft shadow exists, for things that float above the page (sheets, toasts, menus): `0 8px 28px rgb(42 33 24 / 0.12)`.
 - Icons: Lucide, 1.75 px stroke, 22 px, ink colour.
 
 ### 3.4 Motion

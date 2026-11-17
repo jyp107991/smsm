@@ -13,7 +13,13 @@ export function codeDigits(text: string): string {
   return text.normalize('NFKC').replace(/\D/g, '').slice(0, CODE_LENGTH);
 }
 
-export function CodeField({ value, onChange, invalid }: { value: string; onChange: (code: string) => void; invalid: boolean }) {
+export function CodeField({ value, onChange, invalid, autoFocus = false }: {
+  value: string;
+  onChange: (code: string) => void;
+  invalid: boolean;
+  /** Focused as it appears (right after the code is sent, Q-L5), so the phone can offer the code at once. */
+  autoFocus?: boolean;
+}) {
   const id = useId();
   const [focused, setFocused] = useState(false);
   const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {
@@ -32,7 +38,7 @@ export function CodeField({ value, onChange, invalid }: { value: string; onChang
               <span
                 key={i}
                 className={cx(
-                  'bg-sunk text-title nums-list flex h-14 items-center justify-center rounded-[12px] border-2',
+                  'bg-sunk text-title nums-list flex h-14 items-center justify-center rounded-[12px] border-2 transition-colors duration-150',
                   invalid ? 'border-berry' : active ? 'border-forest' : 'border-transparent',
                 )}
               >
@@ -51,6 +57,7 @@ export function CodeField({ value, onChange, invalid }: { value: string; onChang
           maxLength={CODE_LENGTH}
           value={value}
           aria-invalid={invalid || undefined}
+          autoFocus={autoFocus}
           onChange={(e) => { onChange(codeDigits(e.target.value)); }}
           onPaste={onPaste}
           onFocus={() => { setFocused(true); }}

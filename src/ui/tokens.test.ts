@@ -295,3 +295,60 @@ describe('CATEGORY_COLOURS (DESIGN §3.1)', () => {
     });
   }
 });
+
+// ---------- the scrim (S2 polish Q-L3) ----------
+
+/**
+ * Q-L3: the sheet backdrop is one token, `--scrim`, a warm ink at about 28 % by day and black at about 45 % by
+ * night: never a light wash. Declared in tokens.css as `--scrim: light-dark(<light>, <dark>)`, each an explicit
+ * colour with alpha: `oklch(L C H / A)`, `rgb(r g b / a)` or `#rrggbbaa` (no var(), so it can be checked here).
+ * Chosen ranges: alpha 20–40 % (light) and 35–60 % (dark). Contrast checked: over paper, the scrim must make
+ * the page clearly darker than the sheet that rises over it (surface vs scrimmed paper at least 1.5:1 by day,
+ * 1.25:1 by night, where everything is already dark).
+ */
+function cssColourWithAlpha(value: string): { rgb: RGB; alpha: number } {
+  const v = value.trim().toLowerCase();
+  const hex8 = /^#([0-9a-f]{6})([0-9a-f]{2})$/.exec(v);
+  if (hex8) return { rgb: parseHex(`#${hex8[1]!}`), alpha: parseInt(hex8[2]!, 16) / 255 };
+  const alphaOf = (a: string) => (a.endsWith('%') ? Number(a.slice(0, -1)) / 100 : Number(a));
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*[/,]\s*([\d.]+%?)\s*\)$/.exec(v);
+  if (rgb) return { rgb: [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])], alpha: alphaOf(rgb[4]!) };
+  const ok = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*\/\s*([\d.]+%?)\s*\)$/.exec(v);
+  if (ok) {
+    const l = Number(ok[1]) / (ok[2] === '%' ? 100 : 1);
+    return { rgb: oklchToSrgb(l, Number(ok[3]), Number(ok[4])).map((c) => Math.min(255, Math.max(0, c))) as RGB, alpha: alphaOf(ok[5]!) };
+  }
+  throw new Error(`--scrim: write an explicit colour with alpha, got ${value}`);
+}
+
+function toHex([r, g, b]: RGB): string {
+  return `#${[r, g, b].map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+}
+
+describe('Q-L3: --scrim (the sheet backdrop)', () => {
+  const m = /--scrim\s*:\s*light-dark\(\s*([^,]+?)\s*,\s*([^;]+?)\s*\)\s*;/.exec(tokensCss);
+
+  it('Q-L3: tokens.css declares --scrim with light-dark()', () => {
+    expect(m, '--scrim: light-dark(<light>, <dark>) not found in tokens.css').not.toBeNull();
+  });
+
+  const ranges: Record<Theme, [number, number]> = { light: [0.2, 0.4], dark: [0.35, 0.6] };
+  const minContrast: Record<Theme, number> = { light: 1.5, dark: 1.25 };
+  for (const theme of THEMES) {
+    it(`Q-L3: ${theme}: a dark ink at the brief's strength that clearly dims the page under a sheet`, () => {
+      expect(m, '--scrim not declared').not.toBeNull();
+      const { rgb, alpha } = cssColourWithAlpha(theme === 'light' ? m![1]! : m![2]!);
+      expect(alpha).toBeGreaterThanOrEqual(ranges[theme][0]);
+      expect(alpha).toBeLessThanOrEqual(ranges[theme][1]);
+      // Dark-toned: never a light wash.
+      expect(luminance(toHex(rgb)), `the scrim's colour ${toHex(rgb)} is light`).toBeLessThan(0.05);
+      // The page under it, as painted (alpha blended in sRGB).
+      const paper = parseHex(TOKENS.paper[theme]);
+      const under = paper.map((c, i) => c * (1 - alpha) + rgb[i]! * alpha) as RGB;
+      expect(luminance(toHex(under))).toBeLessThan(luminance(TOKENS.paper[theme]));
+      expect(luminance(toHex(under)), 'the scrimmed page is darker than the sheet').toBeLessThan(luminance(TOKENS.surface[theme]));
+      const ratio = refContrast(TOKENS.surface[theme], toHex(under));
+      expect(ratio, `surface over the scrimmed page is ${String(Math.round(ratio * 100) / 100)}:1`).toBeGreaterThanOrEqual(minContrast[theme]);
+    });
+  }
+});

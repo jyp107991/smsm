@@ -69,9 +69,9 @@ function eyes(a: FaceAnatomy, mood: Mood): Shape[] {
         { d: `M${n(x - r * 1.35)} ${n(y + r * 0.45)}Q${n(x)} ${n(y - r * 1.55)} ${n(x + r * 1.35)} ${n(y + r * 0.45)}`, paint: 'line' },
       ]);
     case 'curious':
-      // One eye opened a little wider.
+      // Bright and interested: both eyes round with a shine, one opened a little wider.
       return both((x, y, side) => {
-        const rr = side === 1 ? r * 1.22 : r * 0.95;
+        const rr = side === 1 ? r * 1.18 : r * 1.02;
         return [{ d: dot(x, y, rr), paint: 'ink' }, shine(x, y, rr)];
       });
     case 'sleepy':
@@ -100,15 +100,16 @@ function brows(a: FaceAnatomy, mood: Mood): Shape[] {
   const [xr, yr] = a.eyeR;
   switch (mood) {
     case 'sheepish':
-      // Worried: the inner ends lifted.
+      // Bashful, not worried: soft arcs, the inner ends lifted a little.
       return [
-        line(`M${n(xl - w)} ${n(by(yl) + 1.2)}L${n(xl + w)} ${n(by(yl) - 1.4)}`),
-        line(`M${n(xr + w)} ${n(by(yr) + 1.2)}L${n(xr - w)} ${n(by(yr) - 1.4)}`),
+        line(`M${n(xl - w)} ${n(by(yl) + 1)}Q${n(xl + w * 0.1)} ${n(by(yl) - 1.6)} ${n(xl + w)} ${n(by(yl) - 1)}`),
+        line(`M${n(xr + w)} ${n(by(yr) + 1)}Q${n(xr - w * 0.1)} ${n(by(yr) - 1.6)} ${n(xr - w)} ${n(by(yr) - 1)}`),
       ];
     case 'curious':
+      // Interested: both brows raised in soft arcs, one a little higher (never one flat, which reads as doubt).
       return [
-        line(`M${n(xl - w)} ${n(by(yl) + 0.8)}L${n(xl + w)} ${n(by(yl) + 0.8)}`),
-        line(`M${n(xr - w)} ${n(by(yr) - 0.6)}Q${n(xr)} ${n(by(yr) - 4)} ${n(xr + w)} ${n(by(yr) - 0.6)}`),
+        line(`M${n(xl - w)} ${n(by(yl) - 0.2)}Q${n(xl)} ${n(by(yl) - 2.6)} ${n(xl + w)} ${n(by(yl) - 0.6)}`),
+        line(`M${n(xr - w)} ${n(by(yr) - 1)}Q${n(xr)} ${n(by(yr) - 4.2)} ${n(xr + w)} ${n(by(yr) - 1)}`),
       ];
     case 'surprised':
       return [
@@ -154,11 +155,21 @@ function mouth(a: FaceAnatomy, kind: AnimalKind, mood: Mood): Shape[] {
       ];
     }
     case 'sheepish':
-      return [line(`M${X(-3.8)} ${Y(philtrum + 2.4)}Q${X(-1.9)} ${Y(philtrum + 1.2)} ${X(0)} ${Y(philtrum + 2.4)}Q${X(1.9)} ${Y(philtrum + 3.6)} ${X(3.8)} ${Y(philtrum + 2.4)}`)];
+      // A small lopsided smile, one corner tucked up: "I know, I know".
+      return [line(`M${X(0)} ${Y(0)}V${Y(philtrum)}M${X(-3.8)} ${Y(philtrum + 1.2)}Q${X(-1.9)} ${Y(philtrum + 2.8)} ${X(0)} ${Y(philtrum)}Q${X(1.7)} ${Y(philtrum + 2.4)} ${X(3.4)} ${Y(philtrum + 0.1)}`)];
     case 'pleased':
       return [line(lips(6.4, 4.4))];
-    case 'curious':
-      return [{ d: ellipse(mx + 1.2 * s, my + (philtrum + 2.6) * s, 1.7 * s, 1.9 * s), paint: 'ink' }];
+    case 'curious': {
+      // A small open smile, "ooh": the happy mouth's shape at half the size, without the tongue.
+      const top = philtrum + 0.5;
+      return [
+        line(`M${X(0)} ${Y(0)}V${Y(top)}`),
+        {
+          d: `M${X(-2.9)} ${Y(top)}Q${X(0)} ${Y(top + 0.8)} ${X(2.9)} ${Y(top)}Q${X(2.4)} ${Y(top + 3.8)} ${X(0)} ${Y(top + 3.8)}Q${X(-2.4)} ${Y(top + 3.8)} ${X(-2.9)} ${Y(top)}Z`,
+          paint: 'ink',
+        },
+      ];
+    }
     case 'sleepy':
       return [line(lips(3.2, 2))];
     case 'surprised':

@@ -36,8 +36,8 @@ export interface SheetProps {
  * it is open removes it before the new page is pushed, so it is never left behind.
  *
  * Focus goes back to whatever opened it when it closes, however it closes (Escape, Close, back, Save):
- * what had focus as it opened is kept, and focus returns there, or to the page's fallback (the Quick add
- * box, src/ui/focus.ts) when that has gone. (Radix would return it to a Drawer.Trigger; there is none.)
+ * what had focus as it opened is kept, and focus returns there, or to the page's fallback (the balance
+ * sentence on Home, src/ui/focus.ts; never a text box, which would bring the keyboard up) when that has gone. (Radix would return it to a Drawer.Trigger; there is none.)
  *
  * The keyboard: index.html sets `interactive-widget=resizes-content`, so the viewport (and `dvh`)
  * shrinks when the keyboard opens and the footer stays visible above it. vaul's own input repositioning
@@ -65,9 +65,18 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
   // A closed sheet never reopens still asking.
   if (!open && confirming) setConfirming(false);
 
+  /**
+   * Closed from inside (Close, Escape, a tap outside, Discard): the sheet's history entry goes at once, in
+   * the same event, so a navigation that follows straight after (a link, a typed address) isn't cut short
+   * by a late "back". Closes from outside (Save) take the entry in the effect below.
+   */
+  const close = () => {
+    closeLayer(id);
+    onOpenChange(false);
+  };
   const askOrClose = () => {
     if (dirty) setConfirming(true);
-    else onOpenChange(false);
+    else close();
   };
 
   // What the history coordinator calls back with reads the latest props (it outlives renders).
@@ -119,7 +128,8 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
       repositionInputs={false}
     >
       <Drawer.Portal>
-        <Drawer.Overlay className="bg-sunk/60 fixed inset-0 z-40" />
+        {/* The scrim (Q-L3): warm ink by day, black by night, so the sheet reads as lifted off a dimmed page. */}
+        <Drawer.Overlay className="bg-scrim fixed inset-0 z-40" />
         <Drawer.Content
           {...(description ? {} : { 'aria-describedby': undefined })}
           onEscapeKeyDown={(event) => {
@@ -159,7 +169,7 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
               type="button"
               onClick={askOrClose}
               aria-label={strings.ui.close}
-              className="text-ink-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full"
+              className="text-ink-2 press hover:text-ink inline-flex size-11 shrink-0 items-center justify-center rounded-full"
             >
               <X size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
             </button>
@@ -172,11 +182,12 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
               }}
               onDiscard={() => {
                 setConfirming(false);
-                onOpenChange(false);
+                close();
               }}
             />
           ) : footer ? (
-            <div className="border-line shrink-0 border-t px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">{footer}</div>
+            // Toasts stay clear of the footer (Save), wherever the keyboard leaves it.
+            <div data-toast-avoid="" className="border-line shrink-0 border-t px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">{footer}</div>
           ) : (
             <div aria-hidden="true" className="h-[env(safe-area-inset-bottom)] shrink-0" />
           )}
@@ -196,6 +207,7 @@ function DiscardConfirm({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: 
       aria-modal="false"
       aria-labelledby={titleId}
       aria-describedby={bodyId}
+      data-toast-avoid=""
       className="border-line shrink-0 border-t px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
     >
       <p id={titleId} className="font-semibold">

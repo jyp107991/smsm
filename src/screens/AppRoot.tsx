@@ -3,7 +3,7 @@
  * signed in but not in a household, start or join; then name and animal; then the app: Home and Activity
  * as tabs (Bills and Insights wait for S3 and S5), the entry page and Settings, and the two sheets.
  */
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import { useHousehold, useSession, useSyncStatus } from '../data';
 import { FEATURES } from '../ui/features';
 import { BottomTabs, Button, MAIN_TABS, TabPanel, ToastProvider, type MainTab } from '../ui/primitives';
@@ -12,7 +12,7 @@ import { strings } from '../ui/strings';
 import { Activity } from './activity/Activity';
 import { EntryPage } from './entry/EntryPage';
 import { EntrySheet } from './entry/EntrySheet';
-import { Home, HOME_TOAST_LIFT } from './home/Home';
+import { Home } from './home/Home';
 import { savePending } from './settle/monzo';
 import { MonzoQuestionProvider } from './settle/question';
 import { SettleSheet } from './settle/SettleSheet';
@@ -102,9 +102,6 @@ function MainApp() {
   const [settle, setSettle] = useState<SettleRequest | null>(null);
   const [sheets] = useState(() => ({ openEntry: setEntry, openSettle: setSettle }));
   const tab = tabOf(route, lastTab);
-  const { otherWindow } = useSyncStatus();
-  // Toasts clear the tab bar everywhere; on Home they also clear the add button (none in a read-only window).
-  const toastLift = route.name === 'home' && !otherWindow ? HOME_TOAST_LIFT : '5.25rem';
   if (route.name !== 'entry' && tab !== lastTab) setLastTab(tab);
 
   // A new page starts at its top.
@@ -117,25 +114,24 @@ function MainApp() {
     <SheetsContext value={sheets}>
       {/* Back from Monzo, even after the app was closed: ask "Did it go through?" (SET-2, Q-U2). */}
       <MonzoQuestionProvider onUnanswered={(pending) => { setSettle({ mode: 'asking', pending }); }}>
-        <div style={{ '--toast-lift': toastLift } as CSSProperties}>
-          <ToastProvider>
-            <BottomTabs
-              items={TABS}
-              value={tab}
-              onValueChange={(t) => {
-                const target: Route = t === 'activity' ? { name: 'activity' } : { name: 'home' };
-                if (route.name !== target.name) go(target);
-              }}
-            >
-              <TabPanel value={tab}>
-                <OtherWindowNote />
-                <Page route={route} />
-              </TabPanel>
-            </BottomTabs>
-            <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
-            <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
-          </ToastProvider>
-        </div>
+        {/* The app's own toast system when it has none around it (the screens' tests); in the app, the shell's. */}
+        <ToastProvider>
+          <BottomTabs
+            items={TABS}
+            value={tab}
+            onValueChange={(t) => {
+              const target: Route = t === 'activity' ? { name: 'activity' } : { name: 'home' };
+              if (route.name !== target.name) go(target);
+            }}
+          >
+            <TabPanel value={tab}>
+              <OtherWindowNote />
+              <Page route={route} />
+            </TabPanel>
+          </BottomTabs>
+          <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
+          <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
+        </ToastProvider>
       </MonzoQuestionProvider>
     </SheetsContext>
   );
