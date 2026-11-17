@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Restores an encrypted nightly backup (EXP-2) into a PostgreSQL database that already has the migrations
 # applied (a fresh Supabase project after `supabase db push`, or a scratch database for a restore drill).
-# Usage: BACKUP_PASSPHRASE=... scripts/restore-backup.sh smsm-2026-11-18.sql.gz.gpg "postgresql://..."
+# Usage: BACKUP_PASSPHRASE=<the database password on the night of the backup> scripts/restore-backup.sh smsm-2026-11-18.sql.gz.gpg "postgresql://..."
 # The passphrase is read from the environment so it never appears in shell history or process lists.
 # Triggers and foreign-key checks are paused while loading (session_replication_role = replica): the rows
 # were valid when exported, and replaying them must not write a second copy of their history.

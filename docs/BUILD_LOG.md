@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~10:00 UTC: sign-in email live; two-user suite green
+- **Two-user suite: 21/21 green** on CI run 44058300857 (commit 8124048), with all other checks.
+- **Sign-in email applied** (owner said yes): `auth-config` push run 44058977473. Codes now go out from smsm's own Gmail account (address only in the secret), subject "Your smsm code". A test request to the live auth service for the smsm address returned 200 (it would fail if Gmail refused the login); the owner checks that inbox.
+- **Backup key:** the nightly backup is now encrypted with the database password (owner: a separate passphrase "feels like bloat"). Nothing left for the owner to add.
+- **Next:** fresh review of the latest changes (running) → fix findings → PR to main → deploy → owner and partner install and join → close sign-ups (tell the owner first).
+
 ## 2026-11-17: two-user suite, third run diagnosed and fixed
 - **What happened** (CI run 44051517647, job 133930258318, commit af8f975): **19 of 21 passed; 2 failed on both tries.** Two separate causes, both found in the recorded browser traces.
 - **1. "Saved" didn't appear after "Refund this"** (the entry-page scenario). Just before, Restore had shown "Restored Tesco". The new toast was made to wait until the old one had finished sliding away, and in the test browser that slide never finished: the test's fixed clock runs a few seconds ahead of the browser's animation clock after each page load (checked with a small page on its own: a 0.18 s fade that should end at once was still waiting 2 s later). On a real phone the two clocks agree, but the app shouldn't hang its feedback on an animation anyway. Fix: there is now one toast slot, and a new toast takes it at once; the old message and its Undo are gone the same moment. Only when nothing replaces it does a toast fade out. "Saved" now shows the instant you save, however quickly saves follow each other.
