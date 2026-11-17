@@ -89,14 +89,22 @@ Measured contrast on paper (WCAG), light: ink 13.7, ink-2 6.4, forest 8.2, moss 
 **Texture.** One: a faint paper grain on `--paper` (an inline SVG noise filter at about 3% opacity, no image). The plank has a two-tone grain drawn in its SVG. No gradients as decoration, no glass, no glow.
 
 ### 3.2 Type
-Three candidates are shown in the gallery on the real Home screen; the owner picks by looking.
-- **A (recommended): Bricolage Grotesque**, one variable family for everything. Its optical-size and width axes give a characterful, slightly hand-cut display voice for the balance sentence and a calm text voice for lists, from a single file. Warm without being soft-edged.
-- **B: Fraunces (soft) for sentences and titles, Figtree for the interface.** More bookish.
-- **C: Nunito** throughout. Rounder, gentler, more ordinary.
+The type should feel like the ledger itself: written on paper at home, not set by a bank. All three candidates are Korean-made families that also draw Latin, so the couple's Hangul names (a partner, a shop in Seoul) sit in the same hand as the English around them, and the ㅅㅁ mark has letters from its own culture beside it. The gallery shows each on the real Home screen; the owner picks by looking.
+- **A, "Pencil and paper" (recommended): Gowun Batang for sentences and headings, Gowun Dodum for the interface.** One designer drew the serif and the sans as a pair, so they agree on every proportion. The serif makes the balance read as a sentence someone wrote; the sans is soft and round at small sizes. Gowun Dodum has one weight, so interface emphasis comes from size, colour and place, never a fake bold (`font-synthesis-weight: none`). The smallest files of the three.
+- **B, "The printed ledger": Hahmlet throughout.** One variable serif for everything, crisp and exact, with real weights for buttons and labels. The most bookish; a little wider, so long sentences wrap sooner.
+- **C, "Old letters": Nanum Myeongjo for sentences and headings, Gowun Dodum for the interface.** Classic, high-contrast Korean book type for the display voice. The most formal.
 
-Whichever is chosen: self-hosted variable font via `@fontsource-variable`, Latin subset preloaded; Korean (and any other script in names or notes) falls through to the system font, and the gallery includes Hangul names to check the pairing. Numbers are tabular in lists and proportional in sentences.
+Considered and left out: Pretendard (its Latin is a version of a very common interface face, and the npm package ships the whole 11,000-syllable font as one 0.7 MB file per weight, with no way to load Latin alone); Bricolage Grotesque, Fraunces with Figtree, Nunito (the first round: well made, but common enough on the web to read as a template rather than this app).
 
-Scale (rem, so the phone's text-size setting is respected): balance sentence 1.75/1.2, weight 650; amount in the sentence one step larger; screen titles 1.375/1.25; body 1.0625/1.5; secondary 0.9375/1.4; captions 0.8125/1.3. Sentence case everywhere; no all-caps labels; no letter-spaced eyebrows.
+How the faces are used:
+- **Display voice** (the balance sentence, screen and section titles, small headings, a question to the reader): the serif. Titles at the regular weight, so they read as written rather than as bold labels; the amount in the balance sentence one step larger and firmer.
+- **Text voice** (lists, fields, buttons, captions): the sans in A and C, the serif in B.
+- **Section headings sit on a ledger rule:** a hairline in `--line` across the column with a short 3 px walnut stroke at its start, like the edge of the plank (`rule-ledger`). Not every heading has a line under it; where one does, it is a plain line in the display voice saying what to do or notice, not a grey subtitle.
+- Numbers are tabular in lists and proportional in sentences.
+
+Loading: self-hosted from the `@fontsource` packages. Latin is declared by hand, the default's files preloaded and every Latin file precached by the service worker. Korean comes as about ninety small files per face, each with a `unicode-range`, so a phone fetches only the files holding the Hangul on screen; those rules are generated (`scripts/fonts-korean.ts`), load after first paint, are never preloaded and are cached by the service worker as they are used. Each web font has a metric-matched local fallback (`size-adjust` and ascent/descent overrides), so Latin text keeps its line length and baseline when the web font arrives. Until a Korean file arrives, Hangul shows in the phone's own Korean font.
+
+Scale (rem, so the phone's text-size setting is respected): balance sentence and section headings 1.75/1.25; amount in the sentence one step larger (2.125); screen titles 1.5/1.25; body 1.0625/1.5; secondary 0.9375/1.4; captions 0.8125/1.3. Weights follow the chosen faces (A: display 400, amount 700, text 400). Sentence case everywhere; no all-caps labels; no letter-spaced eyebrows.
 
 ### 3.3 Shape, space, depth
 - 4 px grid; 20 px screen margins.
@@ -173,7 +181,7 @@ A list of notebook-like cards with walnut spines (emoji, name, dates, total). A 
 One card at a time, large. Keep (forest) and Not ours (plain) as two big buttons; swipe right and left do the same. A counter ("3 of 12"). Variable bills show the usual amount as a one-tap answer.
 
 ### 4.10 Sign-in and setup
-The logo and "smsm"; one line, "Shared money for two"; email, then a six-box code entry that accepts paste. Start or Join. Name. The two animals as large cards.
+The logo and "smsm"; one line, "A home ledger for two"; email, then a six-box code entry that accepts paste. Start or Join. Name. The two animals as large cards.
 
 ### 4.11 Larger screens
 From 900 px wide: a two-pane layout (list left, detail or form right), tabs as a side rail. Same components.
@@ -186,6 +194,10 @@ From 900 px wide: a two-pane layout (list left, detail or form right), tabs as a
 - Empty screens invite the next action: "Nothing yet. Add your first shared expense from Home."
 - Errors say what happened and what to do, with no apology and no exclamation mark: "Couldn't reach the server. Your entry is saved on this phone and will sync."
 - Permitted small delights: "All square", "Next one's on Sam", "Welcome home". No puns, no emoji in system text beyond category and chapter emoji the people chose.
+- Write like one of the two of you leaving a note in the ledger, not like software describing itself. Say the thing, once: "Which one is ours?", not "Choose your preferred option below". No feature names, no "seamless", "easily", "powerful", "manage", "track"; no explaining what the screen obviously shows.
+- Fewer words: a heading and at most one line under it. Headings name the thing in ordinary words ("The mark", "Colours", "On the page"), not categories ("Logo", "In use").
+- Use the people's names and the animals as people would ("Sam, the cat"); "us" and "ours" for things that belong to both.
+- The app's one line: "A home ledger for two".
 
 ## 6. Craft rules (how it should feel in the hand)
 - Every action updates the screen at once and reconciles with the server afterwards; a failed save puts the entry back with a clear message, never silently loses it.

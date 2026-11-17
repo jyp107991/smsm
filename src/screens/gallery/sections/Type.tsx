@@ -2,11 +2,16 @@
 import { Plank } from '../../../ui/rig/Plank';
 import { Button, Field } from '../../../ui/primitives';
 import { Animal } from '../../../ui/rig/Animal';
+import { OptionMark, Section } from './Section';
+
+// The other two options' Korean slices, for the gallery only (the default's are loaded by main.tsx).
+void import('../../../styles/fonts-korean-b.css');
+void import('../../../styles/fonts-korean-c.css');
 
 const OPTIONS = [
-  { cls: 'type-a', label: 'A: Bricolage Grotesque', note: 'One family for everything; a hand-cut display voice. Recommended.' },
-  { cls: 'type-b', label: 'B: Fraunces and Figtree', note: 'A soft serif for sentences and titles, a plain sans for the interface. More bookish.' },
-  { cls: 'type-c', label: 'C: Nunito', note: 'Rounder and gentler throughout; more ordinary.' },
+  { cls: 'type-a', letter: 'A', name: 'Pencil and paper', fonts: 'Gowun Batang with Gowun Dodum', note: 'Drawn as a pair by one Korean designer. Soft, like a note left on the table.', pick: true },
+  { cls: 'type-b', letter: 'B', name: 'The printed ledger', fonts: 'Hahmlet throughout', note: 'One serif for everything. Crisp and exact, like a book from a stationer’s.', pick: false },
+  { cls: 'type-c', letter: 'C', name: 'Old letters', fonts: 'Nanum Myeongjo with Gowun Dodum', note: 'Classic ink for the headings, a soft hand for the rest.', pick: false },
 ] as const;
 
 const ROWS = [
@@ -17,7 +22,7 @@ const ROWS = [
 
 function MiniHome({ cls }: { cls: string }) {
   return (
-    <div className={`${cls} bg-paper flex flex-col gap-3 rounded-[20px] p-4`}>
+    <div className={`${cls} bg-paper border-line flex flex-col gap-3 rounded-[20px] border p-4`}>
       <Plank left={{ kind: 'cat', mood: 'sheepish' }} right={{ kind: 'dog', mood: 'pleased' }} leftNetPence={-2450} motion={false} />
       <p className="text-sentence m-0 text-center">
         Sam owes Jae <span className="text-amount">£24.50</span>
@@ -25,7 +30,7 @@ function MiniHome({ cls }: { cls: string }) {
       <p className="text-secondary text-ink-2 m-0 text-center">Next one’s on Sam</p>
       <Button variant="primary" className="self-center">Settle up</Button>
       <Field label="Quick add" defaultValue="42.50 tesco" readOnly hint="£42.50 · Tesco · Groceries · Jae paid · 50/50" />
-      <div>
+      <div className="mt-2">
         <p className="text-title m-0">November so far</p>
         <p className="text-secondary text-ink-2 m-0">£1,240 · about £80 under your usual pace</p>
       </div>
@@ -45,16 +50,22 @@ function MiniHome({ cls }: { cls: string }) {
 
 export function TypeSection() {
   return (
-    <section aria-labelledby="g-type" className="flex flex-col gap-4">
-      <h2 id="g-type" className="text-[1.375rem] leading-tight font-semibold">Type</h2>
-      <p className="text-ink-2">Three typefaces on the same Home screen. Korean falls back to your phone’s own font.</p>
+    <Section id="g-type" title="Letters" ask="Which hand should smsm be written in? Each one draws your Korean names too.">
       {OPTIONS.map((o) => (
-        <div key={o.cls} className="flex flex-col gap-2">
-          <h3 className="text-[1.0625rem] font-semibold">{o.label}</h3>
-          <p className="text-ink-2 m-0 text-[0.9375rem]">{o.note}</p>
+        <div key={o.cls} className="flex flex-col gap-3">
+          <div className={`${o.cls} flex gap-3`}>
+            <OptionMark letter={o.letter} />
+            <div className="min-w-0">
+              <h3 className="text-title m-0">{o.name}</h3>
+              <p className="text-secondary text-ink-2 m-0">
+                {o.fonts}. {o.note}
+                {o.pick ? <span className="text-ink"> The one I would pick.</span> : null}
+              </p>
+            </div>
+          </div>
           <MiniHome cls={o.cls} />
         </div>
       ))}
-    </section>
+    </Section>
   );
 }

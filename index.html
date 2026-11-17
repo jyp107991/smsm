@@ -6,9 +6,10 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#EEF0E5" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1D221A" />
-    <meta name="description" content="Shared money for two" />
-    <!-- The default typeface's Latin file (src/styles/type.css), fetched before the CSS asks for it. Vite rewrites the path to the hashed asset the CSS uses. -->
-    <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-standard-normal.woff2" />
+    <meta name="description" content="A home ledger for two" />
+    <!-- The default typeface's Latin files that the first screen uses (src/styles/type.css), fetched before the CSS asks for them; Gowun Batang 700 joins them when Home shows the balance. Vite rewrites each path to the hashed asset the CSS uses. Korean files are never preloaded. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource/gowun-dodum/files/gowun-dodum-latin-400-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource/gowun-batang/files/gowun-batang-latin-400-normal.woff2" />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>smsm</title>
