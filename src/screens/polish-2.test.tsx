@@ -262,6 +262,31 @@ describe('Q-U5 SPL-1 MB-1: splits say who', () => {
     expect(isChecked(within(shared(sheet)).getByRole('radio', { name: 'Jae 60 · Sam 40' }))).toBe(true);
   });
 
+  it('SPL-1 (fresh review): the 70/30 presets and their reverse are offered as named chips', async () => {
+    const { layer } = couple();
+    show(layer);
+    const sheet = await openAddSheet();
+    for (const name of ['Jae 70 · Sam 30', 'Jae 30 · Sam 70']) {
+      expect(within(shared(sheet)).getByRole('radio', { name }), name).toBeTruthy();
+    }
+  });
+
+  it('Q-U5 (fresh review): a split that started off the chips keeps its stepper while stepping past a preset', async () => {
+    const row = storedExpense({
+      description: 'Lamp', amount_pence: 1000, paid: { [JAE_ID]: 1000 }, split_params: { [JAE_ID]: 55, [SAM_ID]: 45 }, shares: { [JAE_ID]: 550, [SAM_ID]: 450 },
+    });
+    const { layer } = couple({ expenses: [row] });
+    at(`/entry/${row.id}`);
+    show(layer);
+    await screen.findByRole('heading', { name: 'Lamp' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Edit expense' });
+    fireEvent.click(await within(sheet).findByRole('button', { name: 'More for Jae' }));
+    expect(within(sheet).getAllByText('Jae 60 · Sam 40').length).toBeGreaterThanOrEqual(1);
+    expect(within(sheet).getByRole('button', { name: 'More for Jae' }), 'the stepper stays under the finger').toBeTruthy();
+    expect(isChecked(within(shared(sheet)).getByRole('radio', { name: 'Other' }))).toBe(true);
+  });
+
   it('Q-U5 Q-L13 SPL-1: "Other" is a −/+ stepper in 5 % steps ("Jae 45 · Sam 55" saves £9.00 / £11.00 of £20.00)', async () => {
     const { layer, controls } = couple();
     show(layer);

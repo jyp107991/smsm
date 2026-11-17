@@ -272,9 +272,10 @@ export const RATIO_PRESETS = [50, 60, 40, 70, 30] as const;
 
 /**
  * The split choices the Add sheet offers as named chips (S2 polish Q-U5), as the first person's share:
- * "50/50", "Jae 60 · Sam 40", "Jae 40 · Sam 60". Anything else is "Other" (the 5 % stepper).
+ * "50/50", "Jae 60 · Sam 40", "Jae 40 · Sam 60", "Jae 70 · Sam 30", "Jae 30 · Sam 70" (SPL-1). Anything else is
+ * "Other" (the 5 % stepper).
  */
-export const SHEET_PRESETS = [50, 60, 40] as const;
+export const SHEET_PRESETS = [50, 60, 40, 70, 30] as const;
 
 /** One step of "Other" (Q-U5): 5 % of the whole, to the next multiple of 5 up or down. */
 export const STEP = 5;

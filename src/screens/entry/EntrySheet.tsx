@@ -81,8 +81,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
   const [pickingDate, setPickingDate] = useState(false);
-  // Q-U5: "Other" stays chosen once picked, even when its stepper passes a preset.
-  const [otherChosen, setOtherChosen] = useState(false);
+  // Q-U5: "Other" stays chosen once picked, or when the split started off the chips, even when its stepper
+  // passes a preset (otherwise the stepper vanishes under the finger and the next tap lands on the date).
+  const [otherChosen, setOtherChosen] = useState(() => {
+    const id = pair[0]?.id;
+    return initial.splitMode === 'ratio' && id !== undefined && !(SHEET_PRESETS as readonly number[]).includes(initial.ratio[id] ?? 50);
+  });
   // What the person chose themselves (taught to the app on Save, CAT-3, CAT-4).
   const picked = useRef({
     category: request.mode === 'add' && request.fromQuickAdd?.typedCategory === true,
@@ -240,6 +244,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const step = (direction: 1 | -1) => {
     if (!first) return;
     picked.current.split = true;
+    setOtherChosen(true);
     update(setShareOf(s, first.id, stepShare(firstPct, direction), pair));
   };
 
