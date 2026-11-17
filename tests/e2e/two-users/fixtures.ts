@@ -59,10 +59,11 @@ export async function expectBalanceAgrees(phones: readonly Phone[], email: strin
 export const test = base.extend<Fixtures>({
   samTimezone: ['Europe/London', { option: true }],
 
-  newPhone: async ({}, use, testInfo) => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright fixtures always destructure their first argument
+  newPhone: async ({}, provide, testInfo) => {
     const made: Phone[] = [];
     const tag = randomUUID().slice(0, 8);
-    await use((name, opts) => {
+    await provide((name, opts) => {
       const phone = new Phone({
         name,
         email: `${name.toLowerCase().replace(/[^a-z]/g, '') || 'person'}.${tag}.${String(made.length)}@example.com`,
@@ -78,12 +79,12 @@ export const test = base.extend<Fixtures>({
     }
   },
 
-  couple: async ({ newPhone, samTimezone }, use) => {
+  couple: async ({ newPhone, samTimezone }, provide) => {
     const jae = newPhone('Jae');
     const sam = newPhone('Sam', { timezoneId: samTimezone });
     await jae.open();
     await sam.open();
-    await use({ jae, sam });
+    await provide({ jae, sam });
     // After every scenario: screen = core = database, on both phones.
     if (householdOf(jae.email)?.people.length === 2) await expectBalanceAgrees([jae, sam], jae.email);
   },

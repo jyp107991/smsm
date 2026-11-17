@@ -23,9 +23,9 @@ export async function serviceGet<T>(path: string): Promise<T> {
 }
 
 /** Runs SQL as the database owner and returns the single JSON value it selects. */
-export function sqlJson<T>(sql: string): T {
+export function sqlJson(sql: string): unknown {
   const out = execFileSync('psql', [env.dbUrl, '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', '-c', sql], { encoding: 'utf8' }).trim();
-  return (out === '' ? null : JSON.parse(out)) as T;
+  return out === '' ? null : (JSON.parse(out) as unknown);
 }
 
 const lit = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -35,18 +35,18 @@ export interface Household { id: string; joinCode: string; defaultRatio: Record<
 
 /** The household that `email` belongs to, or null. */
 export function householdOf(email: string): Household | null {
-  return sqlJson<Household | null>(`
+  return (sqlJson(`
     select json_build_object(
       'id', h.id, 'joinCode', h.join_code, 'defaultRatio', h.default_ratio,
       'people', (select json_agg(json_build_object('userId', m2.user_id, 'email', u2.email, 'name', m2.display_name,
                    'animal', m2.animal, 'locked', m2.locked_at is not null, 'monzoMe', m2.monzo_me) order by m2.joined_at)
                  from members m2 join auth.users u2 on u2.id = m2.user_id where m2.household_id = h.id))
     from auth.users u join members m on m.user_id = u.id join households h on h.id = m.household_id
-    where lower(u.email) = lower(${lit(email)})`);
+    where lower(u.email) = lower(${lit(email)})`) as Household | null);
 }
 
 export function userIdOf(email: string): string | null {
-  return sqlJson<string | null>(`select to_json(id) from auth.users where lower(email) = lower(${lit(email)})`);
+  return (sqlJson(`select to_json(id) from auth.users where lower(email) = lower(${lit(email)})`) as string | null);
 }
 
 export async function expensesOf(householdId: string): Promise<ExpenseRow[]> {
@@ -59,23 +59,23 @@ export async function settlementsOf(householdId: string): Promise<SettlementRow[
 
 export interface ActivityRow { actor: string | null; entity: string; entity_id: string | null; action: string; summary: Record<string, unknown>; at: string }
 export function activityOf(householdId: string): ActivityRow[] {
-  return sqlJson<ActivityRow[] | null>(`select json_agg(a order by a.id) from (select actor, entity, entity_id, action, summary, at
-    from activity where household_id = ${lit(householdId)}) a`) ?? [];
+  return (sqlJson(`select json_agg(a order by a.id) from (select actor, entity, entity_id, action, summary, at
+    from activity where household_id = ${lit(householdId)}) a`) as ActivityRow[] | null) ?? [];
 }
 
 export function changeRequestsOf(householdId: string): { id: string; kind: string; status: string; payload: Record<string, unknown> }[] {
-  return sqlJson<{ id: string; kind: string; status: string; payload: Record<string, unknown> }[] | null>(
+  return (sqlJson(
     `select json_agg(c order by c.created_at) from (select id, kind, status, payload, created_at from change_requests
      where household_id = ${lit(householdId)}) c`,
-  ) ?? [];
+  ) as { id: string; kind: string; status: string; payload: Record<string, unknown> }[] | null) ?? [];
 }
 
 /** member_net, as the database computes it: user id → pence. */
 export function memberNet(householdId: string): Record<string, number> {
-  const rows = sqlJson<{ user_id: string; net_pence: number }[] | null>(
+  const rows = (sqlJson(
     `select json_agg(json_build_object('user_id', user_id, 'net_pence', net_pence)) from member_net where household_id = ${lit(householdId)}`,
-  ) ?? [];
-  return Object.fromEntries(rows.map((r) => [r.user_id, Number(r.net_pence)]));
+  ) as { user_id: string; net_pence: number }[] | null) ?? [];
+  return Object.fromEntries(rows.map((r) => [r.user_id, r.net_pence]));
 }
 
 /** core/balance over the rows the database holds (fetched with the service key). */
@@ -101,9 +101,9 @@ export async function asPerson(accessToken: string, path: string, init: { method
 
 /** Category name → id for a household. */
 export function categoriesOf(householdId: string): Record<string, string> {
-  return sqlJson<Record<string, string> | null>(
+  return (sqlJson(
     `select json_object_agg(name, id) from categories where household_id = ${lit(householdId)}`,
-  ) ?? {};
+  ) as Record<string, string> | null) ?? {};
 }
 
 /** A pence map without its zero sides (the database accepts both forms). */

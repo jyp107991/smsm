@@ -34,7 +34,11 @@ async function syntheticEnterDuringComposition(field: Locator, partial: string):
     input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
     input.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: text }));
     const init = { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true, isComposing: true };
-    input.dispatchEvent(new KeyboardEvent('keydown', { ...init, keyCode: 229 } as KeyboardEventInit));
+    // As Android keyboards send it: keyCode 229 ("being composed").
+    const raw = new KeyboardEvent('keydown', init);
+    Object.defineProperty(raw, 'keyCode', { get: () => 229 });
+    Object.defineProperty(raw, 'which', { get: () => 229 });
+    input.dispatchEvent(raw);
     input.dispatchEvent(new KeyboardEvent('keydown', init));
     input.dispatchEvent(new KeyboardEvent('keyup', init));
   }, partial);
