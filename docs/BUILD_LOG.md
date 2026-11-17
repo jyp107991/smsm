@@ -2,6 +2,15 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17: remaining screens-review fixes done
+- **Focus** comes back to whatever opened a sheet when it closes (Escape, Close, back, Save), or to the Quick add box when the opener has gone (the quick-add reading). The "Same as last time" menu now closes with back, like a sheet, and focus goes back to Add expense.
+- **320×640:** Add expense steps aside while Quick add has focus, so it never sits over what you type; on Home the "Saved" toast sits above the button instead of over it.
+- **Category chips** keep their size as the guess moves while a description is typed (the emoji sits where the tick appears; the suggestion dot has a fixed place). "Other" shows its colour dot, then a tick when chosen, never both.
+- **Settle up:** typing more than is owed shows a quiet line ("That’s more than the £20.00 Sam owes Jae.") and still lets it be recorded; "Did it go through?" says what Yes will do ("Once Sam’s £20.00 to Jae has gone through in Monzo, tap Yes to record it.").
+- **Words in one place (TXT-7):** the data layer returns codes; the screens word them; a test keeps it so.
+- **Tested:** each with a failing test first (demo e2e: focus, back on the menu, button vs Quick add and toast at 320×640, chip sizes; component: the over-owed line is not a block; unit: data layer words nothing). Also fixed an occasional failure in the screens review tests (a closing sheet's history step landing in the next test). `npm run verify`, production build, all browser tests green. Screenshots before/after in `/tmp/claude-0/s2-fix-shots/`.
+- **Next:** the two-user CI run; then PR to main.
+
 ## 2026-11-17: two-user suite, first run diagnosed and fixed
 - **What went wrong** (CI run 44032201912): 20 of 21 scenarios stopped at the very first step, signing in. The app asked for a code and the local auth server said "sent" (it answered 200), and the email did reach the test mailbox, but it held only a sign-in link: the auth server's built-in email (GoTrue 2.198) no longer prints the 6-digit code. smsm signs in with the code only, so the tests had nothing to type. The one scenario that passed (OFF-4) never signs in. Nothing after sign-in was reached, so the run says nothing yet about the screens.
 - **Fix:** the CI job now uses smsm's own code email (`supabase/templates/code.html`, the one already proposed for the live project) on the local test stack only. The committed `config.toml` and the live project are unchanged. Checked by sending both emails through the same Mailpit version the stack uses and reading them with the suite's own mail reader (link-only email: no code, the exact CI error; code email: code read). New unit test `tests/unit/sign-in-email.test.ts` keeps the CI job and the mail reader in step.

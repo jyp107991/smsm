@@ -21,9 +21,9 @@ import { readingWords, readQuickAdd, type Reading } from '../shared/suggest';
 import { useSheets } from '../sheets';
 
 /**
- * `onInUse` hears when the person is typing in quick add (something typed, and the box or its reading has
- * focus): Home moves the add button out of the way meanwhile, so it never covers what is being typed or
- * its reading (320 px phones).
+ * `onInUse` hears when the person is in quick add (the box or its reading has focus, so on a phone the
+ * keyboard is up): Home moves the add button out of the way meanwhile, so it never covers what is being
+ * typed or its reading (320 px phones). The reading opens the full form, so nothing is lost.
  */
 export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
   const layer = useDataLayer();
@@ -37,8 +37,7 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
   const [text, setText] = useState('');
   const box = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  const inUse = focused && text !== '';
-  useEffect(() => { onInUse?.(inUse); }, [inUse, onInUse]);
+  useEffect(() => { onInUse?.(focused); }, [focused, onInUse]);
   // A sheet whose opener has gone (the reading, as it opens the form) gives focus back to this box.
   useEffect(() => (box.current ? registerFocusFallback(box.current) : undefined), []);
   const { otherWindow } = useSyncStatus();

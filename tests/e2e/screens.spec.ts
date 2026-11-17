@@ -52,6 +52,8 @@ test.describe('the S2 screens', () => {
         await expect(page.getByRole('button', { name: /^£42\.50 · tesco · Groceries · Jae paid · / })).toBeVisible();
         await check(page, 'Home with a reading');
         await page.getByRole('textbox', { name: 'Quick add' }).fill('');
+        // Done with quick add (the add button steps aside while it has focus).
+        await page.getByRole('heading', { name: 'Today' }).click();
 
         await page.getByRole('button', { name: 'Add expense', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Add expense' });
@@ -340,14 +342,20 @@ test.describe('the screens review: focus, the add button, chips', () => {
     await home(page);
     const box = page.getByRole('textbox', { name: 'Quick add' });
     const add = page.getByRole('button', { name: 'Add expense', exact: true });
-    await box.click();
-    await box.pressSequentially('5 gum');
     const boxRect = await box.locator('..').boundingBox();
     expect(boxRect).not.toBeNull();
-    if (await add.isVisible()) {
-      const addRect = await add.boundingBox();
-      expect(addRect !== null && boxRect !== null && overlaps(addRect, boxRect), 'Add expense covers Quick add').toBe(false);
-    }
+    const notCovered = async (when: string) => {
+      await expect.poll(async () => {
+        if (!(await add.isVisible())) return false;
+        const addRect = await add.boundingBox();
+        return addRect !== null && boxRect !== null && overlaps(addRect, boxRect);
+      }, { message: `Add expense covers Quick add ${when}` }).toBe(false);
+    };
+    await box.click();
+    await expect(box).toBeFocused();
+    await notCovered('as it is tapped');
+    await box.pressSequentially('5 gum');
+    await notCovered('while typing');
     await box.press('Enter');
     const saved = page.getByRole('status').filter({ hasText: /^Saved/ });
     await expect(saved).toBeVisible();

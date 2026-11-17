@@ -214,6 +214,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             <Chip
               key={c.id}
               colour={categoryColour(c.colour)}
+              {...(isPlaceholderEmoji(c.emoji) ? {} : { icon: <span className="leading-none">{c.emoji}</span> })}
               selected={s.categoryId === c.id}
               suggested={guess.categoryId === c.id}
               suggestible
@@ -222,8 +223,6 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
                 update({ ...s, categoryId: c.id, categoryTouched: true });
               }}
             >
-              {/* The colour dot (the tick when chosen) stands for the category already; a placeholder "•" would read as a second one. */}
-              {isPlaceholderEmoji(c.emoji) ? null : <span aria-hidden="true" className="mr-1">{c.emoji}</span>}
               {c.name}
             </Chip>
           ))}
@@ -372,7 +371,10 @@ function changedFields(from: ExpenseDraft, to: ExpenseDraft, splitTouched: boole
   return out;
 }
 
-/** The database's default emoji (a plain dot) for a category nobody gave one. */
+/**
+ * The database's default emoji (a plain dot) for a category nobody gave one: its colour dot shows instead,
+ * so "Other" is never a tick beside a dot.
+ */
 function isPlaceholderEmoji(emoji: string): boolean {
   return emoji.trim() === '' || emoji.trim() === '•';
 }
