@@ -19,3 +19,9 @@ insert into auth.users values
   ('22222222-2222-2222-2222-222222222222'),
   ('33333333-3333-3333-3333-333333333333')
 on conflict do nothing;
+-- Like Supabase: the publication Realtime reads exists (empty) before the migrations run.
+set client_min_messages = error;   -- plain PostgreSQL warns that wal_level isn't logical; irrelevant here
+do $$ begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then create publication supabase_realtime; end if;
+end $$;
+reset client_min_messages;
