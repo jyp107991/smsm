@@ -15,6 +15,12 @@ export const strings = {
     updating: 'Updating smsm',
     updatingNote: 'Getting the latest version. Anything you’ve entered is kept.',
     progress: 'Update progress',
+    check: 'Check for updates',
+    checking: 'Checking…',
+    checkStatus: 'Update check',
+    latest: 'You’re on the latest version.',
+    couldntCheck: 'Couldn’t check. Check the connection and try again.',
+    couldntUpdate: 'Couldn’t update just now. Try again in a minute.',
   },
   /** smsm open twice on one phone: only one window saves (src/data/windows.ts). */
   windows: {

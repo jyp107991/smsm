@@ -12,6 +12,7 @@ import {
 import { holdEnterWhileComposing } from '../../ui/keys';
 import { Button, Choices, Field, ICON, Segmented, Sheet, useToast } from '../../ui/primitives';
 import { go } from '../../ui/router';
+import { checkForUpdates } from '../../ui/updates';
 import { strings } from '../../ui/strings';
 import { setTheme, useTheme, type ThemeChoice } from '../../ui/theme';
 import { AnimalPicker } from '../shared/AnimalPicker';
@@ -137,6 +138,7 @@ export function Settings() {
         <SignOut />
         {/* Quiet: for the two of you to quote if something goes wrong, not to read (Q-L11). */}
         <p className="text-caption text-ink-2 nums-list m-0 mt-2" data-testid="version">{strings.app.version(build.version, build.commit)}</p>
+        <CheckForUpdates />
       </Section>
 
       {partner ? <RequestSheet open={requesting} onClose={() => { setRequesting(false); }} /> : null}
@@ -372,5 +374,30 @@ function SplitSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         onValueChange={(v) => { setFirst(Number(v)); }}
       />
     </Sheet>
+  );
+}
+
+/** "Check for updates" (owner, 17 Nov): the launch check on demand, with a plain answer. */
+function CheckForUpdates() {
+  const [busy, setBusy] = useState(false);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const check = async () => {
+    if (busy) return;
+    setBusy(true);
+    setAnswer(null);
+    const result = await checkForUpdates();
+    setBusy(false);
+    // 'updated': the "Updating smsm" screen has taken over and the app restarts.
+    if (result === 'latest') setAnswer(strings.update.latest);
+    else if (result === 'skipped') setAnswer(strings.update.couldntCheck);
+    else if (result === 'failed') setAnswer(strings.update.couldntUpdate);
+  };
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button variant="quiet" leading loading={busy} onClick={() => void check()}>
+        {busy ? strings.update.checking : strings.update.check}
+      </Button>
+      <p role="status" aria-label={strings.update.checkStatus} className="text-caption text-ink-2 m-0 min-h-[1.25rem]">{answer ?? ''}</p>
+    </div>
   );
 }
