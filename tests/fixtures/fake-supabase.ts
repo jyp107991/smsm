@@ -459,6 +459,12 @@ class FakeQuery implements PromiseLike<Result> {
       server.tables[table] = server.rows(table).filter((r) => !matches(r, this.filters));
       return ok(null, 204);
     }
+    const money = table === 'expenses' || table === 'settlements';
+    if (money && server.failWrites > 0) {
+      server.failWrites -= 1;
+      server.log.push({ phone: phone.name, table, op: this.op, rows: this.payload, filters: this.filters, applied: false });
+      return networkFailure();
+    }
     const touched: Row[] = [];
     let candidate: { next: Row; old: Row | null }[];
     if (this.op === 'update') {
@@ -485,7 +491,7 @@ class FakeQuery implements PromiseLike<Result> {
       touched.push(c.next);
     }
     server.log.push({ phone: phone.name, table, op: this.op, rows: this.op === 'update' ? [this.patch] : this.payload, filters: this.filters, applied: true });
-    if (server.dropResponses > 0) {
+    if (money && server.dropResponses > 0) {
       server.dropResponses -= 1;
       return networkFailure();
     }
@@ -562,8 +568,10 @@ export class FakeServer {
   readonly tables: Record<string, Row[]> = {};
   readonly log: LogEntry[] = [];
   readonly phones = new Set<FakePhone>();
-  /** The next N writes are applied but their answers are lost (the phone sees a network failure). */
+  /** The next N writes to expenses or settlements are applied but their answers are lost (the phone sees a network failure). */
   dropResponses = 0;
+  /** The next N writes to expenses or settlements never reach the server (a network failure while the phone thinks it is online). */
+  failWrites = 0;
   /** Extra refusals, like a database trigger: return a message to refuse the row. */
   refuse: ((table: string, row: Row) => string | null) | null = null;
   /** Server time runs with the real clock (auth-js compares token expiry with Date.now()), plus any advance. */
@@ -715,8 +723,8 @@ export class FakeServer {
     return this.rows(table).filter((r) => r.household_id === householdId && r.deleted_at === null);
   }
 
-  /** The writes (insert/upsert/update) that reached the server, in order. */
+  /** The writes (insert/upsert/update) the server applied, in order. */
   writes(table?: string): LogEntry[] {
-    return this.log.filter((l) => l.op !== 'select' && l.op !== 'rpc' && (table === undefined || l.table === table));
+    return this.log.filter((l) => l.applied && l.op !== 'select' && l.op !== 'rpc' && (table === undefined || l.table === table));
   }
 }
