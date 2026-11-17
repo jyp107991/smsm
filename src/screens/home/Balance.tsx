@@ -132,7 +132,7 @@ export function BalanceRegion() {
         <p className="text-note m-0 max-w-[32ch]">{strings.home.balanceHidden}</p>
       ) : (
         <>
-          <p className="text-sentence m-0 min-h-[2.75rem] max-w-full break-words text-balance">
+          <p className="text-sentence m-0 min-h-[2.75rem] max-w-full break-words text-pretty">
             {sentence ? (
               <>
                 {sentence.words}

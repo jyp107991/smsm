@@ -284,6 +284,8 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
   const dragged = useRef(false);
   const leftOpacity = useTransform(x, [0, SWIPE], [0, 1]);
   const rightOpacity = useTransform(x, [-SWIPE, 0], [1, 0]);
+  // The row covers the action words only while it moves; at rest it is the page's own paper (with its grain).
+  const cover = useTransform(x, (v) => (v === 0 ? 'transparent' : 'var(--paper)'));
 
   const act = (dir: 'left' | 'right') => {
     if (dir === 'left') {
@@ -315,7 +317,7 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
         dragDirectionLock
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.5}
-        style={{ x, touchAction: 'pan-y' }}
+        style={{ x, touchAction: 'pan-y', backgroundColor: cover }}
         onDragStart={() => { dragged.current = true; }}
         onDragEnd={(_, info) => {
           const dir = info.offset.x <= -SWIPE ? 'left' : info.offset.x >= SWIPE ? 'right' : null;
@@ -330,7 +332,7 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
             e.stopPropagation();
           }
         }}
-        className="bg-paper relative"
+        className="relative"
       >
         {children}
       </motion.div>
