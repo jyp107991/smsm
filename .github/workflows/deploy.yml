@@ -49,19 +49,6 @@ jobs:
         run: |
           npx supabase db push --remote --dry-run --password "$SUPABASE_DB_PASSWORD" --yes
           npx supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
-      - name: Smart features key (only when the owner has added it; never printed)
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-        run: |
-          if [ -n "$GEMINI_API_KEY" ]; then
-            printf 'GEMINI_API_KEY=%s\nGEMINI_MODEL=%s\n' "$GEMINI_API_KEY" "${GEMINI_MODEL:-gemini-3.5-flash-lite}" > "$RUNNER_TEMP/ai.env"
-            npx supabase secrets set --env-file "$RUNNER_TEMP/ai.env" > /dev/null
-            rm -f "$RUNNER_TEMP/ai.env"
-            echo "Smart features key set."
-          else
-            echo "No smart features key yet: the ai function answers 'off' and the app works by hand."
-          fi
       - name: Edge Functions
         run: |
           if ls -d supabase/functions/*/ >/dev/null 2>&1; then
@@ -70,7 +57,7 @@ jobs:
             echo "No Edge Functions yet."
           fi
       - name: Deploy the app
-        run: set -o pipefail; npx wrangler deploy 2>&1 | scripts/redact.sh | tee deploy-app.log
+        run: set -o pipefail; npx wrangler deploy --var "SUPABASE_URL:$VITE_SUPABASE_URL" --var "SUPABASE_KEY:$VITE_SUPABASE_PUBLISHABLE_KEY" 2>&1 | scripts/redact.sh | tee deploy-app.log
       - name: Deploy the demo and gallery
         run: set -o pipefail; npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | scripts/redact.sh | tee deploy-demo.log
       - name: Smoke test

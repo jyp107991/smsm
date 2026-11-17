@@ -45,7 +45,7 @@ export async function shrink(photo: Blob): Promise<Blob> {
   }
 }
 
-/** Base64 without the data-URL prefix (what Gemini and the phone's text store take). */
+/** Base64 without the data-URL prefix (what the AI route and the phone's text store take). */
 export async function toBase64(photo: Blob): Promise<string> {
   const bytes = new Uint8Array(await photo.arrayBuffer());
   let binary = '';

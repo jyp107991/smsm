@@ -1,12 +1,18 @@
-// The app: static assets only, served by Cloudflare Workers (DEPLOY §2). Deployed by .github/workflows/deploy.yml.
+// The app: static assets served by Cloudflare Workers (DEPLOY §2), deployed by .github/workflows/deploy.yml.
+// worker/index.ts runs only for /api/*: the smart features on Workers AI (binding AI, no key; S6a). SUPABASE_URL and
+// SUPABASE_KEY (the public publishable key) are passed as vars at deploy time from the repository's variables.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "smsm",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-11-01",
   "workers_dev": true,
   "preview_urls": false,
+  "ai": { "binding": "AI" },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   }
 }

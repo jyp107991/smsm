@@ -17,7 +17,7 @@ The aim is to reach a version the owner and partner use every day quickly, and n
 | Charts | Hand-written SVG with `d3-scale` and `d3-shape` only | Small, and fully styled by the tokens. |
 | Tests | Vitest, fast-check (property tests), Stryker (mutation tests on the money core), Playwright (end-to-end, visual snapshots), axe-core | |
 | Hosting | Cloudflare Workers static assets, deployed by GitHub Actions after tests pass | A broken commit can never reach the phones. |
-| AI | Gemini through one Edge Function (`docs/AI.md`) | |
+| AI | Cloudflare Workers AI through the app's own Worker, `POST /api/ai` (`docs/AI.md`) | |
 
 Use the current stable version of each and pin it in the lockfile. **Library APIs change faster than an AI model's memory of them: before first use of any library or service API (Supabase, Gemini, Tailwind, TanStack Query, Workbox, wrangler), read the installed version's documentation or types, and record anything surprising in `docs/DECISIONS.md`.**
 

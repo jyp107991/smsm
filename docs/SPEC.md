@@ -148,7 +148,7 @@ All figures cover shared spending: live entries in `ratio`, `exact` and `treat`,
 - INS-8 **On this day.** Occasionally, a card for an entry from a year ago that has a photo, a comment or a chapter ("A year ago: Dishoom, £86, in London").
 - INS-9 **Ask smsm.** A question box in Insights: "how much did we spend on eating out in Japan?", "what did the wedding cost so far?". AI turns the question into a filter; code runs it and shows the figure with the filter as editable chips and the matching entries beneath (`docs/AI.md` §3.5).
 
-## 5. Smart features (Gemini)
+## 5. Smart features (Cloudflare Workers AI)
 
 All optional, all behind one switch in Settings, all with a non-AI fallback. Contracts, limits, privacy and tests are in `docs/AI.md`.
 

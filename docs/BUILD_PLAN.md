@@ -40,7 +40,7 @@ Month-so-far on Home; Insights tab and charts; notes; fairness; standing-order h
 
 ## S6: smart features
 The `ai` function with caps and guards; scan and itemise; loose-wording parse; category guesses; recap wording; Ask smsm; photo attachments and the receipts bucket; share target and app shortcuts. Contract tests in CI; the live eval run and logged.
-- ★ Owner: add the Gemini key (`DEPLOY.md` §5) and drop ten receipt photos into the eval folder.
+- ★ Owner: drop ten receipt photos into the eval folder (no key needed: Workers AI, DECISIONS 17 Nov).
 
 ## S7: import and export
 Monzo CSV and generic CSV through the Inbox with rules and hashed ignores; CSV export; PDF statement; restore from backup.
