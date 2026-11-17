@@ -14,7 +14,8 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - S2 tests written (branch `worktree-agent-a5ac2d3b30ba4fa1a`, sha f27cf4ec): two-user e2e on the local stack (Mailpit), data-layer unit tests with a fake client, CI proposal in `docs/slices/S2-ci.md` (on that branch). Not merged yet: they need the data layer.
 - Data-layer builder told to satisfy those tests' contracts (createStore, createSessionKeeper, version checks).
 - S2 data layer merged with the S2 tests (store over Supabase with an ordered, persisted offline queue; session keeper that never signs out offline; version check; realtime incl. migration 4; demo store). 965 unit tests, 35 SQL checks, 13 browser tests pass.
-**In progress:** fresh review of the data layer; one builder for all S2 screens + the `two-users` CI job (branch `worktree-agent-a6a2472cb41b4d544`, WIP every 20 min).
+- Fresh review of the data layer: 1 blocker (two windows on one phone both own the queue: a queued write can be lost or a stale replay overwrite a newer amount), 5 should-fix (non-money edits rebuilding money on joint/odd rows; discarded writes still sent; sign-out dropping refused entries; database trusting `created_by`; pre-join entries' shares in the balance), nits. A fixer agent is on it, failing test first for each (branch `worktree-agent-ad173f31a533e67d6`). Nothing goes to main until fixed.
+**In progress:** data-layer fixes; one builder for all S2 screens + the `two-users` CI job (branch `worktree-agent-a6a2472cb41b4d544`, WIP every 20 min).
 **Next:** review fixes; merge screens; first CI run of the two-user suite; PR → deploy; then the owner's answers unlock the live sign-in email.
 **If restarted:** `git branch | grep worktree-agent` and `git log` each; relaunch any agent whose final commit is missing, from its last WIP commit, with the same instructions (see this log's 17 Nov entries).
 
