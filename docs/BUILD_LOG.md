@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~11:00 UTC: full QA pass → S2 polish; owner decisions
+- Owner asked for a full QA (function, use, look; "top of the line and premium"). Three independent audits ran on the demo build; results triaged into `docs/slices/S2-polish.md` (waves 1a money/input safety, 1b visual system, 2 Add sheet/Home/Activity). Most serious: a double tap on Save/Record/Duplicate recorded twice (Q-F1).
+- Local `node_modules` was stale (demo builds fell back to system fonts; live was fine). `npm ci` fixed it; CI now fails any build whose font paths don't resolve.
+- Owner decisions: Quick add is the one way to add (box gets a full-form button; floating button removed); build order stays (S3 Bills next, S5 Insights later); **the owner won't enter real numbers until the app is fully ready**, so sign-ups stay open for now.
+- Running: tests-first agents for waves 1a and 1b (worktrees). Next: builders, then 1a merges on green; 1b and 2 wait for the owner's yes on before/after screenshots.
+
 ## 2026-11-17 ~10:15 UTC: S2 LIVE — first-real-use checkpoint ★
 - **PR #4 merged** (head 8acec62, all checks green incl. two-user 21/21); **deploy run 44060979111** green (migrations, app, demo, smoke). Live: https://smsm.jaexpark94.workers.dev (version.json commit 5778062). Opened as a phone (Pixel 7, dark): sign-in screen, no overflow, no errors.
 - **Fresh review** of the final changes: no blockers; fixed with failing tests first: a sign-out isn't undone by the short session wait; a stale last-person note is cleared; docs. `auth-config` now proves the live emails carry the code (run 44059948621: both "yes", custom sender on).
