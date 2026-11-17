@@ -152,12 +152,13 @@ export function Segmented<T extends string>({ label, options, value, onValueChan
           key={o.value}
           value={o.value}
           className={cx(
-            // Widths follow the labels, so "For Sam" and "My treat" fit at 320 px; a long name wraps rather than hides.
-            'text-secondary text-ink min-h-11 min-w-0 flex-auto rounded-[9px] border-2 border-transparent px-2 py-1 font-medium text-balance',
+            // Widths follow the labels; when four don't fit on one line (320 px), labels wrap between
+            // words ("For / Sam") rather than being cut, and the row grows taller together.
+            'text-secondary text-ink min-h-11 flex-auto rounded-[9px] border-2 border-transparent px-2 py-1 leading-tight font-medium text-balance',
             'data-[state=on]:border-forest data-[state=on]:bg-surface data-[state=on]:text-forest',
           )}
         >
-          <span className="block break-words">{o.label}</span>
+          <span className="block">{o.label}</span>
         </ToggleGroup.Item>
       ))}
     </ToggleGroup.Root>
