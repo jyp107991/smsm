@@ -25,6 +25,7 @@ import { ratioWords } from '../shared/words';
 import { RATIO_PRESETS } from '../entry/form';
 import { savePending } from '../settle/monzo';
 import { WhereYouAre } from '../places/WhereYouAre';
+import { SettleDay } from './SettleDay';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId();
@@ -103,6 +104,7 @@ export function Settings() {
               <Button variant="plain" onClick={() => { setSplitSheet(true); }}>{strings.settings.changeSplit}</Button>
             </div>
           ) : null}
+          <SettleDay />
         </Section>
       ) : null}
 

@@ -635,6 +635,12 @@ export const strings = {
     deleted: (who: string) => `${who} deleted a comment.`,
     count: (n: number) => (n === 1 ? '1 comment' : `${String(n)} comments`),
   },
+  /** S5b: settle day (SET-4). */
+  settleDay: {
+    label: 'Settle day',
+    off: 'Off',
+    line: 'On this day each month, the month so far gets its recap with Settle up. For both of you.',
+  },
   settings: {
     title: 'Settings',
     back: 'Home',
