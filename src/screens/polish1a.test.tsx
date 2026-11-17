@@ -182,23 +182,27 @@ describe('Q-F1 ADD-6 SET-1 MB-2: a double tap records once', () => {
 });
 
 describe('Q-F2: a date after the phone\'s today is refused in the form', () => {
-  it('Q-F2 ADD-4 DAT-2: tomorrow is refused in plain words and nothing is saved; today still saves', async () => {
+  // Was: typed 2026-11-15 into the native date input and expected an alert on Save. S2 polish wave 2 (Q-L13)
+  // replaces that input with an in-app month grid whose days after today are disabled, so tomorrow can no
+  // longer be chosen at all; the rule (Q-F2) is now checked there.
+  it('Q-F2 Q-L13 ADD-4 DAT-2: tomorrow cannot be picked (disabled in the month grid) and nothing is saved for it; today still saves', async () => {
     const { layer, controls } = couple();
     show(layer);
     const sheet = await openAddSheet();
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '3' } });
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Description' }), { target: { value: 'Milk' } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Pick a date' }));
-    fireEvent.change(within(sheet).getByLabelText('The date'), { target: { value: '2026-11-15' } });
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
-    const alert = await within(sheet).findByRole('alert');
-    expect(alert.textContent.trim()).not.toBe('');
+    const picker = await screen.findByRole('dialog', { name: 'Pick a date' });
+    const tomorrow = within(picker).getByRole('button', { name: 'Sun 15 Nov' });
+    expect((tomorrow as HTMLButtonElement).disabled || tomorrow.getAttribute('aria-disabled') === 'true').toBe(true);
+    fireEvent.click(tomorrow);
     await settle(layer);
     expect(controls.tables.expenses).toHaveLength(0);
-    expect(screen.getByRole('dialog', { name: 'Add expense' })).toBeTruthy();
-    // Back to today: it saves.
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Today' }));
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(within(within(sheet).getByRole('group', { name: 'Date', hidden: true })).queryByRole('button', { name: 'Sun 15 Nov', hidden: true })).toBeNull();
+    // Today: it saves.
+    fireEvent.click(within(picker).getByRole('button', { name: 'Sat 14 Nov' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Pick a date' })).toBeNull(); }, { timeout: 3000 });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save', hidden: true }));
     await settle(layer);
     expect(controls.tables.expenses.map((e) => [e.description, e.date])).toEqual([['Milk', TODAY]]);
   });
@@ -284,7 +288,7 @@ describe('Q-U1: Enter moves on through the form; only Enter in Description (or S
     show(layer);
     const sheet = await openAddSheet();
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '10' } });
-    fireEvent.click(within(within(sheet).getByRole('radiogroup', { name: 'Split' })).getByRole('radio', { name: 'Exact' }));
+    fireEvent.click(within(within(sheet).getByRole('radiogroup', { name: 'How it’s shared' })).getByRole('radio', { name: 'Exact' }));
     const first = within(sheet).getByRole('textbox', { name: "Jae's share" });
     const second = within(sheet).getByRole('textbox', { name: "Sam's share" });
     first.focus();
@@ -383,7 +387,7 @@ describe('Q-U3 ADD-1: quick add says what it needs, reads "42,50", and its key s
     fireEvent.change(box, { target: { value: '42,50 tesco' } });
     fireEvent.submit(box.closest('form') as HTMLFormElement);
     await settle(layer);
-    expect(controls.tables.expenses.map((e) => [e.description, e.amount_pence])).toEqual([['tesco', 4250]]);
+    expect(controls.tables.expenses.map((e) => [e.description, e.amount_pence])).toEqual([['Tesco', 4250]]); // S2 polish Q-U6: saved tidy (was 'tesco')
   });
 
   it('Q-U3: the Quick add box\'s Enter key says "send"', async () => {

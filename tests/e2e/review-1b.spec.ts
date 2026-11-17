@@ -89,7 +89,7 @@ test.describe('review 1: with motion on, a toast never sits on the tab bar while
     await expect(dialog).toBeVisible();
     await page.waitForTimeout(600);
     await startSampling(page, 900);
-    await dialog.getByRole('button', { name: 'Record it' }).click();
+    await dialog.getByRole('button', { name: /^Record (it|\S+’s payment)$/ }).click(); // Q-U11: the demo's Jae is owed (was "Record it")
     expectClear(await frames(page), 'after Record it');
   });
 });

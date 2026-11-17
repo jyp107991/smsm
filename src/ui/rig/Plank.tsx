@@ -31,6 +31,8 @@ export interface PlankProps {
   hop?: boolean;
   /** Called when the beam comes to rest after a change of tilt (not under reduced motion, where it doesn't swing). */
   onRest?: (tilt: number) => void;
+  /** What it shows, with people's names (Q-L15: "Jae, the cat, is owed; Sam, the dog, owes"); else the animals alone. */
+  label?: string | null;
 }
 
 /** Each animal's size on the plank, in px. Fixed, so the plank never changes height. */
@@ -52,10 +54,10 @@ function Beam() {
   );
 }
 
-export function Plank({ left, right, leftNetPence, motion = true, together = false, hop = false, onRest }: PlankProps) {
+export function Plank({ left, right, leftNetPence, motion = true, together = false, hop = false, onRest, label: named }: PlankProps) {
   const reduced = usePrefersReducedMotion();
   const tilt = plankTilt(leftNetPence);
-  const label = strings.rig.plank(strings.rig.kind[left.kind], strings.rig.kind[right.kind], tilt > 0 ? 'left' : tilt < 0 ? 'right' : 'level');
+  const label = named ?? strings.rig.plank(strings.rig.kind[left.kind], strings.rig.kind[right.kind], tilt > 0 ? 'left' : tilt < 0 ? 'right' : 'level');
 
   const seats = (
     <>

@@ -12,6 +12,9 @@ import {
   startOfWeek,
   daysInMonth,
   formatDay,
+  formatDate,
+  monthWeeks,
+  startOfMonth,
   type IsoDate,
 } from './dates';
 
@@ -432,5 +435,36 @@ describe('formatDay', () => {
       return [formatDay('2026-11-14', '2026-11-20'), formatDay('2026-11-14', '2026-11-15'), formatDay('2026-11-14', '2027-02-01')];
     });
     for (const s of shown) expect(s).toEqual(['Sat 14 Nov', 'Yesterday', '14 Nov 2026']);
+  });
+});
+
+describe('the date grid (S2 polish Q-L13)', () => {
+  it('Q-L13 DAT-1 formatDate is the date itself, never "Today": "Sat 14 Nov", "10 Nov 2025" in another year', () => {
+    expect(formatDate('2026-11-14', '2026-11-14')).toBe('Sat 14 Nov');
+    expect(formatDate('2026-11-13', '2026-11-14')).toBe('Fri 13 Nov');
+    expect(formatDate('2025-11-10', '2026-11-14')).toBe('10 Nov 2025');
+    expect(formatDay('2026-11-10', '2026-11-14')).toBe(formatDate('2026-11-10', '2026-11-14'));
+  });
+
+  it('Q-L13 DAT-3 a month is six weeks, Monday first, with only its own days', () => {
+    const nov = monthWeeks('2026-11-14');
+    expect(nov).toHaveLength(6);
+    for (const w of nov) expect(w).toHaveLength(7);
+    // 1 November 2026 is a Sunday: six blanks before it.
+    expect(nov[0]).toEqual([null, null, null, null, null, null, '2026-11-01']);
+    expect(nov.flat().filter((d) => d !== null)).toEqual(Array.from({ length: 30 }, (_, i) => `2026-11-${String(i + 1).padStart(2, '0')}`));
+    expect(startOfMonth('2026-11-14')).toBe('2026-11-01');
+  });
+
+  it('Q-L13 DAT-3 every month fits: each day once, in a column for its weekday', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1900, max: 2200 }), fc.integer({ min: 1, max: 12 }), (y, m) => {
+        const first = `${String(y)}-${String(m).padStart(2, '0')}-01`;
+        const weeks = monthWeeks(first);
+        const days = weeks.flat().filter((d): d is string => d !== null);
+        expect(days).toHaveLength(daysInMonth(y, m));
+        weeks.forEach((w) => { w.forEach((d, i) => { if (d !== null) expect(weekday(d)).toBe(i + 1); }); });
+      }),
+    );
   });
 });

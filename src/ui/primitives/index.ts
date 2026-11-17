@@ -15,3 +15,5 @@ export {
   type TabItem,
 } from './Tabs';
 export { ICON } from './util';
+export { Choices, type ChoiceOption, type ChoicesProps } from './Choices';
+export { Disclosure, type DisclosureProps } from './Disclosure';

@@ -86,9 +86,41 @@ export function formatDay(d: IsoDate, today: IsoDate): string {
   const diff = daysBetween(d, today);
   if (diff === 0) return 'Today';
   if (diff === 1) return 'Yesterday';
+  return formatDate(d, today);
+}
+
+/** The date itself, never "Today": "Mon 10 Nov", or "10 Nov 2025" for another year (DESIGN §5; the date grid's days). */
+export function formatDate(d: IsoDate, today: IsoDate): string {
   const [y, m, day] = parts(d);
   const [ty] = parts(today);
   const month = MONTHS[m - 1] ?? '';
   if (y !== ty) return `${String(day)} ${month} ${String(y)}`;
   return `${WEEKDAYS[weekday(d) - 1] ?? ''} ${String(day)} ${month}`;
+}
+
+/** The first day of the month `d` falls in. */
+export function startOfMonth(d: IsoDate): IsoDate {
+  const [y, m] = parts(d);
+  return fromParts(y, m, 1);
+}
+
+/**
+ * A month as a calendar page (S2 polish Q-L13): always six weeks of seven days, Monday first (DAT-3), with
+ * null for the days of the months either side. Six rows whatever the month, so the page never changes height.
+ */
+export function monthWeeks(month: IsoDate): (IsoDate | null)[][] {
+  const first = startOfMonth(month);
+  const [y, m] = parts(first);
+  const days = daysInMonth(y, m);
+  const lead = weekday(first) - 1;
+  const weeks: (IsoDate | null)[][] = [];
+  for (let w = 0; w < 6; w += 1) {
+    const week: (IsoDate | null)[] = [];
+    for (let i = 0; i < 7; i += 1) {
+      const n = w * 7 + i - lead;
+      week.push(n >= 0 && n < days ? addDays(first, n) : null);
+    }
+    weeks.push(week);
+  }
+  return weeks;
 }

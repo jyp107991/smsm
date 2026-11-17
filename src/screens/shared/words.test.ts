@@ -23,9 +23,10 @@ describe('balance and entries', () => {
     expect(entrySentence({ ...base, kind: 'money_back', paid: { [J]: 1000 }, shares: { [J]: 500, [S]: 500 } }, people)).toBe('Jae got it back. Jae £5.00, Sam £5.00');
   });
 
-  it('ADD-2: the split from the payer\'s side', () => {
-    expect(splitWords({ mode: 'ratio', ratio: { [J]: 60, [S]: 40 } }, J, people)).toBe('60/40');
-    expect(splitWords({ mode: 'ratio', ratio: { [J]: 60, [S]: 40 } }, S, people)).toBe('40/60');
+  it('ADD-2 Q-U5: the split from the payer\'s side, with names (was "60/40" / "40/60"; an even split stays "50/50")', () => {
+    expect(splitWords({ mode: 'ratio', ratio: { [J]: 60, [S]: 40 } }, J, people)).toBe('Jae 60 · Sam 40');
+    expect(splitWords({ mode: 'ratio', ratio: { [J]: 60, [S]: 40 } }, S, people)).toBe('Sam 40 · Jae 60');
+    expect(splitWords({ mode: 'ratio', ratio: { [J]: 50, [S]: 50 } }, S, people)).toBe('50/50');
     expect(splitWords({ mode: 'treat' }, S, people)).toBe('Sam’s treat');
     expect(splitWords({ mode: 'for_other' }, J, people)).toBe('for Sam');
   });
@@ -42,7 +43,7 @@ describe('history (ACT-2)', () => {
   });
 
   it('ACT-2 ACT-3: added, deleted, restored, and other changes in words', () => {
-    expect(historyLine({ actor: J, action: 'created', at, summary: {} }, people, '2026-11-13', 'Europe/London')).toBe('Jae added it, today 18:02');
+    expect(historyLine({ actor: J, action: 'created', at, summary: {} }, people, '2026-11-13', 'Europe/London')).toBe('Jae added this, today 18:02'); // Q-U9 (was "Jae added it")
     expect(historyLine({ actor: J, action: 'deleted', at, summary: {} }, people, '2026-11-20', 'Europe/London')).toBe('Jae deleted it, Fri 13 Nov 18:02');
     expect(historyLine({ actor: S, action: 'restored', at, summary: {} }, people, '2026-11-14', 'Europe/London')).toMatch(/^Sam restored it/);
     const both = historyLine(

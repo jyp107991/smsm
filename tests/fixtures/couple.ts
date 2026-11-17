@@ -7,7 +7,7 @@ import { manualNetwork } from '../../src/data/network';
 import { createDataLayer, type DataLayer } from '../../src/data/queryClient';
 import { fixedSession } from '../../src/data/session';
 import { memoryStorage } from '../../src/data/storage';
-import type { CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow } from '../../src/data/api';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from '../../src/data/api';
 
 export const HID = '00000000-0000-4000-8000-0000000000c1';
 export const JAE_ID = '00000000-0000-4000-8000-0000000000a1';
@@ -44,8 +44,20 @@ export function storedExpense(over: Partial<ExpenseRow> = {}): ExpenseRow {
   };
 }
 
+/** A stored settle-up (as the server holds it): Sam paying Jae £5.00 today unless told otherwise. */
+export function storedSettlement(over: Partial<SettlementRow> = {}): SettlementRow {
+  return {
+    id: '00000000-0000-4000-8000-00000000f001', household_id: HID, from_user: SAM_ID, to_user: JAE_ID, amount_pence: 500, date: TODAY,
+    method: 'other', note: null, created_by: SAM_ID, created_at: '2026-11-14T09:00:00.000Z', updated_at: '2026-11-14T09:00:00.000Z', deleted_at: null,
+    ...over,
+  };
+}
+
 export function couple(
-  opts: { as?: 'jae' | 'sam'; partnerJoined?: boolean; expenses?: ExpenseRow[]; changeRequests?: ChangeRequestRow[] } = {},
+  opts: {
+    as?: 'jae' | 'sam'; partnerJoined?: boolean; expenses?: ExpenseRow[]; changeRequests?: ChangeRequestRow[];
+    settlements?: SettlementRow[]; activity?: ActivityRow[];
+  } = {},
 ): Couple {
   const stamp = '2026-11-01T12:00:00.000Z';
   const household: HouseholdRow = {
@@ -62,7 +74,10 @@ export function couple(
   }));
   const me = opts.as === 'sam' ? SAM_ID : JAE_ID;
   const { api, controls } = createMemoryApi(
-    { households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [] },
+    {
+      households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
+      settlements: opts.settlements ?? [], activity: opts.activity ?? [],
+    },
     { user: { userId: me, email: null } },
   );
   const network = manualNetwork(true);

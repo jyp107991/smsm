@@ -171,15 +171,13 @@ test.describe('Q-L2: one "selected" language; outlines only for keyboard focus',
       // Forest 14 % into sunk by day; 28 % by night, where 14 % hardly showed inside a sheet (decided before the owner's review, 17 Nov).
       const tonal = await token(page, `color-mix(in oklch, var(--forest) ${theme === 'dark' ? '28%' : '14%'}, var(--sunk))`);
 
-      await addExpense(page).click();
-      const sheet = page.getByRole('dialog', { name: 'Add expense' });
-      await expect(sheet).toBeVisible();
-      await page.waitForTimeout(400);
-
       // Segmented: the selected segment is a raised surface tile in the sunk track; no forest border, no ring.
-      const split = sheet.getByRole('radiogroup', { name: 'Split' });
-      const exact = split.getByRole('radio', { name: 'Exact' });
-      await exact.click();
+      // (This was checked on the Add sheet's split. S2 polish wave 2 (Q-U5) makes the split one row of named
+      // choices, "How it’s shared", drawn as chips, so the segmented control checked here is Settings' theme
+      // picker, where "Like the phone" is selected.)
+      await page.goto('/settings');
+      const split = page.getByRole('radiogroup', { name: 'Theme' });
+      const exact = split.getByRole('radio', { name: 'Like the phone' });
       await expect(exact).toHaveAttribute('aria-checked', 'true');
       expect(sameColour(await rgba(page, await style(split, 'background-color')), sunk), 'the segmented track is sunk').toBe(true);
       expect(sameColour(await rgba(page, await style(exact, 'background-color')), surface), 'the selected segment is a surface tile').toBe(true);
@@ -187,7 +185,22 @@ test.describe('Q-L2: one "selected" language; outlines only for keyboard focus',
       const segBorderColour = await rgba(page, await style(exact, 'border-top-color'));
       expect(segBorder === 0 || segBorderColour[3] === 0 || sameColour(segBorderColour, surface), `the selected segment has a visible border (${fmt(segBorderColour)}, ${String(segBorder)}px)`).toBe(true);
       await expectNoRing(page, exact, 'selected segment');
-      await split.getByRole('radio', { name: 'Split' }).click();
+      await home(page);
+
+      await addExpense(page).click();
+      const sheet = page.getByRole('dialog', { name: 'Add expense' });
+      await expect(sheet).toBeVisible();
+      await page.waitForTimeout(400);
+
+      // The split's choices (Q-U5, "How it’s shared") speak the chips' language: tonal forest fill, forest text, no ring.
+      const shared = sheet.getByRole('radiogroup', { name: 'How it’s shared' });
+      const chosenSplit = shared.getByRole('radio', { name: 'Exact' });
+      await chosenSplit.click();
+      await expect(chosenSplit).toBeChecked();
+      await expect.poll(async () => sameColour(await rgba(page, await style(chosenSplit, 'background-color')), tonal, 4), { message: `the chosen split's fill ${await style(chosenSplit, 'background-color')} is not the tonal forest` }).toBe(true);
+      expect(sameColour(await rgba(page, await style(chosenSplit, 'color')), forest), 'the chosen split\'s text is forest').toBe(true);
+      await expectNoRing(page, chosenSplit, 'chosen split');
+      await shared.getByRole('radio', { name: '50/50' }).click();
 
       // Chips: tonal forest fill, forest text, a tick; no forest border, no ring.
       const chips = sheet.getByRole('group', { name: 'Category' }).getByRole('button');
@@ -489,7 +502,8 @@ test.describe('Q-U4: when a sheet\'s opener has gone, focus goes to the balance 
     await balance(page).getByRole('button', { name: 'Settle up' }).click();
     const dialog = page.getByRole('dialog', { name: 'Settle up' });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Record it' }).click();
+    // Q-U11: the demo's Jae is owed, so the button names Sam's payment (was "Record it").
+    await dialog.getByRole('button', { name: 'Record Sam’s payment' }).click();
     await expect(dialog).toBeHidden();
     await expect(balance(page).getByText('All square', { exact: true })).toBeVisible();
     await page.waitForTimeout(600);
@@ -580,7 +594,8 @@ test.describe('Q-L8: plank staging', () => {
   test('the fulcrum has the rig outline with rounded joins, a quiet ground under it, the plank inset to ~86 %', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await home(page);
-    const plank = balance(page).getByRole('img', { name: /plank/i });
+    // Q-L15: the plank's name now says who is owed ("Jae, the dog, is owed; Sam, the cat, owes"; was "The plank tilts: …").
+    const plank = balance(page).getByRole('img', { name: /plank|is owed/i });
     // The plank's parts are named like the animals' (data-part): fulcrum, ground.
     const fulcrum = plank.locator('[data-part="fulcrum"]');
     await expect(fulcrum).toHaveCount(1);
@@ -611,7 +626,7 @@ test.describe('Q-L8: plank staging', () => {
       await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
       await home(page);
       await balance(page).getByRole('button', { name: 'Settle up' }).click();
-      await page.getByRole('dialog', { name: 'Settle up' }).getByRole('button', { name: 'Record it' }).click();
+      await page.getByRole('dialog', { name: 'Settle up' }).getByRole('button', { name: 'Record Sam’s payment' }).click(); // Q-U11 (was "Record it")
       const square = balance(page).getByText('All square', { exact: true });
       await expect(square).toBeVisible();
       expect(sameColour(await rgba(page, await style(square, 'color')), await token(page, 'var(--moss)')), '"All square" is not moss').toBe(true);
@@ -640,7 +655,7 @@ test.describe('Q-L8: plank staging', () => {
       };
       requestAnimationFrame(tick);
     });
-    await dialog.getByRole('button', { name: 'Record it' }).click();
+    await dialog.getByRole('button', { name: 'Record Sam’s payment' }).click(); // Q-U11 (was "Record it")
     await expect(balance(page).getByText('All square', { exact: true })).toBeVisible();
     await page.waitForTimeout(1500);
     const frames = await page.evaluate(() => (window as unknown as { __frames: { angle: number; text: string }[] }).__frames);
@@ -711,6 +726,10 @@ test.describe('Q-L11: leading text buttons, the "Other" category, the gallery', 
     const hasDot = (await Promise.all(dotColours.map((c) => rgba(page, c)))).some((c) => sameColour(c, stone));
     expect(hasDot, 'the row shows the stone colour dot').toBe(true);
 
+    // S2 polish wave 2: Home's "Recent" (day headings, the reading's two lines) puts the new row within 48 px of
+    // where Save was, and a second tap there within 0.5 s of a sheet closing is ignored on purpose (Q-F1). A
+    // person's next tap comes later than that.
+    await page.waitForTimeout(600);
     await row.click();
     await expect(page.getByRole('heading', { name: 'Odd thing' })).toBeVisible();
     expect(await page.getByRole('main').innerText(), 'the entry page shows "•"').not.toContain('•');

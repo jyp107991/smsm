@@ -16,7 +16,7 @@ export {
 } from './hooks';
 export {
   addExpense, editExpense, deleteExpense, restoreExpense, addSettlement, editSettlement, deleteSettlement, restoreSettlement,
-  dismissProblem, sendCode, verifyCode, signOut, createHousehold, joinHousehold, setIdentity, setMonzoMe, requestChange,
+  dismissProblem, sendCode, verifyCode, signOut, createHousehold, joinHousehold, setIdentity, setMonzoMe, monzoNameOf, requestChange,
   decideChange, rememberChoice, OfflineError, NotSignedInError, NotInHouseholdError, NotReadyError, EntryNotFoundError, ChangesWaitingError,
   NAME_MAX, OtherWindowError, JOINT_MONEY_EDIT, SPLIT_AGAIN, type ChangeRequest,
 } from './mutations';
