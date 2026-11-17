@@ -220,7 +220,8 @@ CREATE FUNCTION public.log_activity() RETURNS trigger
     AS $$
 declare act text; diff jsonb := '{}'; k text; ent text; o jsonb; n jsonb := to_jsonb(new);
 begin
-  ent := case tg_table_name when 'expenses' then 'expense' when 'settlements' then 'settlement' else 'recurring' end;
+  ent := case tg_table_name when 'expenses' then 'expense' when 'settlements' then 'settlement'
+                            when 'categories' then 'category' when 'inbox_items' then 'inbox_item' else 'recurring' end;
   if tg_op = 'INSERT' then
     act := 'created';
     diff := jsonb_build_object('after', n - 'split_params' - 'items');
@@ -268,6 +269,7 @@ CREATE FUNCTION public.post_due_recurring(p_household uuid DEFAULT NULL::uuid) R
     SET search_path TO 'public'
     AS $$
 declare r recurring; d date; step interval; posted int := 0; hid uuid; home char(2);
+        uk_today date := (now() at time zone 'Europe/London')::date;
 begin
   if auth.uid() is not null and p_household is not null and p_household is distinct from my_household() then
     raise exception 'not your household';
@@ -278,29 +280,29 @@ begin
   hid := coalesce(p_household, my_household());
   if hid is null then return 0; end if;
   select home_country into home from households where id = hid;
-  for r in select * from recurring where household_id = hid and active for update loop
+  for r in select * from recurring where household_id = hid and active order by id for update loop
     step := case r.frequency when 'weekly' then make_interval(weeks => r.every)
                              when 'monthly' then make_interval(months => r.every)
                              else make_interval(years => r.every) end;
     loop
       d := (r.start_date + step * r.posted_count)::date;
-      exit when d > current_date or (r.end_date is not null and d > r.end_date);
+      exit when d > uk_today or (r.end_date is not null and d > r.end_date);
       if r.amount_varies then
         insert into inbox_items(household_id, source, recurring_id, occurrence_date, payload)
         values (r.household_id, 'bill', r.id, d, jsonb_build_object('description', r.description,
                 'estimate_pence', r.amount_pence, 'date', d, 'category_id', r.category_id))
         on conflict do nothing;
       else
-        insert into expenses(household_id, description, amount_pence, date, category_id, paid, paid_via, split_mode,
-                             split_params, shares, notes, country, source, recurring_id, occurrence_date)
-        values (r.household_id, r.description, r.amount_pence, d, r.category_id, r.paid, r.paid_via, r.split_mode,
-                r.split_params, r.shares, r.notes, home, 'recurring', r.id, d)
+        insert into expenses(household_id, description, amount_pence, date, category_id, chapter_id, paid, paid_via,
+                             split_mode, split_params, shares, notes, country, source, recurring_id, occurrence_date)
+        values (r.household_id, r.description, r.amount_pence, d, r.category_id, null, r.paid, r.paid_via,
+                r.split_mode, r.split_params, r.shares, r.notes, coalesce(home, 'GB'), 'recurring', r.id, d)
         on conflict do nothing;
       end if;
       r.posted_count := r.posted_count + 1;
       posted := posted + 1;
     end loop;
-    update recurring set posted_count = r.posted_count where id = r.id;
+    update recurring set posted_count = r.posted_count where id = r.id and posted_count is distinct from r.posted_count;
   end loop;
   return posted;
 end $$;
@@ -469,7 +471,8 @@ CREATE TABLE public.categories (
     default_ratio jsonb,
     archived boolean DEFAULT false NOT NULL,
     sort integer DEFAULT 0 NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT categories_colour_palette CHECK ((colour = ANY (ARRAY['moss'::text, 'amber'::text, 'walnut'::text, 'honey'::text, 'slate'::text, 'plum'::text, 'oak'::text, 'berry'::text, 'lake'::text, 'clay'::text, 'fern'::text, 'stone'::text])))
 );
 
 --
@@ -1035,6 +1038,12 @@ CREATE INDEX join_attempts_user_at ON public.join_attempts USING btree (user_id,
 CREATE UNIQUE INDEX members_one_household ON public.members USING btree (user_id);
 
 --
+-- Name: categories categories_log; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER categories_log AFTER INSERT OR UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.log_activity();
+
+--
 -- Name: categories categories_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1087,6 +1096,12 @@ CREATE TRIGGER households_guard BEFORE UPDATE ON public.households FOR EACH ROW 
 --
 
 CREATE TRIGGER inbox_items_author BEFORE INSERT OR UPDATE ON public.inbox_items FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
+
+--
+-- Name: inbox_items inbox_items_log; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER inbox_items_log AFTER INSERT OR UPDATE ON public.inbox_items FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: inbox_items inbox_items_stamp; Type: TRIGGER; Schema: public; Owner: -
@@ -1876,7 +1891,7 @@ GRANT SELECT ON TABLE public.app_config TO authenticated;
 -- Name: TABLE categories; Type: ACL; Schema: public; Owner: -
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.categories TO authenticated;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.categories TO authenticated;
 
 --
 -- Name: TABLE category_memory; Type: ACL; Schema: public; Owner: -
@@ -1936,7 +1951,7 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.import_rules TO authenticated;
 -- Name: TABLE inbox_items; Type: ACL; Schema: public; Owner: -
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.inbox_items TO authenticated;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.inbox_items TO authenticated;
 
 --
 -- Name: TABLE members; Type: ACL; Schema: public; Owner: -
@@ -1966,7 +1981,7 @@ GRANT SELECT ON TABLE public.recaps TO authenticated;
 -- Name: TABLE recurring; Type: ACL; Schema: public; Owner: -
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.recurring TO authenticated;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.recurring TO authenticated;
 
 --
 -- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: -
