@@ -1,31 +1,38 @@
-/** Gallery: logo variants, the plank at five balances, and the cat and dog in every mood and pose (DESIGN §7). */
+/** Gallery: the mark, the plank at five balances, and the cat and dog in every mood and pose (DESIGN §7). */
 import { useState } from 'react';
 import { formatPence, pence } from '../../../core/money';
 import { Logo, type LogoVariant } from '../../../ui/Logo';
 import { Animal, MOODS, POSES, type Mood } from '../../../ui/rig/Animal';
 import { Plank } from '../../../ui/rig/Plank';
+import { OptionMark, Section } from './Section';
 
-const LOGOS: readonly { variant: LogoVariant; note: string }[] = [
-  { variant: 'a', note: 'A: plain letters, like a clean sans-serif ㅅ and ㅁ.' },
-  { variant: 'b', note: 'B: as A, with a door in the bottom of ㅁ.' },
-  { variant: 'c', note: 'C: ㅅ with feet that sweep out, like eaves.' },
+const LOGOS: readonly { variant: LogoVariant; name: string; note: string }[] = [
+  { variant: 'a', name: 'Plain letters', note: 'ㅅ and ㅁ as you would type them.' },
+  { variant: 'b', name: 'With a door', note: 'The same, with a gap in the foot of ㅁ.' },
+  { variant: 'c', name: 'Under the eaves', note: 'ㅅ with feet that sweep out, like a roof.' },
 ];
 
 export function LogoSection() {
   return (
-    <section aria-labelledby="g-logo" className="flex flex-col gap-4">
-      <h2 id="g-logo" className="text-[1.375rem] leading-tight font-semibold">Logo</h2>
-      <p className="text-ink-2">ㅅ on ㅁ, a house. Shown at app-icon size (48) and larger. Pick one.</p>
+    <Section id="g-logo" title="The mark" ask="ㅅ on ㅁ, a roof on a house. Which one is ours?">
       <ul className="m-0 flex list-none flex-col gap-3 p-0">
         {LOGOS.map((l) => (
-          <li key={l.variant} className="bg-surface flex items-center gap-4 rounded-[16px] p-3">
-            <Logo size={48} variant={l.variant} title={`Logo ${l.variant.toUpperCase()} at 48 pixels`} />
-            <Logo size={96} variant={l.variant} title={`Logo ${l.variant.toUpperCase()} at 96 pixels`} />
-            <span className="min-w-0 text-[0.9375rem]">{l.note}</span>
+          <li key={l.variant} className="bg-surface flex gap-3 rounded-[16px] p-4">
+            <OptionMark letter={l.variant.toUpperCase()} />
+            <div className="flex min-w-0 flex-col gap-3">
+              <div>
+                <p className="text-subtitle m-0">{l.name}</p>
+                <p className="text-secondary text-ink-2 m-0">{l.note}</p>
+              </div>
+              <div className="flex items-end gap-4">
+                <Logo size={48} variant={l.variant} title={`Mark ${l.variant.toUpperCase()} at 48 pixels`} />
+                <Logo size={96} variant={l.variant} title={`Mark ${l.variant.toUpperCase()} at 96 pixels`} />
+              </div>
+            </div>
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   );
 }
 
@@ -39,40 +46,39 @@ function sentence(leftNet: number): string {
 
 export function PlankSection() {
   return (
-    <section aria-labelledby="g-plank" className="flex flex-col gap-4">
-      <h2 id="g-plank" className="text-[1.375rem] leading-tight font-semibold">The plank</h2>
-      <p className="text-ink-2">Sam (the cat) on the left, Jae (the dog) on the right. Whoever is owed sits higher; level is square.</p>
+    <Section id="g-plank" title="The plank" ask="Whoever is owed sits higher. Level means square.">
       {BALANCES.map((b) => {
         const leftMood: Mood = b === 0 ? 'happy' : b > 0 ? 'pleased' : 'sheepish';
         const rightMood: Mood = b === 0 ? 'happy' : b > 0 ? 'sheepish' : 'pleased';
         return (
           <figure key={b} className="m-0 flex flex-col items-center gap-2">
             <Plank left={{ kind: 'cat', mood: leftMood }} right={{ kind: 'dog', mood: rightMood }} leftNetPence={b} />
-            <figcaption className="text-[1.0625rem] font-semibold">{sentence(b)}</figcaption>
+            <figcaption className="text-subtitle">{sentence(b)}</figcaption>
           </figure>
         );
       })}
-    </section>
+    </Section>
   );
 }
 
 export function RigSection() {
   const [motion, setMotion] = useState(true);
   return (
-    <section aria-labelledby="g-rig" className="flex flex-col gap-4">
-      <h2 id="g-rig" className="text-[1.375rem] leading-tight font-semibold">The cat and the dog</h2>
-      <p className="text-ink-2">Eight moods in four poses: head, sitting, peeking over an edge, curled up.</p>
-      <button
-        type="button"
-        aria-pressed={motion}
-        onClick={() => { setMotion((m) => !m); }}
-        className="bg-sunk min-h-11 self-start rounded-full px-5 font-semibold"
-      >
-        {motion ? 'Motion on' : 'Motion off'}
-      </button>
+    <Section id="g-rig" title="The cat and the dog">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-note m-0">Eight moods, four ways to sit.</p>
+        <button
+          type="button"
+          aria-pressed={motion}
+          onClick={() => { setMotion((m) => !m); }}
+          className="border-forest aria-pressed:bg-forest aria-pressed:text-on-forest min-h-11 rounded-full border-2 px-5"
+        >
+          Let them move
+        </button>
+      </div>
       {(['cat', 'dog'] as const).map((kind) => (
-        <div key={kind} className="flex flex-col gap-2">
-          <h3 className="text-[1.0625rem] font-semibold">{kind === 'cat' ? 'The cat' : 'The dog'}</h3>
+        <div key={kind} className="flex flex-col gap-3">
+          <h3 className="text-subtitle m-0">{kind === 'cat' ? 'Sam, the cat' : 'Jae, the dog'}</h3>
           <div className="grid grid-cols-4 gap-2">
             {MOODS.map((mood) =>
               POSES.map((pose) => (
@@ -85,6 +91,6 @@ export function RigSection() {
           </div>
         </div>
       ))}
-    </section>
+    </Section>
   );
 }

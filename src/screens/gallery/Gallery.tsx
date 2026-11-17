@@ -1,17 +1,21 @@
-/** The S0 design gallery (DESIGN §7). Demo build only; the owner chooses logo and type here and confirms the palette. */
+/** The S0 design gallery (DESIGN §7). Demo build only; the owner chooses the mark and the type here and confirms the palette. */
 import { ColourSection } from './sections/Colour';
 import { InUseSection } from './sections/InUse';
 import { TypeSection } from './sections/Type';
 import { LogoSection, PlankSection, RigSection } from './sections/Look';
 import { Animal } from '../../ui/rig/Animal';
+import { Logo } from '../../ui/Logo';
 import { JAE } from '../../../tests/fixtures/household';
 
 export default function Gallery() {
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-10 px-5 py-6">
-      <header>
-        <h1 className="text-[1.75rem] leading-tight font-semibold">smsm gallery</h1>
-        <p className="text-ink-2">Choices to make before the app is built on them.</p>
+    <main className="mx-auto flex max-w-2xl flex-col gap-14 px-5 pt-10 pb-16">
+      <header className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Logo size={44} />
+          <h1 className="text-wordmark m-0 text-[2.25rem] leading-none">smsm</h1>
+        </div>
+        <p className="text-note m-0 max-w-[34ch]">Three things to choose: the mark, the letters and the fifth colour. The rest is here to look at.</p>
       </header>
       <LogoSection />
       <TypeSection />

@@ -5,9 +5,9 @@
 export const strings = {
   app: {
     name: 'smsm',
-    tagline: 'Shared money for two',
+    tagline: 'A home ledger for two',
     version: (version: string, commit: string) => `Version ${version} · ${commit.slice(0, 7)}`,
-    comingSoon: 'Sign-in arrives in the next update.',
+    comingSoon: 'Soon you’ll sign in here.',
   },
   update: {
     ready: 'Updated. Tap to refresh',
