@@ -1,6 +1,7 @@
 /** The S0 design gallery (DESIGN §7). Demo build only; the owner chooses logo and type here and confirms the palette. */
 import { ColourSection } from './sections/Colour';
 import { InUseSection } from './sections/InUse';
+import { TypeSection } from './sections/Type';
 import { LogoSection, PlankSection, RigSection } from './sections/Look';
 import { Animal } from '../../ui/rig/Animal';
 import { JAE } from '../../../tests/fixtures/household';
@@ -13,6 +14,7 @@ export default function Gallery() {
         <p className="text-ink-2">Choices to make before the app is built on them.</p>
       </header>
       <LogoSection />
+      <TypeSection />
       <ColourSection />
       <PlankSection />
       <RigSection />
