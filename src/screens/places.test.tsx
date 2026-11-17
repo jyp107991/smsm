@@ -52,7 +52,7 @@ async function settle(layer: DataLayer) {
 type S4Tables = MemoryTables & { chapters: ChapterRow[] };
 const tablesOf = (c: { controls: { tables: MemoryTables } }) => c.controls.tables as S4Tables;
 const isChecked = (el: HTMLElement) => el.getAttribute('aria-checked') === 'true' || (el instanceof HTMLInputElement && el.checked);
-const text = (el: HTMLElement) => el.textContent.replace(/\s+/g, ' ').trim();
+const text = (el: Element) => el.textContent.replace(/\s+/g, ' ').trim();
 /** A sentence whole, wherever its parts are their own elements. */
 const sentence = (s: string | RegExp) => screen.getAllByText((_, el) => (el ? (typeof s === 'string' ? text(el) === s : s.test(text(el))) : false))[0];
 const findSentence = (s: string | RegExp) => waitFor(() => { expect(sentence(s)).toBeTruthy(); }, { timeout: 3000 });
