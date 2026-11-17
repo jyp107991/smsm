@@ -42,6 +42,8 @@ jobs:
         run: npm run lint
       - name: Unit and property tests
         run: npm test
+      - name: Mutation tests on the money core (score at least 85%)
+        run: npm run test:mutation -- --reporters clear-text
       - name: Trace (every criterion tested or deferred)
         run: npm run trace
       - name: Database tests (PostgreSQL 16)
@@ -50,6 +52,10 @@ jobs:
         run: bash scripts/db-generate.sh --check
       - name: Build (app and demo)
         run: npm run build && npm run build:demo
+      - name: Production bundle has no gallery or demo data
+        run: |
+          if grep -rlE 'smsm gallery|DEMO42' dist/; then echo "Demo-only code reached the production build."; exit 1; fi
+          echo "Production bundle is clean."
       - name: Install Playwright's Chromium
         run: npx playwright install --with-deps chromium
       - name: End-to-end and accessibility

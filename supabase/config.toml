@@ -8,7 +8,7 @@ project_id = "smsm"
 [auth]
 enabled = true
 # The app's address. Sign-in uses 6-digit codes, so no redirect links are needed.
-site_url = "env(SMSM_SITE_URL)"
+site_url = "https://smsm.jaexpark94.workers.dev"
 additional_redirect_urls = []
 jwt_expiry = 3600
 enable_refresh_token_rotation = true

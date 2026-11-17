@@ -28,9 +28,12 @@
 - **`service_role` grants.** When server-side code first writes money rows (S2 backup restore, S7 import), check it can run `check_money`'s helper and the tables it needs.
 - **`post_due_recurring` has no upper bound per call.** A template started years ago back-posts every occurrence. Decide in S3 (probably: confirm before back-posting more than a few).
 
+- **From the S0/S1 review, fixed in S2 when these components are first used (with tests):** a Sheet's history entry can be left behind if the app navigates in the same handler that closes it (one small history coordinator); toasts should announce through one persistent live region rather than each toast carrying `role="status"`; `errors.ts` loses a report whose reason can't be turned into JSON (circular or BigInt); demo household: trip descriptions get random categories and the monthly settle date drifts (cosmetic).
+- **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour for now; revisit with real use in S2 (the person always sees the reading before saving).
+
 ## Deferred criteria
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
-- BAL-3, TXT-6, TXT-7, DAT-5: S0 (in progress): the plank component, font fallback and truncation, the strings file and pinned dependencies.
+- BAL-3, TXT-6: the plank component and grapheme truncation are tested (S0); the plank on the live balance and the Hangul font fallback on real screens are tested in S2.
 - BAL-1, SPL-1, SPL-2, SPL-3, SPL-5, ADD-1, ADD-5, MB-3, CAT-2, CAT-3, CAT-4, REC-2, TXT-3, TXT-4, DAT-1, DAT-3, DAT-4: S1 builds and tests the pure core; the screens that use it arrive in S2 (REC-2 posting in S3).
 - BAL-2, BAL-4, BAL-5, BAL-6, ADD-2, ADD-3, ADD-4, ADD-6, ADD-7, SPL-4, MB-1, MB-2, SET-1, SET-2, SET-3, SET-5: S2, the daily loop.
 - ACT-1, ACT-2, ACT-3, ACT-5, PPL-1, PPL-2, PPL-3, PPL-4, PPL-5: S2, the daily loop.

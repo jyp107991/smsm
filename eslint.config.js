@@ -17,7 +17,7 @@ const clockSyntax = [
 ];
 
 export default tseslint.config(
-  { ignores: ['dist', 'dist-demo', 'node_modules', 'coverage', 'reports', '.stryker-tmp', 'src/data/database.types.ts', 'supabase/functions'] },
+  { ignores: ['.claude', 'dist', 'dist-demo', 'node_modules', 'coverage', 'reports', '.stryker-tmp', 'src/data/database.types.ts', 'supabase/functions'] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

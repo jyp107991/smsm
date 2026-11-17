@@ -1,8 +1,9 @@
 @import 'tailwindcss';
 @import './tokens.css';
+@import './type.css';
 
 /* Tailwind may only use the design tokens: the default palette is removed. */
-@theme {
+@theme inline {
   --color-*: initial;
   --color-paper: var(--paper);
   --color-surface: var(--surface);
@@ -17,27 +18,47 @@
   --color-oak: var(--oak);
   --color-honey: var(--honey);
   --color-berry: var(--berry);
+  /* Category colours: dots and chart fills only. */
+  --color-cat-moss: var(--cat-moss);
+  --color-cat-amber: var(--cat-amber);
+  --color-cat-walnut: var(--cat-walnut);
+  --color-cat-honey: var(--cat-honey);
+  --color-cat-slate: var(--cat-slate);
+  --color-cat-plum: var(--cat-plum);
+  --color-cat-oak: var(--cat-oak);
+  --color-cat-berry: var(--cat-berry);
+  --color-cat-lake: var(--cat-lake);
+  --color-cat-clay: var(--cat-clay);
+  --color-cat-fern: var(--cat-fern);
+  --color-cat-stone: var(--cat-stone);
   --color-transparent: transparent;
   --color-current: currentColor;
   --shadow-float: var(--shadow-float);
 }
 
-html {
-  background: var(--paper);
-  color: var(--ink);
-  -webkit-text-size-adjust: 100%;
-  -webkit-tap-highlight-color: transparent;
-}
-body {
-  margin: 0;
-  min-height: 100dvh;
-  font-family: system-ui, sans-serif;
-  font-size: 1.0625rem;
-  line-height: 1.5;
-}
-:focus-visible {
-  outline: 2px solid var(--forest);
-  outline-offset: 2px;
+/* Base styles sit in Tailwind's base layer so utilities (and components' own focus styles) can override them. */
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-size: var(--size-body);
+    line-height: var(--leading-body);
+    background: var(--paper-grain) var(--paper);
+  }
+  /* High-contrast modes draw their own plain background; the grain would only add noise. */
+  @media (forced-colors: active) {
+    body { background-image: none; }
+  }
+  :focus-visible {
+    outline: 2px solid var(--forest);
+    outline-offset: 2px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

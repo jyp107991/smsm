@@ -347,6 +347,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"join_attempts": {
+                  Row: {
+                    "at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"members": {
                   Row: {
                     "animal": string | null,"display_name": string | null,"household_id": string,"joined_at": string,"locked_at": string | null,"monzo_me": string | null,"user_id": string
