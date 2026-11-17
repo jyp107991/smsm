@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 (evening): S2 screens built
+**Done** (branch `worktree-agent-a6a2472cb41b4d544`): every S2 screen on the real data layer: sign-in (email → one code field drawn as six boxes, paste accepted), setup (start or join, name, the animals as cards with the taken one saying whose), Home (the plank with moods, the sentence with names, "Next one's on …", Settle up, quick add with its live reading, today's entries, changes waiting, offline, waiting for your partner with Share invite, approvals, refused entries to fix), the add / edit / money-back sheet, the entry page with history, Activity (search, filters, days, settle-ups, swipes), settle up with the Monzo handoff and the all-square moment, Settings (names and animals with Request a change, the usual split, monzo.me name, join code, backup download, theme, version, sign out). Learning categories and splits (`category_memory`). One history coordinator for back and sheets; one live region for toasts. The demo build now shows the working app at `/` (gallery still at `/gallery`). The `two-users` CI job added.
+**Tested:** unit and screen tests (wording, quick add, the form, history, category memory, backup, screens over the in-memory server); demo e2e tour of every screen at 390 and 320, both themes, axe clean, plus the daily loop; screenshots in both themes at both sizes looked at and fixed (Add expense pill at 320, filter row wrapping, category chips without the extra dot).
+**Not verified here:** the two-user suite (needs the Supabase local stack, i.e. Docker; it runs in CI).
+**Next:** fresh review of the screens; CI's first two-user run; the nightly backup (EXP-2); then PR → deploy.
+
 ## 2026-11-17 (later): owner feedback round 1; S2 started
 **Owner feedback** (after the gallery): dog's nose a smaller black dot; no white background, both themes variants of the green-and-wood palette; logo symmetric; font, wording, headings and terminology felt generic ("Claude-y").
 **Done:** nose; light theme now sage linen / wool / deeper sage with contrast re-measured (DESIGN §3.1, DECISIONS); symmetric logo (icons re-rendered). On the branch preview: https://ccr-d34ab85d-b429dn-smsm-demo.jaexpark94.workers.dev/gallery

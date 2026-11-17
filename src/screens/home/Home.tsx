@@ -216,12 +216,14 @@ function AddButton() {
             sheets.openEntry({ mode: 'add' });
           }}
           className={cx(
-            'bg-forest text-on-forest shadow-float inline-flex min-h-14 items-center gap-2 rounded-full pr-6 pl-5 font-semibold select-none',
+            'bg-forest text-on-forest shadow-float inline-flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full pr-6 pl-5 font-semibold select-none',
+            // On the narrowest phones the button keeps only its +, so it covers less of the page.
+            'max-[359px]:px-0',
             'transition-transform duration-150 active:scale-[0.98] [-webkit-touch-callout:none]',
           )}
         >
           <Plus size={ICON.size} strokeWidth={2.25} aria-hidden="true" />
-          {strings.home.addExpense}
+          <span className="max-[359px]:sr-only">{strings.home.addExpense}</span>
         </button>
       </div>
     </div>

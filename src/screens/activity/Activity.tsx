@@ -130,7 +130,7 @@ export function Activity() {
           className="text-body text-ink placeholder:text-ink-2 w-full min-w-0 bg-transparent py-2.5 outline-none"
         />
       </div>
-      <div role="group" aria-label={strings.activity.filters} className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
+      <div role="group" aria-label={strings.activity.filters} className="flex flex-wrap gap-2">
         <FilterButton label={strings.activity.whoPaid} value={payerLabel} onClick={() => { setPicker('payer'); }} />
         <FilterButton label={strings.activity.category} value={categoryLabel} onClick={() => { setPicker('category'); }} />
         <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : datesLabels[dates]} onClick={() => { setPicker('dates'); }} />

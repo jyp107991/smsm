@@ -46,15 +46,43 @@ function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `e${String(counter)}-${String(performance.now())}`;
 }
 
+/** JSON for anything, never throwing: circular references and BigInts become plain words instead. */
+function safeJson(value: unknown): string {
+  const seen = new WeakSet();
+  try {
+    // JSON.stringify gives undefined for undefined or a function, whatever its type says.
+    const out = JSON.stringify(value, (_key, v: unknown) => {
+      if (typeof v === 'bigint') return `${v.toString()}n`;
+      if (v && typeof v === 'object') {
+        if (seen.has(v)) return '[circular]';
+        seen.add(v);
+      }
+      return v;
+    }) as string | undefined;
+    return out ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function safeContext(context: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (context === null) return null;
+  try {
+    return JSON.parse(safeJson(context)) as Record<string, unknown>;
+  } catch {
+    return { unreadable: true };
+  }
+}
+
 export function toClientError(err: unknown, route: string, context: Record<string, unknown> | null = null): ClientError {
-  const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : JSON.stringify(err));
+  const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : safeJson(err));
   return {
     id: newId(),
     message: e.message.slice(0, MAX_TEXT) || 'Unknown error',
     stack: e.stack ? e.stack.slice(0, MAX_TEXT) : null,
     route,
     app_version: `${build.version}+${build.commit.slice(0, 7)}`,
-    context,
+    context: safeContext(context),
   };
 }
 
