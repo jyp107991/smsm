@@ -54,13 +54,20 @@ describe('the form', () => {
     expect(formFromRow(row({ split_params: null, shares: { j: 2975, s: 1275 } }), people).ratio).toEqual({ j: 70, s: 30 });
   });
 
-  it('MB-1 MB-2: Refund this is money back for the original, same split, received by whoever paid', () => {
-    const f = refundForm(row(), people);
-    expect(f).toMatchObject({ kind: 'money_back', refundOf: 'e1', amountText: '', payer: 'j', splitMode: 'ratio', ratio: { j: 50, s: 50 } });
+  it('MB-1 MB-2: Refund this is money back for the original, same split, received by whoever paid, dated today', () => {
+    const f = refundForm(row(), people, TODAY);
+    expect(f).toMatchObject({ kind: 'money_back', refundOf: 'e1', amountText: '', payer: 'j', splitMode: 'ratio', ratio: { j: 50, s: 50 }, date: TODAY });
     expect(summaryWords({ ...f, amountText: '10' }, people)).toBe('Jae got £10.00 back · Jae £5.00, Sam £5.00');
   });
 
   it('ADD-7: a copy is dated today', () => {
     expect(copyForm(row(), people, TODAY)).toMatchObject({ date: TODAY, amountText: '42.50', kind: 'expense', refundOf: null });
+  });
+
+  it('ADD-7 MB-1 MB-3: a copy of money back is money back, linked to the same original, with the same split', () => {
+    const back = row({ id: 'b1', kind: 'money_back', description: 'Lamp refund', amount_pence: 1000, paid: { j: 1000, s: 0 }, shares: { j: 500, s: 500 }, refund_of: 'e1' });
+    const f = copyForm(back, people, TODAY);
+    expect(f).toMatchObject({ kind: 'money_back', refundOf: 'e1', date: TODAY, amountText: '10.00', payer: 'j', ratio: { j: 50, s: 50 } });
+    expect(draftOf(f, people)).toMatchObject({ draft: { kind: 'money_back', refundOf: 'e1', amount: 1000, payer: 'j' } });
   });
 });
