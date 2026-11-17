@@ -16,6 +16,7 @@ import { holdEnterWhileComposing } from '../../ui/keys';
 import { Button, Chip, Field, Segmented, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
+import { categoryColour } from '../../ui/tokens';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
@@ -212,14 +213,17 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           {live.map((c) => (
             <Chip
               key={c.id}
+              colour={categoryColour(c.colour)}
               selected={s.categoryId === c.id}
               suggested={guess.categoryId === c.id}
+              suggestible
               onSelectedChange={() => {
                 picked.current.category = true;
                 update({ ...s, categoryId: c.id, categoryTouched: true });
               }}
             >
-              <span aria-hidden="true" className="mr-1">{c.emoji}</span>
+              {/* The colour dot (the tick when chosen) stands for the category already; a placeholder "•" would read as a second one. */}
+              {isPlaceholderEmoji(c.emoji) ? null : <span aria-hidden="true" className="mr-1">{c.emoji}</span>}
               {c.name}
             </Chip>
           ))}
@@ -366,6 +370,11 @@ function changedFields(from: ExpenseDraft, to: ExpenseDraft, splitTouched: boole
   if (!same(to.notes, from.notes)) out.notes = to.notes ?? null;
   if (!same(to.tags, from.tags)) out.tags = to.tags ?? [];
   return out;
+}
+
+/** The database's default emoji (a plain dot) for a category nobody gave one. */
+function isPlaceholderEmoji(emoji: string): boolean {
+  return emoji.trim() === '' || emoji.trim() === '•';
 }
 
 /** A field group with a small visible label (the controls name themselves for screen readers). */

@@ -12,7 +12,7 @@ import { strings } from '../ui/strings';
 import { Activity } from './activity/Activity';
 import { EntryPage } from './entry/EntryPage';
 import { EntrySheet } from './entry/EntrySheet';
-import { Home } from './home/Home';
+import { Home, HOME_TOAST_LIFT } from './home/Home';
 import { loadPending, savePending } from './settle/monzo';
 import { SettleSheet } from './settle/SettleSheet';
 import { Settings } from './settings/Settings';
@@ -105,6 +105,9 @@ function MainApp() {
   });
   const [sheets] = useState(() => ({ openEntry: setEntry, openSettle: setSettle }));
   const tab = tabOf(route, lastTab);
+  const { otherWindow } = useSyncStatus();
+  // Toasts clear the tab bar everywhere; on Home they also clear the add button (none in a read-only window).
+  const toastLift = route.name === 'home' && !otherWindow ? HOME_TOAST_LIFT : '5.25rem';
   if (route.name !== 'entry' && tab !== lastTab) setLastTab(tab);
 
   // A new page starts at its top.
@@ -115,7 +118,7 @@ function MainApp() {
 
   return (
     <SheetsContext value={sheets}>
-      <div style={{ '--toast-lift': '5.25rem' } as CSSProperties}>
+      <div style={{ '--toast-lift': toastLift } as CSSProperties}>
         <ToastProvider>
           <BottomTabs
             items={TABS}

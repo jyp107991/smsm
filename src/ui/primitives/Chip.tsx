@@ -13,6 +13,12 @@ export interface ChipProps extends Omit<ComponentPropsWithRef<'button'>, 'onChan
   colour?: CategoryColourName;
   /** Marks a suggestion (for example the guessed category) with a small forest dot after the label. */
   suggested?: boolean;
+  /**
+   * The suggestion dot's place is kept whether or not it shows, so a chip doesn't change width as the
+   * suggestion moves (the category chips, re-guessed as a description is typed). Pass with `colour`
+   * for a chip that never changes size at all (DESIGN §6: no layout shift).
+   */
+  suggestible?: boolean;
   children: ReactNode;
 }
 
@@ -21,7 +27,9 @@ export interface ChipProps extends Omit<ComponentPropsWithRef<'button'>, 'onChan
  * extends to 44 px, so rows of chips need at least 8 px between them.
  * Selected is never colour alone: the outline and a tick appear together.
  */
-export function Chip({ selected = false, onSelectedChange, colour, suggested = false, className, children, onClick, type = 'button', ...rest }: ChipProps) {
+export function Chip({
+  selected = false, onSelectedChange, colour, suggested = false, suggestible = false, className, children, onClick, type = 'button', ...rest
+}: ChipProps) {
   return (
     <button
       type={type}
@@ -52,12 +60,10 @@ export function Chip({ selected = false, onSelectedChange, colour, suggested = f
         </span>
       ) : null}
       <span className="min-w-0 truncate">{children}</span>
-      {suggested ? (
-        <>
-          <span aria-hidden="true" className="bg-forest size-1.5 shrink-0 rounded-full" />
-          <span className="sr-only">{strings.ui.suggested}</span>
-        </>
+      {suggested || suggestible ? (
+        <span aria-hidden="true" className={cx('size-1.5 shrink-0 rounded-full', suggested ? 'bg-forest' : 'bg-transparent')} />
       ) : null}
+      {suggested ? <span className="sr-only">{strings.ui.suggested}</span> : null}
     </button>
   );
 }

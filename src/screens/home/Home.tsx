@@ -10,6 +10,7 @@ import { dismissProblem, useCategories, useDataLayer, useEntries, useSyncStatus,
 import { Logo } from '../../ui/Logo';
 import { Button, ICON } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
+import { closeLayer, openLayer } from '../../ui/history';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
@@ -21,7 +22,15 @@ import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
 import { QuickAdd } from './QuickAdd';
 
+/**
+ * Toasts on Home sit above the add button, so a Saved toast never covers it: the button floats 5.25rem
+ * up (clear of the tab bar, where toasts sit elsewhere), is 3.5rem tall, then a 0.75rem gap.
+ */
+export const HOME_TOAST_LIFT = '9.5rem';
+
 export function Home() {
+  // While quick add is in use the add button steps aside (the reading opens the full form anyway).
+  const [typing, setTyping] = useState(false);
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-28">
       <header className="flex min-h-12 items-center gap-2.5">
@@ -40,11 +49,11 @@ export function Home() {
       <Problems />
       <BalanceRegion />
       <div className="flex flex-col gap-2">
-        <QuickAdd />
+        <QuickAdd onInUse={setTyping} />
         <SyncLine />
       </div>
       <Today />
-      <AddButton />
+      <AddButton aside={typing} />
     </div>
   );
 }
@@ -127,9 +136,15 @@ function Today() {
 }
 
 const LONG_PRESS_MS = 500;
+/** The long-press menu's place in the history coordinator: back closes it, as it does a sheet (DESIGN §6). */
+const MENU_LAYER = 'home-add-menu';
 
-/** The floating add button (DESIGN §3.3: the one soft shadow). Long press: "Same as last time" (ADD-7). */
-function AddButton() {
+/**
+ * The floating add button (DESIGN §3.3: the one soft shadow). Long press: "Same as last time" (ADD-7).
+ * `aside` while quick add is in use: it steps out of the way (hidden, not just covered), so on a 320 px
+ * phone it never sits over the box being typed in.
+ */
+function AddButton({ aside }: { aside: boolean }) {
   const sheets = useSheets();
   const { otherWindow } = useSyncStatus();
   const layer = useDataLayer();
@@ -139,6 +154,7 @@ function AddButton() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressed = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const last = useMemo(() => {
     let best: ExpenseRow | null = null;
     for (const e of entries) if (e.deleted_at === null && e.kind === 'expense' && (best === null || e.created_at > best.created_at)) best = e;
@@ -148,14 +164,28 @@ function AddButton() {
   useEffect(() => {
     if (!menu) return;
     menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    /** Closed from the keyboard or by back: focus goes back to the button it came from. */
+    const closeToButton = () => {
+      setMenu(false);
+      button.current?.focus();
+    };
+    // While open the menu holds a history entry, so back closes it first, as it does a sheet.
+    openLayer(MENU_LAYER, { onBack: closeToButton, onLeave: () => { setMenu(false); } });
     const close = (e: Event) => {
-      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e instanceof KeyboardEvent) {
+        if (e.key === 'Escape') closeToButton();
+        return;
+      }
       if (e instanceof PointerEvent && menuRef.current?.contains(e.target as Node)) return;
+      // A tap elsewhere: focus goes where the person tapped.
       setMenu(false);
     };
     window.addEventListener('keydown', close);
     window.addEventListener('pointerdown', close);
     return () => {
+      // Closed any other way, its entry goes too (a no-op once back has taken it). Clean-ups run before the
+      // next effects start, so a sheet opened from the menu stacks on a history without the menu's entry.
+      closeLayer(MENU_LAYER);
       window.removeEventListener('keydown', close);
       window.removeEventListener('pointerdown', close);
     };
@@ -169,7 +199,13 @@ function AddButton() {
   if (otherWindow) return null;
 
   return (
-    <div className="fixed right-0 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] left-0 z-20 mx-auto flex max-w-lg justify-end px-5 pointer-events-none">
+    <div
+      className={cx(
+        'pointer-events-none fixed right-0 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] left-0 z-20 mx-auto flex max-w-lg justify-end px-5',
+        'transition-[opacity,visibility] duration-150 motion-reduce:transition-none',
+        aside && !menu && 'invisible opacity-0',
+      )}
+    >
       <div className="pointer-events-auto relative">
         {menu && last ? (
           <div ref={menuRef} role="menu" aria-label={strings.home.addMenu} className="bg-surface shadow-float absolute right-0 bottom-full mb-3 w-max min-w-48 rounded-[16px] p-1.5">
@@ -178,6 +214,8 @@ function AddButton() {
               role="menuitem"
               className="text-ink min-h-11 w-full rounded-[12px] px-4 text-left"
               onClick={() => {
+                // The item goes with the menu: the sheet takes the add button as the opener to return to.
+                button.current?.focus();
                 setMenu(false);
                 const prefill = copyForm(last, people.list, layer.today());
                 sheets.openEntry({ mode: 'add', prefill: { ...prefill, categoryTouched: true, splitTouched: true } });
@@ -188,6 +226,7 @@ function AddButton() {
           </div>
         ) : null}
         <button
+          ref={button}
           type="button"
           onPointerDown={() => {
             longPressed.current = false;

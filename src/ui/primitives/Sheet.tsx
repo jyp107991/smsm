@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Drawer } from 'vaul';
 import { X } from 'lucide-react';
+import { focusedElement, returnFocus } from '../focus';
 import { closeLayer, openLayer } from '../history';
 import { strings } from '../strings';
 import { Button } from './Button';
@@ -33,6 +34,10 @@ export interface SheetProps {
  * instead of leaving the page. Closing any other way removes the entry again, and navigating away while
  * it is open removes it before the new page is pushed, so it is never left behind.
  *
+ * Focus goes back to whatever opened it when it closes, however it closes (Escape, Close, back, Save):
+ * what had focus as it opened is kept, and focus returns there, or to the page's fallback (the Quick add
+ * box, src/ui/focus.ts) when that has gone. (Radix would return it to a Drawer.Trigger; there is none.)
+ *
  * The keyboard: index.html sets `interactive-widget=resizes-content`, so the viewport (and `dvh`)
  * shrinks when the keyboard opens and the footer stays visible above it. vaul's own input repositioning
  * is turned off so the two don't fight.
@@ -41,6 +46,12 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
   const id = useId();
   const [confirming, setConfirming] = useState(false);
   const active = useRef(false);
+  const opener = useRef<HTMLElement | null>(null);
+
+  // Before the content mounts (the portal renders a beat later), so this is still the opener.
+  useLayoutEffect(() => {
+    if (open) opener.current = focusedElement();
+  }, [open]);
 
   // A closed sheet never reopens still asking.
   if (!open && confirming) setConfirming(false);
@@ -109,6 +120,11 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
               event.preventDefault();
               setConfirming(true);
             }
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocus(opener.current);
+            opener.current = null;
           }}
           onPointerDownOutside={(event) => {
             if (dirty) {
