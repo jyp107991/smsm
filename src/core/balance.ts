@@ -17,7 +17,7 @@ export function netPositions(
   entries: readonly LedgerEntry[],
   settlements: readonly LedgerSettlement[],
 ): Record<UserId, Pence> {
-  const net: Record<UserId, number> = { [members[0]]: 0, [members[1]]: 0 };
+  const net: Record<UserId, number> = {};
   for (const e of entries) {
     if (e.deleted) continue;
     const sign = e.kind === 'money_back' ? -1 : 1;
@@ -37,8 +37,9 @@ export type BalanceState = { kind: 'square' } | { kind: 'owes'; debtor: UserId; 
 export function balanceState(nets: Record<UserId, Pence>, members: readonly [UserId, UserId]): BalanceState {
   const [a, b] = members;
   const na: number = nets[a] ?? 0;
-  if (na === 0) return { kind: 'square' };
-  return na > 0 ? { kind: 'owes', debtor: b, creditor: a, amount: pence(na) } : { kind: 'owes', debtor: a, creditor: b, amount: pence(-na) };
+  if (na > 0) return { kind: 'owes', debtor: b, creditor: a, amount: pence(na) };
+  if (na < 0) return { kind: 'owes', debtor: a, creditor: b, amount: pence(-na) };
+  return { kind: 'square' };
 }
 
 /** BAL-4: "Next one's on Sam" once the balance is £10 or more. */

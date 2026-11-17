@@ -17,43 +17,28 @@ export function sumPence(xs: readonly Pence[]): Pence {
   return pence(total);
 }
 
-/** Full-width digits and punctuation (as typed on Japanese and Korean keyboards) to ASCII. */
-function toAscii(s: string): string {
-  return s
-    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xff10 + 0x30))
-    .replace(/．/g, '.')
-    .replace(/，/g, ',')
-    .replace(/＋/g, '+')
-    .replace(/￡/g, '£');
-}
-
-/** One term: "42", "42.5", "42.50", "1,200", "£1,200.99". Returns pence or null. */
+/** One term: "42", "42.5", "42.50", "1,200", "£1,200.99" (spaces allowed after £). Pence, or null. */
 function parseTerm(term: string): number | null {
-  const t = term.trim().replace(/^£/, '').trim();
   // Thousands separators only in proper groups of three.
-  const m = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/.exec(t);
+  const m = /^\s*£?\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?\s*$/.exec(term);
   if (!m?.[1]) return null;
-  const whole = Number(m[1].replace(/,/g, ''));
   const frac = m[2] === undefined ? 0 : Number(m[2].padEnd(2, '0'));
-  const p = whole * 100 + frac;
-  return Number.isSafeInteger(p) ? p : null;
+  return Number(m[1].replace(/,/g, '')) * 100 + frac;
 }
 
 /**
  * What a person typed as an amount, in pence: "42.5", "£42.50", "1,200", sums like "12+8.50" (ADD-5).
+ * NFKC turns full-width digits and signs (as typed on Japanese and Korean keyboards) into ordinary ones.
  * Zero, negatives, more than two decimals, junk and amounts above £1,000,000 give null.
  */
 export function parseAmount(text: string): Pence | null {
-  const s = toAscii(text).trim();
-  if (s === '' || s.startsWith('+') || s.endsWith('+')) return null;
   let total = 0;
-  for (const term of s.split('+')) {
+  for (const term of text.normalize('NFKC').split('+')) {
     const p = parseTerm(term);
     if (p === null) return null;
     total += p;
   }
-  if (total <= 0 || total > MAX_PENCE) return null;
-  return pence(total);
+  return total > 0 && total <= MAX_PENCE ? pence(total) : null;
 }
 
 const grouped = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0, useGrouping: true });

@@ -29,19 +29,17 @@ export function ratioShares(amount: Pence, ratio: Readonly<Record<UserId, number
     const num = amount * (ratio[id] ?? 0);
     return { id, floor: Math.floor(num / totalPct), rem: num % totalPct };
   });
-  let left = amount - rows.reduce((t, r) => t + r.floor, 0);
+  const left = amount - rows.reduce((t, r) => t + r.floor, 0);
   const order = [...rows].sort((a, b) => {
     if (b.rem !== a.rem) return b.rem - a.rem;
     if (a.id === payer) return -1;
     if (b.id === payer) return 1;
     return a.id < b.id ? -1 : 1;
   });
+  // At most one penny per person is left over (each remainder is below one penny).
+  const extra = new Set(order.slice(0, left).map((r) => r.id));
   const out: Record<UserId, Pence> = {};
-  for (const r of rows) out[r.id] = pence(r.floor);
-  for (let i = 0; left > 0; i = (i + 1) % order.length, left -= 1) {
-    const r = order[i];
-    if (r) out[r.id] = pence((out[r.id] ?? 0) + 1);
-  }
+  for (const r of rows) out[r.id] = pence(r.floor + (extra.has(r.id) ? 1 : 0));
   return out;
 }
 

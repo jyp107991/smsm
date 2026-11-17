@@ -42,6 +42,8 @@ jobs:
         run: npm run lint
       - name: Unit and property tests
         run: npm test
+      - name: Mutation tests on the money core (score at least 85%)
+        run: npm run test:mutation -- --reporters clear-text
       - name: Trace (every criterion tested or deferred)
         run: npm run trace
       - name: Database tests (PostgreSQL 16)
