@@ -52,7 +52,7 @@ test.describe('the S2 screens', () => {
         await expect(page.getByRole('button', { name: /^£42\.50 · tesco · Groceries · Jae paid · / })).toBeVisible();
         await check(page, 'Home with a reading');
         await page.getByRole('textbox', { name: 'Quick add' }).fill('');
-        // Done with quick add (the add button steps aside while it has focus).
+        // Done with quick add.
         await page.getByRole('heading', { name: 'Today' }).click();
 
         await page.getByRole('button', { name: 'Add expense', exact: true }).click();
@@ -287,7 +287,9 @@ test.describe('the screens review: focus, the add button, chips', () => {
     await expect(settle).toBeFocused();
   });
 
-  test('a sheet opened from the quick-add reading (which goes as it opens) returns focus to the Quick add box', async ({ page }) => {
+  // Changed by the S2 polish brief (Q-U4): this test expected focus back in the Quick add box. When a sheet's
+  // opener has gone, focus now goes to the balance sentence, never into a text box (it would pop the keyboard).
+  test('Q-U4: a sheet opened from the quick-add reading (which goes as it opens) returns focus to the balance sentence, not a text box', async ({ page }) => {
     await home(page);
     const box = page.getByRole('textbox', { name: 'Quick add' });
     await box.fill('12 coffee');
@@ -296,7 +298,14 @@ test.describe('the screens review: focus, the add button, chips', () => {
     await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
-    await expect(box).toBeFocused();
+    await expect(box).not.toBeFocused();
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { tag: el?.tagName ?? '', inBalance: !!(el && document.querySelector('section[aria-label="Balance"]')?.contains(el)), text: (el?.textContent ?? '').trim() };
+    });
+    expect(['INPUT', 'TEXTAREA']).not.toContain(focused.tag);
+    expect(focused.inBalance, `focus is on ${focused.tag} "${focused.text}"`).toBe(true);
+    expect(focused.text).toMatch(/^(All square|\S+ owes \S+ £[\d,]+\.\d\d)$/);
   });
 
   test('ADD-7: back closes the "Same as last time" menu (staying on Home); focus goes back to Add expense', async ({ page }) => {
@@ -336,30 +345,21 @@ test.describe('the screens review: focus, the add button, chips', () => {
     await expect(add).toBeFocused();
   });
 
-  test('at 320×640 Add expense never covers Quick add while it is in use, and the Saved toast never covers Add expense', async ({ page }) => {
+  // Changed by the owner's decision in the S2 polish brief (Q-L4, one way to add): Add expense now lives inside
+  // the Quick add box, so "Add expense never covers Quick add" no longer applies. What stands: the Saved toast
+  // never covers Add expense (nor the box; tests/e2e/polish-1b.spec.ts checks the box in every size and theme).
+  test('Q-L4: at 320×640 the Saved toast never covers Add expense', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await home(page);
     const box = page.getByRole('textbox', { name: 'Quick add' });
     const add = page.getByRole('button', { name: 'Add expense', exact: true });
-    const boxRect = await box.locator('..').boundingBox();
-    expect(boxRect).not.toBeNull();
-    const notCovered = async (when: string) => {
-      await expect.poll(async () => {
-        if (!(await add.isVisible())) return false;
-        const addRect = await add.boundingBox();
-        return addRect !== null && boxRect !== null && overlaps(addRect, boxRect);
-      }, { message: `Add expense covers Quick add ${when}` }).toBe(false);
-    };
     await box.click();
     await expect(box).toBeFocused();
-    await notCovered('as it is tapped');
     await box.pressSequentially('5 gum');
-    await notCovered('while typing');
     await box.press('Enter');
     const saved = page.getByRole('status').filter({ hasText: /^Saved/ });
     await expect(saved).toBeVisible();
-    // Done typing: the button is back, and the toast sits clear of it.
     await page.getByRole('heading', { name: 'Today' }).click();
     await expect(add).toBeVisible();
     const addRect = await add.boundingBox();
