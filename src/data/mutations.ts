@@ -19,6 +19,7 @@ import { activeDataLayer } from './context';
 import { keys } from './keys';
 import type { DataLayer } from './queryClient';
 import { OtherWindowError } from './windows';
+import { locateWith, rateWith, setStoredCountry, setStoredUseLocation, storedCountry, storedUseLocation, type Located } from './places';
 import {
   buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, chapterWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
   newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
@@ -169,7 +170,9 @@ export function addExpense(input: ExpenseDraft & { id?: string }, layer = active
   const { id, ...given } = input;
   const ctx = context(layer);
   // CHP-2: while a chapter is current on this phone, a new entry goes into it unless the person chose otherwise.
-  const draft: ExpenseDraft = given.chapterId === undefined ? { ...given, chapterId: currentOpenChapter(layer) } : given;
+  let draft: ExpenseDraft = given.chapterId === undefined ? { ...given, chapterId: currentOpenChapter(layer) } : given;
+  // PLC-3: and this phone's current country (an entry can always be set to another).
+  if (draft.country === undefined) draft = { ...draft, country: currentCountry(layer) };
   if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
   const built = expenseRowFor(ctx, draft);
   const row = id === undefined ? built.row : { ...built.row, id };
@@ -689,4 +692,39 @@ export function currentOpenChapter(layer = activeDataLayer()): string | null {
   if (id === null) return null;
   const c = shown<ChapterRow>(layer, 'chapters').find((x) => x.id === id);
   return c && !c.closed ? id : null;
+}
+
+// ───────── S4b: where this phone is, and the day's rate (PLC-2, PLC-3, PLC-6) ─────────
+
+/** PLC-3: this phone's current country (the household's home country unless set). */
+export function currentCountry(layer = activeDataLayer()): string {
+  return storedCountry() ?? homeCountry(layer);
+}
+
+export function homeCountry(layer = activeDataLayer()): string {
+  return layer.household()?.home_country ?? 'GB';
+}
+
+/** PLC-3: "We're in Japan" (null or the home country: home). Per phone; never sent to the server. */
+export function setCurrentCountry(code: string | null, layer = activeDataLayer()): void {
+  setStoredCountry(code === null || code.toUpperCase() === homeCountry(layer) ? null : code);
+}
+
+/** PLC-2: use the phone's location for new entries and trip suggestions (per phone; off until turned on). */
+export function setUseLocation(on: boolean): void {
+  setStoredUseLocation(on);
+}
+
+/**
+ * PLC-2: where the phone is now, rounded to about 100 m, with the country and town when online; null when location
+ * is off, not allowed, or slower than 4 s. `prompt` lets the browser ask (only when the person turns it on).
+ */
+export async function locate(opts: { prompt?: boolean; timeoutMs?: number } = {}, layer = activeDataLayer()): Promise<Located | null> {
+  if (!storedUseLocation() && opts.prompt !== true) return null;
+  return locateWith(layer.geo, { ...opts, online: layer.network.online });
+}
+
+/** PLC-6, OFF-4: the day's rate (pounds per unit) for a currency; offline, the last one known (`stale`). */
+export async function rateFor(currency: string, date?: string, layer = activeDataLayer()) {
+  return rateWith(layer.rates, currency.toUpperCase(), { online: layer.network.online, ...(date ? { date } : {}) });
 }

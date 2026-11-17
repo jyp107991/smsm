@@ -18,6 +18,7 @@ import {
   settlementsQuery,
 } from './queries';
 import { currentChapterId, setCurrentChapter, subscribeCurrentChapter } from './mutations';
+import { storedCountry, storedUseLocation, subscribePlaces } from './places';
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
@@ -124,6 +125,18 @@ export function useCurrentChapter(): string | null {
   const closed = id !== null && chapters?.some((c) => c.id === id && c.closed) === true;
   useEffect(() => { if (closed) setCurrentChapter(null); }, [closed]);
   return useMemo(() => (chapters?.some((c) => c.id === id && !c.closed) ? id : null), [chapters, id]);
+}
+
+/** PLC-3: this phone's current country (the household's home country unless set). */
+export function useCurrentCountry(): string {
+  const stored = useSyncExternalStore(subscribePlaces, storedCountry, () => null);
+  const home = useHousehold().data?.home_country ?? 'GB';
+  return stored ?? home;
+}
+
+/** PLC-2: whether this phone uses its location. */
+export function useLocationSetting(): boolean {
+  return useSyncExternalStore(subscribePlaces, storedUseLocation, () => false);
 }
 
 /** S3: every regular payment (paused and ended ones too), with the waiting changes applied (REC-1). */

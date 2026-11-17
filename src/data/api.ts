@@ -26,6 +26,7 @@ export type CategoryMemoryWrite = Pick<CategoryMemoryRow, 'household_id' | 'key'
 export const EXPENSE_WRITE_COLUMNS = [
   'id', 'household_id', 'kind', 'description', 'amount_pence', 'date', 'category_id', 'chapter_id', 'paid', 'paid_via',
   'split_mode', 'split_params', 'shares', 'notes', 'tags', 'country', 'refund_of', 'source', 'recurring_id', 'occurrence_date',
+  'place', 'lat', 'lng', 'original_amount', 'original_currency', 'fx_rate',
 ] as const satisfies readonly (keyof ExpenseRow)[];
 export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]>;
 

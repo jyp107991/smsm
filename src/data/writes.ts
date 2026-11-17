@@ -30,6 +30,30 @@ export interface ExpenseDraft {
   refundOf?: string | null;
   /** CHP-2: the chapter it belongs to (null: everyday); left out, an edit keeps the entry's own. */
   chapterId?: string | null;
+  /** PLC-1, PLC-3: the country (ISO code); left out, a new entry takes this phone's current country. */
+  country?: string;
+  /** PLC-1: a place name ("Kyoto"), and a position rounded to 3 dp (null when typed). */
+  place?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  /** PLC-6: paid in another currency: the amount and rate as typed (reference only; `amount` is the pounds). */
+  original?: ForeignOriginal | null;
+}
+
+export interface ForeignOriginal { amount: string; currency: string; rate: string }
+
+/** The place and currency columns of a draft over a base row (an edit of the pounds amount drops a stale original). */
+function placeColumns(draft: ExpenseDraft, fresh: ExpenseRow, amountChanged: boolean) {
+  const orig = draft.original !== undefined ? draft.original : amountChanged ? null : undefined;
+  return {
+    country: draft.country !== undefined && /^[A-Z]{2}$/.test(draft.country) ? draft.country : fresh.country,
+    place: draft.place === undefined ? fresh.place : draft.place === null || draft.place.trim() === '' ? null : draft.place.trim().slice(0, 80),
+    lat: draft.lat === undefined ? fresh.lat : draft.lat,
+    lng: draft.lng === undefined ? fresh.lng : draft.lng,
+    original_amount: orig === undefined ? fresh.original_amount : orig ? Number(orig.amount.replace(/,/g, '')) : null,
+    original_currency: orig === undefined ? fresh.original_currency : orig ? orig.currency : null,
+    fx_rate: orig === undefined ? fresh.fx_rate : orig ? Number(orig.rate) : null,
+  };
 }
 
 export interface SettlementDraft {
@@ -158,6 +182,7 @@ export function buildProvisionalExpense(ctx: { householdId: string; userId: User
     tags: draft.tags === undefined ? fresh.tags : [...draft.tags],
     refund_of: draft.refundOf === undefined ? fresh.refund_of : draft.refundOf,
     chapter_id: draft.chapterId === undefined ? fresh.chapter_id : draft.chapterId,
+    ...placeColumns(draft, fresh, base !== undefined && base.amount_pence !== draft.amount),
     updated_by: ctx.userId,
     updated_at: stamp,
   };
@@ -310,6 +335,7 @@ export function withDetails(row: ExpenseRow, patch: Partial<ExpenseDraft>, ctx: 
     tags: patch.tags === undefined ? row.tags : [...patch.tags],
     refund_of: patch.refundOf === undefined ? row.refund_of : patch.refundOf,
     chapter_id: patch.chapterId === undefined ? row.chapter_id : patch.chapterId,
+    ...placeColumns(patch as ExpenseDraft, row, false),
     updated_by: ctx.userId,
     updated_at: ctx.now.toISOString(),
   };
@@ -350,6 +376,7 @@ export function buildExpense(ctx: WriteContext, draft: ExpenseDraft, base?: Expe
     tags: draft.tags === undefined ? fresh.tags : [...draft.tags],
     refund_of: draft.refundOf === undefined ? fresh.refund_of : draft.refundOf,
     chapter_id: draft.chapterId === undefined ? fresh.chapter_id : draft.chapterId,
+    ...placeColumns(draft, fresh, base !== undefined && base.amount_pence !== draft.amount),
     updated_by: ctx.userId,
     updated_at: stamp,
   };

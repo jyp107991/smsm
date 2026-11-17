@@ -22,6 +22,7 @@
  * final: the write leaves the queue (so it leaves what is shown: the rollback) and is kept to fix (OFF-5).
  * A write that was discarded (sign-out) stops at its next try and is never sent.
  */
+import { browserGeo, frankfurterRates, type GeoService, type RatesService } from './places';
 import {
   MutationObserver, QueryClient, dehydrate, hashKey, hydrate,
   type DehydratedState, type DehydrateOptions, type QueryKey,
@@ -88,10 +89,17 @@ export interface DataLayerOptions {
   throttleMs?: number;
   /** Wait before trying a write again after a transient failure (default: 1 s doubling to 30 s). */
   retryDelay?: (attempt: number) => number;
+  /** S4b: where the phone is (geolocation + place names); the browser's by default. */
+  geo?: GeoService;
+  /** S4b: the day's exchange rates; Frankfurter by default. */
+  rates?: RatesService;
 }
 
 export interface DataLayer {
   client: QueryClient;
+  /** S4b: place and rate services (fakes in tests). */
+  geo: GeoService;
+  rates: RatesService;
   api: Api;
   session: SessionKeeper;
   network: Network;
@@ -777,6 +785,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
 
   return {
     client,
+    geo: opts.geo ?? browserGeo(),
+    rates: opts.rates ?? frankfurterRates(),
     api,
     session,
     network,

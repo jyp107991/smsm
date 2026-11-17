@@ -329,8 +329,7 @@ export function createMemoryApi(
     upsertExpense: (row: ExpenseWrite) =>
       call('upsertExpense', row, () =>
         writeRow(tables.expenses, row, 'expense', (w) => ({
-          items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
-          fx_rate: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
+          items: null, bill_total_pence: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
           created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
         }), (r) => {
