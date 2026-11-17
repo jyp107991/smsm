@@ -73,7 +73,7 @@ import {
 import type { IsoDate } from '../core/dates';
 import { pence, type Pence } from '../core/money';
 import type { SplitParams, UserId } from '../core/split';
-import type { CategoryRow, WatchedTable } from './api';
+import type { CategoryRow } from './api';
 import { DataProvider } from './DataProvider';
 import * as hooksModule from './hooks';
 import type { DataResult } from './hooks';
