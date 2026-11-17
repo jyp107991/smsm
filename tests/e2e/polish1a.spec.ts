@@ -37,6 +37,10 @@ async function samOwesJae(page: Page): Promise<number> {
 
 /** Two taps on the same spot, `gapMs` apart: a double tap on a phone. */
 async function doubleTap(page: Page, target: Locator, gapMs: number): Promise<void> {
+  // Measure only once the target has stopped moving and really receives the tap (a sheet may still be sliding
+  // in: "Did it go through?" opens as the app starts). A box read mid-slide puts both taps outside the sheet,
+  // which dismisses it (CI run 44076630487). `trial` runs Playwright's actionability checks without clicking.
+  await target.click({ trial: true });
   const box = await target.boundingBox();
   if (!box) throw new Error('nothing to tap');
   const x = box.x + box.width / 2;
