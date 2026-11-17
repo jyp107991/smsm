@@ -23,6 +23,7 @@ import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
 import { InboxButton, SuggestRecurring } from './BillsBanners';
+import { CurrentChapterChip } from './CurrentChapter';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
@@ -45,6 +46,7 @@ export function Home() {
       <Problems />
       <InboxButton />
       <BalanceRegion />
+      <CurrentChapterChip />
       <QuickAdd />
       <SuggestRecurring />
       <RecentRows />

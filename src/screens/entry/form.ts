@@ -37,6 +37,8 @@ export interface FormState {
    * tie to whoever got it back, as SPL-3). Typing an exact amount yourself stops it.
    */
   exactFollows?: Record<UserId, number>;
+  /** CHP-2: the chapter (null: everyday). Left undefined, a new entry goes into this phone's current chapter. */
+  chapterId?: string | null;
 }
 
 export function blankForm(opts: { me: UserId; people: readonly Person[]; today: IsoDate; split: SplitParams }): FormState {
@@ -94,6 +96,7 @@ export function formFromRow(row: ExpenseRow, people: readonly Person[], input?: 
     notes: input?.notes ?? row.notes ?? '',
     tags: input?.tags ?? row.tags,
     refundOf: input?.refundOf ?? row.refund_of,
+    chapterId: input?.chapterId !== undefined ? input.chapterId : row.chapter_id,
   };
   if (input) return withSplit(base, input.split, people);
   const mode = row.split_mode;
@@ -241,6 +244,7 @@ export function draftOf(s: FormState, people: readonly Person[]): { draft: Expen
       notes: s.notes.trim() === '' ? null : s.notes.trim(),
       tags: s.tags,
       refundOf: s.refundOf,
+      ...(s.chapterId !== undefined ? { chapterId: s.chapterId } : {}),
     },
   };
 }

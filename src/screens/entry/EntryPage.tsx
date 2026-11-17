@@ -8,7 +8,7 @@ import { useMemo, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useDataLayer, useEntries, useHistory,
+  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useEntries, useHistory,
   useOnline, useSettlements, useSyncStatus, type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -69,6 +69,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const { pendingIds, otherWindow: readOnly } = useSyncStatus();
   const today = layer.today();
   const category = categories.find((c) => c.id === row.category_id);
+  const chapter = (useChapters().data ?? []).find((c) => c.id === row.chapter_id);
   const payer = people.list.find((p) => p.id === payerOf(row.paid, people.list));
   const original = row.refund_of ? entries.find((e) => e.id === row.refund_of) : undefined;
   // Q-U9: money that came back for this entry, each linking to its own page.
@@ -135,6 +136,17 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
           ) : strings.entry.categoryNone}
         </Detail>
         <Detail label={strings.entry.date}>{formatDay(row.date, today)}</Detail>
+        {chapter ? (
+          <Detail label={strings.chapters.chapter}>
+            <a
+              href={pathOf({ name: 'chapter', id: chapter.id })}
+              onClick={(e) => { e.preventDefault(); go({ name: 'chapter', id: chapter.id }); }}
+              className="text-forest -my-2 inline-flex min-h-11 items-center underline underline-offset-4"
+            >
+              {chapter.name}
+            </a>
+          </Detail>
+        ) : null}
         {row.notes ? <Detail label={strings.entry.note}>{row.notes}</Detail> : null}
       </dl>
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
