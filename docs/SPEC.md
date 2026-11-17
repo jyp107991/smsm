@@ -182,7 +182,7 @@ A screenshot of an order confirmation or a photo of a bill shared from another a
 Names and animals; default split; monzo.me name; settle day; home country and current country; location on/off; smart features on/off; categories; chapters; recurring; import rules; notifications; join code (until full); export and backup; history; theme; report a problem; version.
 
 ## 7. Notifications and the phone [NOT]
-- NOT-1 Web push, each type its own switch: a shared bill posts tomorrow (on); partner added, changed or commented, bundled at most hourly (on); recap ready or settle day (on); balance above a chosen amount for 30 days (off); an approval is waiting (always on).
+- NOT-1 Web push, each type its own switch, and every money notification ends with the new balance in words ("Sam added Tesco £42.50 · Sam owes Jae £24.50"): the partner added, changed, deleted or commented on an entry, **each one at once** (on); the partner recorded a settle-up (on); a shared recurring bill was posted **today** (on); a shared bill posts tomorrow (off); recap ready or settle day (on); balance above a chosen amount for 30 days (off); an approval is waiting (always on). Nothing notifies the person about their own changes.
 - NOT-2 Tapping a notification opens the thing it is about.
 - NOT-3 App-icon shortcuts (Add expense, Scan receipt, Settle up); share target; icon badge for Inbox and approvals.
 
