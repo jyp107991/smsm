@@ -11,6 +11,10 @@
  *
  * S4b (docs/slices/S4b.md "Interfaces → Data"): the place-name and rate services can be passed (`geo`, `rates`) and
  * reach the data layer's options, so tests use fakes and never the network.
+ *
+ * S5b (docs/slices/S5b.md "Interfaces"): comments can be seeded (`comments`; the in-memory Api keeps them in
+ * `controls.tables.comments`), the household's settle day set (`settleDay`, households.settle_day), and the date
+ * moved (`today`, default TODAY) for the phone and the "server" alike.
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { createMemoryApi, type MemoryControls, type MemoryTables } from '../../src/data/memoryApi';
@@ -24,6 +28,7 @@ import type { Database, Json } from '../../src/data/database.types';
 export type RecurringRow = Database['public']['Tables']['recurring']['Row'];
 export type InboxItemRow = Database['public']['Tables']['inbox_items']['Row'];
 export type ChapterRow = Database['public']['Tables']['chapters']['Row'];
+export type CommentRow = Database['public']['Tables']['comments']['Row'];
 
 export const HID = '00000000-0000-4000-8000-0000000000c1';
 export const JAE_ID = '00000000-0000-4000-8000-0000000000a1';
@@ -107,6 +112,15 @@ export function storedChapter(over: Partial<ChapterRow> = {}): ChapterRow {
   };
 }
 
+/** A stored comment (S5b): Sam asking about the Lamp, unless told otherwise. */
+export function storedComment(over: Partial<CommentRow> = {}): CommentRow {
+  return {
+    id: '00000000-0000-4000-8000-00000000cc01', household_id: HID, expense_id: '00000000-0000-4000-8000-00000000e001', author: SAM_ID,
+    body: 'Was this the big shop?', created_at: '2026-11-12T18:00:00.000Z', deleted_at: null,
+    ...over,
+  };
+}
+
 export function couple(
   opts: {
     as?: 'jae' | 'sam'; partnerJoined?: boolean; expenses?: ExpenseRow[]; changeRequests?: ChangeRequestRow[];
@@ -115,6 +129,8 @@ export function couple(
     recurring?: RecurringRow[]; inboxItems?: InboxItemRow[];
     /** S4a: trips and projects. */
     chapters?: ChapterRow[];
+    /** S5b: comments on entries, the household's settle day (1–28 or null) and the date (default TODAY). */
+    comments?: CommentRow[]; settleDay?: number | null; today?: string;
     /** S4b: fake location / place-name and exchange-rate services (data layer options `geo`, `rates`). */
     geo?: unknown; rates?: unknown;
     /** The household's approved default split (PPL-5), e.g. { [JAE_ID]: 60, [SAM_ID]: 40 }. */
@@ -124,9 +140,11 @@ export function couple(
   } = {},
 ): Couple {
   const stamp = '2026-11-01T12:00:00.000Z';
-  const household: HouseholdRow = {
-    id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: opts.defaultRatio ?? null, joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp,
-  };
+  const today = opts.today ?? TODAY;
+  // `settle_day` is S5b's addition to households (docs/slices/S5b.md "Data").
+  const household: HouseholdRow = Object.assign({
+    id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: opts.defaultRatio ?? null, joint_enabled: false, joint_ratio: null, created_at: stamp,
+  }, { settle_day: opts.settleDay ?? null });
   const members: MemberRow[] = [
     { household_id: HID, user_id: JAE_ID, display_name: 'Jae', animal: 'cat', locked_at: stamp, monzo_me: 'jaetest', joined_at: stamp },
   ];
@@ -141,13 +159,13 @@ export function couple(
   const seed = {
     households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
     settlements: opts.settlements ?? [], activity: opts.activity ?? [], recurring: opts.recurring ?? [], inboxItems: opts.inboxItems ?? [],
-    chapters: opts.chapters ?? [],
+    chapters: opts.chapters ?? [], comments: opts.comments ?? [],
   } as Partial<MemoryTables>;
-  const apiOpts = { user: { userId: me, email: null }, today: () => TODAY } as Parameters<typeof createMemoryApi>[1];
+  const apiOpts = { user: { userId: me, email: null }, today: () => today } as Parameters<typeof createMemoryApi>[1];
   const { api, controls } = createMemoryApi(seed, apiOpts);
   const network = manualNetwork(opts.online ?? true);
   // `geo` and `rates` are S4b's additions to the data layer options (docs/slices/S4b.md).
   const services = { ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }) } as Pick<DataLayerOptions, 'geo' | 'rates'>;
-  const layer = createDataLayer(Object.assign({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => TODAY }, services));
+  const layer = createDataLayer(Object.assign({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => today }, services));
   return { layer, controls, network };
 }
