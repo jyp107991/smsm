@@ -6,7 +6,7 @@
 import { useMemo, useState, type SyntheticEvent } from 'react';
 import { formatPlainPounds } from '../../core/money';
 import {
-  addExpense, deleteExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold,
+  addExpense, deleteExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -29,6 +29,7 @@ export function QuickAdd() {
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const [text, setText] = useState('');
+  const { otherWindow } = useSyncStatus();
   const today = layer.today();
   const me = people.me;
 
@@ -97,6 +98,7 @@ export function QuickAdd() {
         <input
           type="text"
           aria-label={strings.home.quickAdd}
+          disabled={otherWindow}
           placeholder={strings.home.quickAddPlaceholder}
           value={text}
           onChange={(e) => { setText(e.target.value); }}

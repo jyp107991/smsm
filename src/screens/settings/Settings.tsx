@@ -205,8 +205,9 @@ function ThemePicker() {
 }
 
 function SignOut() {
-  const { waiting } = useSyncStatus();
+  const { waiting, problems } = useSyncStatus();
   const [confirm, setConfirm] = useState(false);
+  const [counts, setCounts] = useState({ waiting: 0, refused: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (discardWaiting: boolean) => {
@@ -216,7 +217,10 @@ function SignOut() {
       await signOut({ discardWaiting });
       go({ name: 'home' }, { replace: true });
     } catch (err) {
-      if (err instanceof ChangesWaitingError) setConfirm(true);
+      if (err instanceof ChangesWaitingError) {
+        setCounts({ waiting: err.count - err.refused, refused: err.refused });
+        setConfirm(true);
+      }
       else setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
@@ -225,7 +229,12 @@ function SignOut() {
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <Button variant="destructive" loading={busy && !confirm} onClick={() => { if (waiting > 0) setConfirm(true); else void run(false); }}>
+        <Button variant="destructive" loading={busy && !confirm} onClick={() => {
+            if (waiting > 0 || problems.length > 0) {
+              setCounts({ waiting, refused: problems.length });
+              setConfirm(true);
+            } else void run(false);
+          }}>
           {strings.settings.signOut}
         </Button>
       </div>
@@ -241,7 +250,8 @@ function SignOut() {
           </div>
         }
       >
-        <p className="m-0">{strings.settings.signOutWaiting(waiting)}</p>
+        {counts.waiting > 0 ? <p className="m-0">{strings.settings.signOutWaiting(counts.waiting)}</p> : null}
+        {counts.refused > 0 ? <p className="mt-2 mb-0">{strings.settings.signOutRefused(counts.refused)}</p> : null}
         {error ? <p className="text-secondary text-berry mt-3 mb-0" aria-live="polite">{error}</p> : null}
       </Sheet>
     </div>

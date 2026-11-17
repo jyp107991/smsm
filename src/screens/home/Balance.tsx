@@ -5,7 +5,7 @@
  * leaves fall once (about 1.2 s, skippable by touching anything, nothing under reduced motion).
  */
 import { useEffect, useRef, useState } from 'react';
-import { useBalance, useHousehold, useSettlements, type BalanceView } from '../../data';
+import { useBalance, useHousehold, useSettlements, useSyncStatus, type BalanceView } from '../../data';
 import { tickSettled } from '../../ui/haptics';
 import { Button, useToast } from '../../ui/primitives';
 import { Plank, type PlankSeat } from '../../ui/rig/Plank';
@@ -71,6 +71,7 @@ export function BalanceRegion() {
   const toast = useToast();
   const reduced = usePrefersReducedMotion();
   const [moment] = useAllSquareMoment(balance);
+  const { otherWindow } = useSyncStatus();
   const [a, b] = people.list;
   const me = people.me;
 
@@ -143,7 +144,7 @@ export function BalanceRegion() {
           <p className="text-note text-ink-2 m-0 min-h-[1.6rem]">{turn}</p>
           <div className="mt-2 flex min-h-11 items-center">
             {owes ? (
-              <Button variant="plain" onClick={() => { sheets.openSettle({ mode: 'new' }); }}>
+              <Button variant="plain" disabled={otherWindow} onClick={() => { sheets.openSettle({ mode: 'new' }); }}>
                 {strings.home.settleUp}
               </Button>
             ) : null}

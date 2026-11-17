@@ -131,6 +131,7 @@ const LONG_PRESS_MS = 500;
 /** The floating add button (DESIGN §3.3: the one soft shadow). Long press: "Same as last time" (ADD-7). */
 function AddButton() {
   const sheets = useSheets();
+  const { otherWindow } = useSyncStatus();
   const layer = useDataLayer();
   const entries = useEntries().data ?? NO_ENTRIES;
   const people = usePeople();
@@ -164,6 +165,8 @@ function AddButton() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
   };
+  // A read-only window (smsm open in another) adds nothing.
+  if (otherWindow) return null;
 
   return (
     <div className="fixed right-0 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] left-0 z-20 mx-auto flex max-w-lg justify-end px-5 pointer-events-none">

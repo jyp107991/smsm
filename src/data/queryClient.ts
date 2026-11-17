@@ -4,21 +4,28 @@
  * needed, and sends waiting changes, in order, when the phone is back.
  *
  * How the queue survives a restart (OFF-5):
- * - Every money write is a TanStack mutation with the key ['money'] and the shared scope 'money', so they
- *   run one at a time in the order they were made (ADD-6, OFF-2).
+ * - Every money write is a TanStack mutation with the key ['money'] and a scope per person ('money:<id>'),
+ *   so one person's writes run one at a time in the order they were made (ADD-6, OFF-2), and writes left by
+ *   another account on this phone never hold up the person signed in now.
  * - Mutation functions can't be stored, so they are registered by key with `setMutationDefaults` before the
- *   persisted cache is restored; a restored mutation finds its function by its key.
- * - Every waiting write (not only paused ones) is persisted, marked paused, and written to storage as soon as
- *   it is queued (not on the usual throttle). After a restore the paused writes are resumed in order.
+ *   queue is restored; a restored mutation finds its function by its key.
+ * - Every waiting write (not only paused ones) is saved under its own key (`smsm-queue`), apart from the
+ *   cache, as soon as it is queued and whenever the queue changes. So a cache that is discarded (a new
+ *   buster, a corrupt copy) never takes the queue with it. After a restore the writes are resumed in order.
  * - A replay is an upsert by an id made on the phone, so a write that reached the server before its answer
  *   was lost can't be duplicated (OFF-7).
+ * - Only one window owns the queue (windows.ts): two windows of the app on one phone never both send it.
  *
  * Sending: each write waits for the connection (this store's own `network`), the stale-app check and, for an
  * entry made before the partner joined, the partner; a transient failure (no connection, a lost answer, an
  * expired token, a server hiccup) waits and tries again, sooner when the connection returns. A refusal is
  * final: the write leaves the queue (so it leaves what is shown: the rollback) and is kept to fix (OFF-5).
+ * A write that was discarded (sign-out) stops at its next try and is never sent.
  */
-import { MutationObserver, QueryClient, dehydrate, hashKey, type DehydrateOptions, type QueryKey } from '@tanstack/react-query';
+import {
+  MutationObserver, QueryClient, dehydrate, hashKey, hydrate,
+  type DehydratedState, type DehydrateOptions, type QueryKey,
+} from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import {
   persistQueryClientRestore, persistQueryClientSubscribe,
@@ -28,9 +35,7 @@ import { netPositions } from '../core/balance';
 import type { IsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import {
-  ApiError, isTransient, type Api, type AuthUser, type CategoryMemoryRow, type ExpenseRow, type HouseholdRow, type MemberRow, type SettlementRow,
-} from './api';
+import { ApiError, isTransient, type Api, type CategoryMemoryRow, type AuthUser, type ExpenseRow, type HouseholdRow, type MemberRow, type SettlementRow } from './api';
 import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE } from './keys';
 import type { Network } from './network';
 import { createProblemStore, problemFrom, type ProblemStore } from './problems';
@@ -41,12 +46,18 @@ import { createRealtime, type Realtime } from './realtime';
 import { expenseToLedger, settlementToLedger } from './rows';
 import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
+import { claimQueue, OtherWindowError, type QueueLocks, type WindowRole } from './windows';
 import {
-  buildExpense, completeSplit, expenseWrite, opRowId, overlay, overlayMemory, settlementWrite, type MemoryOp, type MoneyOp,
+  completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, settlementWrite,
+  type ExpenseUpsert, type MemoryOp, type MoneyOp,
 } from './writes';
 
 export const CACHE_KEY = 'smsm-cache';
-/** Bump only with a migration of the stored queue: a different buster discards the persisted cache. */
+/** The waiting writes, apart from the cache (OFF-5). */
+export const QUEUE_KEY = 'smsm-queue';
+/** A stored queue that couldn't be read is set aside here, never overwritten. */
+export const QUEUE_UNREADABLE_KEY = 'smsm-queue-unreadable';
+/** Bump only to discard the cached copy of the household (the queue is kept apart and never discarded). */
 export const CACHE_BUSTER = 'smsm-1';
 const RECURRING_DAY_KEY = 'smsm-recurring-day';
 const RECHECK_VERSION_MS = 6 * 60 * 60 * 1000;
@@ -57,6 +68,12 @@ export interface DataLayerOptions {
   storage: AsyncStorage;
   network: Network;
   session: SessionKeeper;
+  /**
+   * Web Locks shared by every window of the app on this phone (`navigator.locks`), so only one owns the
+   * queue (windows.ts). None: this window owns it (no other window can share its storage, or the browser
+   * has no Web Locks).
+   */
+  locks?: QueueLocks | null;
   /** The stale-app check (version.ts); none in the demo. */
   versionCheck?: () => Promise<VersionCheck>;
   /** This app is older than the minimum: ask the service worker for the new version (staleApp.ts). */
@@ -67,7 +84,7 @@ export interface DataLayerOptions {
   report?: (err: unknown, context: Record<string, unknown>) => void;
   onSignedIn?: (user: AuthUser) => void;
   now?: () => Date;
-  /** How often the cache is written to storage at most (writes to the queue are saved at once). */
+  /** How often the cache is written to storage at most (the queue is saved at once). */
   throttleMs?: number;
   /** Wait before trying a write again after a transient failure (default: 1 s doubling to 30 s). */
   retryDelay?: (attempt: number) => number;
@@ -101,14 +118,17 @@ export interface DataLayer {
   settlements(): SettlementRow[];
   /** core netPositions over the phone's copy; empty before the partner joins. */
   balance(): Record<UserId, Pence>;
-  /** The writes still waiting to be sent, oldest first. */
+  /** The writes still waiting to be sent, oldest first: the signed-in person's (everyone's when signed out). */
   waiting(): MoneyOp[];
+  /** Whether this window owns the queue; 'follower' while smsm is open in another window (read-only here). */
+  role(): WindowRole;
+  subscribeRole(cb: () => void): () => void;
   /** True while this app is too old to write and is waiting for the new version. */
   stale(): boolean;
   subscribeStale(cb: () => void): () => void;
   /** Queue a money write; returns at once (the write is shown immediately and sent when possible). */
   enqueue(op: MoneyOp): void;
-  /** Queue what a person's choice taught the app (CAT-3, CAT-4); not counted as a waiting change. */
+  /** Queue what a person's choice taught the app (CAT-3, CAT-4); not counted as a waiting change. Skipped in a read-only window. */
   remember(op: MemoryOp): void;
   /** The household's category memory with waiting choices applied. */
   memory(): CategoryMemoryRow[];
@@ -118,34 +138,45 @@ export interface DataLayer {
   signOut(): Promise<void>;
 }
 
-function isMoneyMutation(m: { options: { mutationKey?: readonly unknown[] } }): boolean {
-  return m.options.mutationKey?.[0] === MONEY_KEY[0];
+function isMoneyMutation(m: { options: { mutationKey?: readonly unknown[] } } | undefined): boolean {
+  return m?.options.mutationKey?.[0] === MONEY_KEY[0];
 }
 
-function isMemoryMutation(m: { options: { mutationKey?: readonly unknown[] } }): boolean {
-  return m.options.mutationKey?.[0] === MEMORY_KEY[0];
+function isMemoryMutation(m: { options: { mutationKey?: readonly unknown[] } } | undefined): boolean {
+  return m?.options.mutationKey?.[0] === MEMORY_KEY[0];
 }
 
-/** Writes that are persisted with the queue: money, and what the app learned (CAT-3). */
-function isQueuedMutation(m: { options: { mutationKey?: readonly unknown[] } }): boolean {
+/** Writes kept in the stored queue: money, and what the app learned from a person's choices (CAT-3). */
+function isQueuedMutation(m: { options: { mutationKey?: readonly unknown[] } } | undefined): boolean {
   return isMoneyMutation(m) || isMemoryMutation(m);
 }
 
+/** One queue per person: another account's waiting writes never hold up this person's. */
+function scopeFor(by: string): { id: string } {
+  return { id: `${MONEY_SCOPE.id}:${by}` };
+}
+
+function memoryScopeFor(by: string): { id: string } {
+  return { id: `${MEMORY_SCOPE.id}:${by}` };
+}
+
+/** The cache holds the household's rows only; the queue is saved apart (QUEUE_KEY). */
 const dehydrateOptions: DehydrateOptions = {
   shouldDehydrateQuery: (q) => q.state.status === 'success' && q.queryKey[0] === 'smsm',
-  // Every waiting write, including one that was mid-request when the app closed: replaying it is safe.
+  shouldDehydrateMutation: () => false,
+};
+
+/** Every waiting write, including one that was mid-request when the app closed: replaying it is safe. */
+const queueDehydrateOptions: DehydrateOptions = {
+  shouldDehydrateQuery: () => false,
   shouldDehydrateMutation: (m) => m.state.status === 'pending' && isQueuedMutation(m),
 };
 
-/** Restored writes are marked paused, so resuming picks up every one of them. */
-function markPaused(pc: PersistedClient): PersistedClient {
-  return {
-    ...pc,
-    clientState: {
-      ...pc.clientState,
-      mutations: pc.clientState.mutations.map((m) => ({ ...m, state: { ...m.state, isPaused: true } })),
-    },
-  };
+type StoredMutation = NonNullable<DehydratedState['mutations']>[number];
+
+function opOf(m: { state?: { variables?: unknown } }): MoneyOp | undefined {
+  const v = m.state?.variables as Partial<MoneyOp> | undefined;
+  return v && typeof v === 'object' && typeof v.opId === 'string' && typeof v.by === 'string' ? (v as MoneyOp) : undefined;
 }
 
 function upsertById<R extends { id: string }>(rows: readonly R[], row: R): R[] {
@@ -156,7 +187,16 @@ function upsertById<R extends { id: string }>(rows: readonly R[], row: R): R[] {
   return next;
 }
 
+/** A write that was discarded (the person signed out and chose to drop it) while it waited to be sent. */
+class DiscardedError extends Error {
+  constructor() {
+    super('discarded');
+    this.name = 'DiscardedError';
+  }
+}
+
 const tick = () => new Promise<void>((r) => { setTimeout(r, 0); });
+const noop = () => undefined;
 
 export function createDataLayer(opts: DataLayerOptions): DataLayer {
   const { api, storage, network, session } = opts;
@@ -164,6 +204,22 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
   const report = opts.report ?? (() => undefined);
   const retryDelay = opts.retryDelay ?? ((attempt: number) => Math.min(1000 * 2 ** attempt, 30_000));
   let disposed = false;
+
+  // ───────── which window owns the queue ─────────
+  let role: WindowRole = 'opening';
+  const roleListeners = new Set<() => void>();
+  const setRole = (next: WindowRole) => {
+    if (role === next) return;
+    role = next;
+    for (const l of roleListeners) l();
+  };
+  const owns = () => role === 'owner' && !disposed;
+  /** Storage as this window may use it: only the owner writes (a follower reads). */
+  const owned: AsyncStorage = {
+    getItem: (k) => storage.getItem(k),
+    setItem: (k, v) => (owns() ? storage.setItem(k, v) : undefined),
+    removeItem: (k) => (owns() ? storage.removeItem(k) : undefined),
+  };
 
   const client = new QueryClient({
     defaultOptions: {
@@ -182,20 +238,38 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     },
   });
 
-  const problems = createProblemStore(storage);
-  const base = createAsyncStoragePersister({ storage, key: CACHE_KEY, throttleTime: opts.throttleMs ?? 250 });
+  const problems = createProblemStore(owned);
+  const base = createAsyncStoragePersister({ storage: owned, key: CACHE_KEY, throttleTime: opts.throttleMs ?? 250 });
+  /** A queue saved inside the cache by the first S2 build; moved to its own key on the first open. */
+  let legacyQueue: StoredMutation[] = [];
   const persister: Persister = {
-    persistClient: (pc) => (disposed ? undefined : base.persistClient(markPaused(pc))),
-    restoreClient: () => base.restoreClient(),
+    persistClient: (pc) => base.persistClient(pc),
+    async restoreClient() {
+      const pc = await base.restoreClient();
+      if (!pc) return pc;
+      legacyQueue = pc.clientState.mutations;
+      return { ...pc, clientState: { ...pc.clientState, mutations: [] } };
+    },
     removeClient: () => base.removeClient(),
   };
   const snapshot = (): PersistedClient => ({ buster: CACHE_BUSTER, timestamp: Date.now(), clientState: dehydrate(client, dehydrateOptions) });
+
+  let queueSaving: Promise<void> = Promise.resolve();
+  /** Writes the waiting writes to their own key (owner only). */
+  function saveQueue(): Promise<void> {
+    if (!owns()) return queueSaving;
+    const { mutations } = dehydrate(client, queueDehydrateOptions);
+    const value = JSON.stringify({ v: 1, mutations });
+    queueSaving = queueSaving.then(async () => { await owned.setItem(QUEUE_KEY, value); }).catch(noop);
+    return queueSaving;
+  }
+
   let flushing: Promise<void> = Promise.resolve();
-  const flush = (): Promise<void> => {
-    if (disposed) return flushing;
-    const value = JSON.stringify(markPaused(snapshot()));
-    flushing = flushing.then(async () => { await storage.setItem(CACHE_KEY, value); }).catch(() => undefined);
-    return flushing;
+  const flush = async (): Promise<void> => {
+    if (!owns()) return;
+    const value = JSON.stringify(snapshot());
+    flushing = flushing.then(async () => { await owned.setItem(CACHE_KEY, value); }).catch(noop);
+    await Promise.all([flushing, saveQueue()]);
   };
 
   const uid = () => userIdOf(session.state());
@@ -263,7 +337,6 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     }
     const hid = me?.household_id;
     if (!hid) return;
-    const noop = () => undefined;
     await Promise.all([
       client.query({ ...householdQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...membersQuery(api, id, hid), staleTime: 0 }).catch(noop),
@@ -278,12 +351,12 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
   }
 
   async function postRecurringOncePerDay(): Promise<void> {
-    if (!network.online || disposed) return;
+    if (!network.online || !owns()) return;
     const today = opts.today();
     try {
       if ((await storage.getItem(RECURRING_DAY_KEY)) === today) return;
       const posted = await api.postDueRecurring();
-      await storage.setItem(RECURRING_DAY_KEY, today);
+      await owned.setItem(RECURRING_DAY_KEY, today);
       const id = uid();
       if (posted > 0 && id) void client.invalidateQueries({ queryKey: keys.expenses(id) });
     } catch {
@@ -293,34 +366,40 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
 
   // ───────── sending ─────────
   /** An entry made before the partner joined gets its shares now, from the people in the household. */
-  async function completeForPartner(op: MoneyOp & { table: 'expenses'; op: 'upsert' }): Promise<ExpenseRow> {
+  async function completeForPartner(op: ExpenseUpsert & { awaitingPartner: true }): Promise<ExpenseRow> {
     const id = uid();
-    const hid = op.row.household_id;
     if (!id) throw new ApiError('auth', 'not signed in');
-    const members = await client.query({ ...membersQuery(api, id, hid), staleTime: 0 });
+    const members = await client.query({ ...membersQuery(api, id, op.row.household_id), staleTime: 0 });
     const [a, b] = members;
     if (!a || !b) throw new ApiError('waiting', 'waiting for the partner to join');
-    const pair = [a.user_id, b.user_id] as const;
     const household = client.getQueryData<HouseholdRow | null>(keys.household(id));
-    const dr = household?.default_ratio;
-    const ratio = dr && typeof dr === 'object' && !Array.isArray(dr) ? (dr as Record<string, number>) : null;
-    const input = { ...op.input, split: completeSplit(op.input.split, pair, ratio) };
-    return buildExpense({ householdId: hid, userId: op.by, members: pair, now: now() }, input, op.row);
+    return completedRow(op, [a.user_id, b.user_id], defaultRatioOf(household), now());
   }
 
   async function sendOnce(op: MoneyOp): Promise<ExpenseRow | SettlementRow> {
     if (op.table === 'expenses') {
       if (op.op === 'patch') return api.patchExpense(op.id, op.patch);
-      const row = op.awaitingPartner ? await completeForPartner(op) : op.row;
-      return api.upsertExpense(expenseWrite(row, op.isNew));
+      const row = op.awaitingPartner === true ? await completeForPartner(op) : op.row;
+      return api.upsertExpense(expenseWrite(row));
     }
-    return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row, op.isNew)) : api.patchSettlement(op.id, op.patch);
+    return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row)) : api.patchSettlement(op.id, op.patch);
+  }
+
+  /** Still in the queue (not discarded by a sign-out). */
+  function queued(op: { opId: string }): boolean {
+    return client.getMutationCache().getAll().some((m) => isQueuedMutation(m) && opOf(m)?.opId === op.opId);
+  }
+
+  async function send(op: MoneyOp): Promise<ExpenseRow | SettlementRow> {
+    return sendWith(op, () => sendOnce(op));
   }
 
   /** Sends one queued write, waiting out anything transient; what is thrown is a refusal. */
-  async function send<T>(op: { opId: string; by: string }, once: () => Promise<T>): Promise<T> {
+  async function sendWith<T>(op: { opId: string; by: string }, once: () => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt += 1) {
       try {
+        // Checked before every try, after every wait: a discarded write is never sent.
+        if (!owns() || !queued(op)) throw new DiscardedError();
         if (!network.online) throw new ApiError('network', 'offline');
         // Made by another account on this phone: wait for that person rather than send it as someone else.
         if (uid() !== op.by) throw new ApiError('auth', 'waiting for the person who made this change to sign in');
@@ -328,6 +407,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
         // Nothing is sent until the check passes; offline ('unknown') it simply waits.
         if (v === 'stale') throw new ApiError('stale', 'this version of the app is too old to save; it is updating');
         if (v === 'unknown') throw new ApiError('network', 'could not check the app version');
+        if (!queued(op)) throw new DiscardedError();
         return await once();
       } catch (err) {
         if (!isTransient(err)) throw err;
@@ -355,12 +435,13 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     scope: MONEY_SCOPE,
     networkMode: 'always',
     retry: 0, // transient failures are retried inside `send`; what reaches TanStack as an error is a refusal
-    mutationFn: (op: MoneyOp) => send(op, () => sendOnce(op)),
+    mutationFn: (op: MoneyOp) => send(op),
     onSuccess: async (row: ExpenseRow | SettlementRow, op: MoneyOp) => {
       problems.resolveRow(opRowId(op));
       await applyServerRow(op, row);
     },
     onError: (err: Error, op: MoneyOp) => {
+      if (err instanceof DiscardedError) return; // dropped on purpose: nothing to tell or keep
       const code = err instanceof ApiError ? err.code : '';
       problems.add(problemFrom(op, err.message, code, now()));
       report(err, { what: 'write refused', table: op.table, op: op.op, id: opRowId(op) });
@@ -371,30 +452,33 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     scope: MEMORY_SCOPE,
     networkMode: 'always',
     retry: 0,
-    mutationFn: (op: MemoryOp) => send(op, () => api.upsertCategoryMemory(op.row)),
+    mutationFn: (op: MemoryOp) => sendWith(op, () => api.upsertCategoryMemory(op.row)),
     onSuccess: (row: CategoryMemoryRow) => {
       const id = uid();
       if (!id || client.getQueryData(keys.memory(id)) === undefined) return;
       client.setQueryData<CategoryMemoryRow[]>(keys.memory(id), (old) => [...(old ?? []).filter((r) => r.key !== row.key), row]);
     },
     // The app's memory, not the person's entry: a refusal (the category was removed meanwhile) is dropped
-    // quietly and reported, and the next choice for that description teaches it again.
+    // quietly and reported; the next choice for that description teaches it again.
     onError: (err: Error, op: MemoryOp) => {
+      if (err instanceof DiscardedError) return;
       report(err, { what: 'category memory refused', key: op.row.key });
     },
   });
 
   function memoryWaiting(): MemoryOp[] {
+    const me = uid();
     return client
       .getMutationCache()
       .findAll({ mutationKey: MEMORY_KEY, status: 'pending' })
       .map((m) => m.state.variables as MemoryOp | undefined)
-      .filter((v): v is MemoryOp => v !== undefined);
+      .filter((v): v is MemoryOp => v !== undefined && v.by === me);
   }
 
   function remember(op: MemoryOp): void {
-    if (disposed) throw new Error('This store has been closed.');
-    const observer = new MutationObserver<CategoryMemoryRow, Error, MemoryOp>(client, { mutationKey: MEMORY_KEY });
+    // Learning is a nicety: a read-only window (smsm open elsewhere) simply doesn't learn this time.
+    if (disposed || role !== 'owner') return;
+    const observer = new MutationObserver<CategoryMemoryRow, Error, MemoryOp>(client, { mutationKey: MEMORY_KEY, scope: memoryScopeFor(op.by) });
     observer
       .mutate(op)
       .catch(() => undefined)
@@ -406,27 +490,71 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     return id ? overlayMemory(rows<CategoryMemoryRow>(keys.memory(id)), memoryWaiting()) : [];
   }
 
-  function waiting(): MoneyOp[] {
+  function waitingAll(): MoneyOp[] {
     return client
       .getMutationCache()
       .findAll({ mutationKey: MONEY_KEY, status: 'pending' })
-      .map((m) => m.state.variables as MoneyOp | undefined)
+      .map(opOf)
       .filter((v): v is MoneyOp => v !== undefined);
+  }
+
+  function waiting(): MoneyOp[] {
+    const me = uid();
+    return waitingAll().filter((op) => me === null || op.by === me);
   }
 
   function enqueue(op: MoneyOp): void {
     if (disposed) throw new Error('This store has been closed.');
-    const observer = new MutationObserver<ExpenseRow | SettlementRow, Error, MoneyOp>(client, { mutationKey: MONEY_KEY });
+    if (role !== 'owner') throw new OtherWindowError();
+    const observer = new MutationObserver<ExpenseRow | SettlementRow, Error, MoneyOp>(client, { mutationKey: MONEY_KEY, scope: scopeFor(op.by) });
     observer
       .mutate(op)
-      .catch(() => undefined) // handled by the defaults' onError
+      .catch(noop) // handled by the defaults' onError
       .finally(() => { observer.reset(); });
   }
 
   function resume(): void {
     // Straight to the mutation cache: TanStack's own resume also consults the browser-wide online flag.
-    if (!disposed) void client.getMutationCache().resumePausedMutations();
+    if (owns()) void client.getMutationCache().resumePausedMutations();
     wake();
+  }
+
+  /** Puts the stored queue back (owner only). An older app's queue in the cache is taken only if there is no queue of its own yet. */
+  async function restoreQueue(): Promise<void> {
+    let raw: string | null | undefined = null;
+    let stored: StoredMutation[] = [];
+    try {
+      raw = await storage.getItem(QUEUE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { mutations?: unknown } | null;
+        if (!parsed || !Array.isArray(parsed.mutations)) throw new Error('the stored queue has no list of writes');
+        stored = parsed.mutations as StoredMutation[];
+      }
+    } catch (err) {
+      // Never overwrite what can't be read: it is set aside (and reported) before the queue is saved again.
+      if (raw) await Promise.resolve(owned.setItem(QUEUE_UNREADABLE_KEY, raw)).catch(noop);
+      report(err, { what: 'stored queue unreadable' });
+    }
+    const candidates = raw == null ? legacyQueue : stored;
+    const present = new Set(waitingAll().map((op) => op.opId));
+    const mutations: StoredMutation[] = [];
+    for (const item of candidates as unknown[]) {
+      // Read from storage: anything could be there.
+      const m = item as StoredMutation;
+      const op = item && typeof item === 'object' ? opOf(m) : undefined;
+      if (!op || present.has(op.opId)) continue;
+      present.add(op.opId);
+      // Marked paused so resuming picks up every one; in this person's own queue.
+      const learned = m.mutationKey?.[0] === MEMORY_KEY[0];
+      mutations.push({
+        ...m,
+        mutationKey: learned ? [...MEMORY_KEY] : [...MONEY_KEY],
+        scope: learned ? memoryScopeFor(op.by) : scopeFor(op.by),
+        state: { ...m.state, isPaused: true },
+      });
+    }
+    legacyQueue = [];
+    hydrate(client, { mutations, queries: [] });
   }
 
   // ───────── reads of the phone's copy ─────────
@@ -437,9 +565,14 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     const id = uid();
     return id ? rows<MemberRow>(keys.members(id)) : [];
   }
+  function household(): HouseholdRow | null {
+    const id = uid();
+    return id ? (client.getQueryData<HouseholdRow | null>(keys.household(id)) ?? null) : null;
+  }
   function entries(): ExpenseRow[] {
     const id = uid();
-    return id ? overlay(rows<ExpenseRow>(keys.expenses(id)), waiting(), 'expenses') : [];
+    // BAL-6: an entry made before the partner joined shows its shares as soon as both people are known.
+    return id ? overlay(rows<ExpenseRow>(keys.expenses(id)), waiting(), 'expenses', partnerCompleter(members(), household())) : [];
   }
   function settlements(): SettlementRow[] {
     const id = uid();
@@ -458,12 +591,13 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       const busy =
         client.isFetching() > 0 ||
         client.getMutationCache().findAll({ status: 'pending', predicate: isQueuedMutation }).some((m) => {
-          const op = m.state.variables as { opId: string } | undefined;
+          const op = opOf(m);
           return !m.state.isPaused && !(op && waitingOps.has(op.opId));
         });
       quiet = busy ? 0 : quiet + 1;
     }
     await flush();
+    await queueSaving;
     await problems.saved();
   }
 
@@ -476,22 +610,48 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     if (st.status === 'signed-in') opts.onSignedIn?.({ userId: st.userId, email: null });
   };
 
+  /** This window now owns the queue: put it back, keep it saved, send it. */
+  async function startOwning(): Promise<void> {
+    await restoreQueue();
+    cleanups.push(persistQueryClientSubscribe({ queryClient: client, persister, buster: CACHE_BUSTER, dehydrateOptions }));
+    // The queue goes to storage the moment it changes, not on the throttle.
+    cleanups.push(
+      client.getMutationCache().subscribe((event) => {
+        if (!isQueuedMutation(event.mutation)) return;
+        const changed = event.type === 'removed' || (event.type === 'updated' && ['pending', 'success', 'error'].includes(event.action.type));
+        if (changed) void saveQueue();
+      }),
+    );
+    await saveQueue();
+  }
+
+  /** The window that owned the queue closed and handed this one the lock. */
+  async function takeOver(): Promise<void> {
+    await ready.catch(noop);
+    if (disposed) return;
+    setRole('owner');
+    await problems.load();
+    await startOwning();
+    resume();
+    if (network.online && uid()) {
+      void refresh();
+      void postRecurringOncePerDay();
+    }
+  }
+
+  const claim = claimQueue(opts.locks, () => { void takeOver(); });
+
   let restored = false;
   const ready = (async () => {
     client.mount();
+    setRole(await claim.role);
     await problems.load();
     try {
       await persistQueryClientRestore({ queryClient: client, persister, maxAge: Infinity, buster: CACHE_BUSTER });
     } catch {
-      /* a corrupt store is discarded by the restore itself; start empty */
+      /* a corrupt cache is discarded by the restore itself; the queue is kept apart */
     }
-    cleanups.push(persistQueryClientSubscribe({ queryClient: client, persister, buster: CACHE_BUSTER, dehydrateOptions }));
-    // A newly queued write goes to storage at once, not on the throttle.
-    cleanups.push(
-      client.getMutationCache().subscribe((event) => {
-        if (event.type === 'updated' && event.action.type === 'pending' && isQueuedMutation(event.mutation)) void flush();
-      }),
-    );
+    if (owns()) await startOwning();
     cleanups.push(
       client.getQueryCache().subscribe((event) => {
         const id = uid();
@@ -550,12 +710,19 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     }
   })();
 
-  async function forget(): Promise<void> {
-    client.getMutationCache().clear();
-    client.getQueryCache().clear();
-    problems.clear();
+  /** Clears what this phone keeps for `me` (everyone's, when nobody is known). Their waiting writes stop. */
+  async function forget(me: string | null): Promise<void> {
+    const cache = client.getMutationCache();
+    for (const m of cache.getAll()) {
+      if (isQueuedMutation(m) && (me === null || opOf(m)?.by === me)) cache.remove(m);
+    }
+    if (me) client.removeQueries({ queryKey: keys.all(me) });
+    else client.getQueryCache().clear();
+    for (const p of problems.list()) if (me === null || p.by === undefined || p.by === me) problems.dismiss(p.id);
+    wake(); // the discarded writes stop waiting now, and end without sending
     await persister.removeClient();
-    await storage.removeItem(RECURRING_DAY_KEY);
+    await saveQueue();
+    await owned.removeItem(RECURRING_DAY_KEY);
   }
 
   return {
@@ -573,10 +740,11 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     refresh,
     async dispose() {
       if (disposed) return;
-      await ready.catch(() => undefined);
+      await ready.catch(noop);
       await flush();
       await problems.saved();
       disposed = true;
+      claim.release();
       for (const c of cleanups.splice(0)) c();
       realtime.stop();
       client.unmount();
@@ -585,14 +753,16 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     me: uid,
     householdId,
     members,
-    household: () => {
-      const id = uid();
-      return id ? (client.getQueryData<HouseholdRow | null>(keys.household(id)) ?? null) : null;
-    },
+    household,
     entries,
     settlements,
     balance,
     waiting,
+    role: () => role,
+    subscribeRole(cb) {
+      roleListeners.add(cb);
+      return () => { roleListeners.delete(cb); };
+    },
     stale: () => version.state === 'stale',
     subscribeStale(cb) {
       staleListeners.add(cb);
@@ -603,8 +773,11 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     memory,
     flush,
     async signOut() {
+      // Signing out clears storage the window that owns the queue relies on.
+      if (role !== 'owner') throw new OtherWindowError();
+      const me = uid();
       await api.auth.signOut();
-      await forget();
+      await forget(me);
     },
   };
 }

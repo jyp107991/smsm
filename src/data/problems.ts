@@ -40,12 +40,22 @@ export interface WriteProblem {
   at: string;
   /** What the person had entered, so the form can open with it to fix (upserts only). */
   row: ExpenseRow | SettlementRow | null;
+  /** Who made the write (absent in problems kept before this field existed). */
+  by?: string;
 }
+
+const MONEY_REFUSAL = new RegExp([
+  'must sum to amount', 'must add up to the amount', 'must not be negative', 'can’t be negative', 'paid-for-the-other',
+  'paid for the other', 'treat: whoever pays', 'treat is covered', 'whole pence', 'must be more than £0\\.00',
+  '_amount_pence_check', 'violates check constraint "settlements_check"', 'invalid input syntax for type bigint',
+].join('|'), 'i');
 
 export function refusalReason(message: string, code: string): RefusalReason {
   if (code === '42501' || /row-level security|permission denied/i.test(message)) return 'not-allowed';
-  if (/non-member/i.test(message)) return 'not-member';
-  if (/must sum|negative|paid-for-the-other|treat|amount|check constraint/i.test(message)) return 'money';
+  if (/non-member|only the two of you/i.test(message)) return 'not-member';
+  // The database's own money checks (check_money, the amount constraints) and the phone's (validateEntry);
+  // not any message that merely mentions an amount (e.g. a column the server doesn't know).
+  if (MONEY_REFUSAL.test(message)) return 'money';
   if (code === 'PGRST116' || /no row/i.test(message)) return 'missing';
   if (code === '23503' || /foreign key/i.test(message)) return 'category';
   return 'other';
@@ -65,6 +75,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
     detail: message.slice(0, 500),
     at: now.toISOString(),
     row: op.op === 'upsert' ? op.row : null,
+    by: op.by,
   };
 }
 

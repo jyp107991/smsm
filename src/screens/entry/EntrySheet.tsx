@@ -121,9 +121,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       if (request.mode === 'edit' && existing) {
         id = existing.id;
         const before = draftOf(initial, pair);
-        editExpense(id, draft);
+        // Only what changed is sent: a new description or date never rebuilds the money (ACT-5).
+        const patch = 'draft' in before ? changedFields(before.draft, draft, picked.current.split) : draft;
+        editExpense(id, patch);
         undo = () => {
-          if ('draft' in before) editExpense(id, before.draft);
+          if ('draft' in before) editExpense(id, changedFields(draft, before.draft, true));
         };
       } else {
         id = addExpense(draft);
@@ -353,6 +355,21 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     </form>
     </Sheet>
   );
+}
+
+/** The fields of an edit that differ from where the form started (the split when it was touched or differs). */
+function changedFields(from: ExpenseDraft, to: ExpenseDraft, splitTouched: boolean): Partial<ExpenseDraft> {
+  const out: Partial<ExpenseDraft> = {};
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  if (to.description !== from.description) out.description = to.description;
+  if (to.amount !== from.amount) out.amount = to.amount;
+  if (to.date !== from.date) out.date = to.date;
+  if (to.categoryId !== from.categoryId) out.categoryId = to.categoryId;
+  if (to.payer !== from.payer) out.payer = to.payer;
+  if (splitTouched || !same(to.split, from.split)) out.split = to.split;
+  if (!same(to.notes, from.notes)) out.notes = to.notes ?? null;
+  if (!same(to.tags, from.tags)) out.tags = to.tags ?? [];
+  return out;
 }
 
 /** A field group with a small visible label (the controls name themselves for screen readers). */

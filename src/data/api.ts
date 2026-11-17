@@ -24,12 +24,12 @@ export const EXPENSE_WRITE_COLUMNS = [
   'id', 'household_id', 'kind', 'description', 'amount_pence', 'date', 'category_id', 'chapter_id', 'paid', 'paid_via',
   'split_mode', 'split_params', 'shares', 'notes', 'tags', 'country', 'refund_of', 'source',
 ] as const satisfies readonly (keyof ExpenseRow)[];
-export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]> & { created_by?: string };
+export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]>;
 
 export const SETTLEMENT_WRITE_COLUMNS = [
   'id', 'household_id', 'from_user', 'to_user', 'amount_pence', 'date', 'note', 'method',
 ] as const satisfies readonly (keyof SettlementRow)[];
-export type SettlementWrite = Pick<SettlementRow, (typeof SETTLEMENT_WRITE_COLUMNS)[number]> & { created_by?: string };
+export type SettlementWrite = Pick<SettlementRow, (typeof SETTLEMENT_WRITE_COLUMNS)[number]>;
 
 export interface SoftDeletePatch { deleted_at: string | null }
 
@@ -192,7 +192,9 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     decideChange: async (id, approve) => { unwrap(await db.rpc('decide_change', { p_id: id, p_approve: approve })); },
     postDueRecurring: async () => unwrap(await db.rpc('post_due_recurring', {})) ?? 0,
     watchHousehold(householdId, onChange, onStatus) {
-      const channel = db.channel(`household:${householdId}`);
+      // A topic of its own each time: supabase-js hands back an existing channel with the same topic, so a
+      // follow right after a stop (whose removal is still in flight) would get the closing one.
+      const channel = db.channel(`household:${householdId}:${crypto.randomUUID()}`);
       for (const table of Object.keys(TABLE_FILTER) as WatchedTable[]) {
         channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `${TABLE_FILTER[table]}=eq.${householdId}` }, () => {
           onChange(table);

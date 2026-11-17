@@ -36,7 +36,7 @@ export function Activity() {
   const settlements = useSettlements().data;
   const categories = useCategories().data ?? [];
   const people = usePeople();
-  const { pendingIds } = useSyncStatus();
+  const { pendingIds, otherWindow } = useSyncStatus();
   const today = layer.today();
   // Filters live with the screen: opening Activity again starts afresh.
   const [text, setText] = useState('');
@@ -151,7 +151,9 @@ export function Activity() {
               <ul className="m-0 list-none p-0">
                 {d.items.map((i) => (
                   <li key={i.row.id} className="border-line border-b last:border-b-0">
-                    {i.kind === 'expense' ? (
+                    {i.kind === 'expense' && otherWindow ? (
+                      <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} />
+                    ) : i.kind === 'expense' ? (
                       <Swipeable row={i.row} people={people.list} today={today}>
                         <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} />
                       </Swipeable>

@@ -635,11 +635,13 @@ export class FakeServer {
         receipt_path: null, source: 'manual', external_id: null, merchant: null, external_category: null, account_id: null, recurring_id: null,
         occurrence_date: null, refund_of: null, created_by: actor, created_at: at, updated_by: actor, updated_at: at, deleted_at: null,
         ...row,
+        // Like migration 5: a signed-in person is always recorded as the creator, whatever was sent.
+        ...(actor ? { created_by: actor, updated_by: actor } : {}),
         id: row.id ?? this.uuid(),
       };
     }
     if (table === 'settlements') {
-      return { note: null, method: 'other', created_by: actor, created_at: at, updated_at: at, deleted_at: null, ...row, id: row.id ?? this.uuid() };
+      return { note: null, method: 'other', created_by: actor, created_at: at, updated_at: at, deleted_at: null, ...row, ...(actor ? { created_by: actor } : {}), id: row.id ?? this.uuid() };
     }
     return keyOf(table).includes('id') ? { ...row, id: row.id ?? this.uuid() } : { ...row };
   }

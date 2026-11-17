@@ -4,7 +4,7 @@
  * as tabs (Bills and Insights wait for S3 and S5), the entry page and Settings, and the two sheets.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
-import { useHousehold, useSession } from '../data';
+import { useHousehold, useSession, useSyncStatus } from '../data';
 import { FEATURES } from '../ui/features';
 import { BottomTabs, Button, MAIN_TABS, TabPanel, ToastProvider, type MainTab } from '../ui/primitives';
 import { go, useRoute, type Route } from '../ui/router';
@@ -78,6 +78,17 @@ function Page({ route }: { route: Route }) {
   }
 }
 
+/** smsm open twice on this phone: only the first window saves; this one shows, and says so. */
+function OtherWindowNote() {
+  const { otherWindow } = useSyncStatus();
+  if (!otherWindow) return null;
+  return (
+    <p role="note" className="bg-sunk text-secondary text-ink mx-auto mt-[max(0.75rem,env(safe-area-inset-top))] mb-0 max-w-lg rounded-[12px] px-4 py-3">
+      {strings.windows.otherWindow}
+    </p>
+  );
+}
+
 function MainApp() {
   const route = useRoute();
   const [lastTab, setLastTab] = useState<MainTab>('home');
@@ -110,6 +121,7 @@ function MainApp() {
             }}
           >
             <TabPanel value={tab}>
+              <OtherWindowNote />
               <Page route={route} />
             </TabPanel>
           </BottomTabs>

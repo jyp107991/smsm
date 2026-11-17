@@ -14,6 +14,10 @@ export const strings = {
     later: 'Later',
     offlineReady: 'Ready to work offline',
   },
+  /** smsm open twice on one phone: only one window saves (src/data/windows.ts). */
+  windows: {
+    otherWindow: 'smsm is open in another window. Make changes there; this one only shows them.',
+  },
   rig: {
     kind: { cat: 'the cat', dog: 'the dog' },
     plank: (left: string, right: string, higher: 'left' | 'right' | 'level') =>
@@ -320,6 +324,8 @@ export const strings = {
     signOutWaitingTitle: 'Changes haven’t synced yet',
     signOutWaiting: (n: number) =>
       `${n === 1 ? '1 change hasn’t' : `${String(n)} changes haven’t`} reached the server. Signing out now would lose ${n === 1 ? 'it' : 'them'}.`,
+    signOutRefused: (n: number) =>
+      `${n === 1 ? '1 entry the server refused is' : `${String(n)} entries the server refused are`} kept on this phone for you to fix; signing out would lose ${n === 1 ? 'it' : 'them'} too.`,
     keepSignedIn: 'Stay signed in',
     signOutAnyway: 'Sign out anyway',
   },

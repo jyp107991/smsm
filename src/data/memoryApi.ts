@@ -47,6 +47,8 @@ export interface MemoryControls {
   emitStatus(status: ChannelStatus): void;
   /** Resolves when every call made so far has finished. */
   settle(): Promise<void>;
+  /** Who the "server" sees as signed in (another account on the same phone, in tests). */
+  signInAs(user: AuthUser | null): void;
 }
 
 const DEFAULT_CATEGORIES: readonly [string, string, string][] = [
@@ -104,6 +106,9 @@ export function createMemoryApi(
     },
     async settle() {
       while (inflight.size > 0) await Promise.allSettled([...inflight]);
+    },
+    signInAs(u) {
+      user = u;
     },
   };
 

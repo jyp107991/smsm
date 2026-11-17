@@ -63,7 +63,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const people = usePeople();
   const categories = useCategories().data ?? [];
   const entries = useEntries().data ?? [];
-  const { pendingIds } = useSyncStatus();
+  const { pendingIds, otherWindow: readOnly } = useSyncStatus();
   const today = layer.today();
   const category = categories.find((c) => c.id === row.category_id);
   const payer = people.list.find((p) => p.id === payerOf(row.paid, people.list));
@@ -110,7 +110,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         <Detail label={strings.entry.date}>{formatDay(row.date, today)}</Detail>
         {row.notes ? <Detail label={strings.entry.note}>{row.notes}</Detail> : null}
       </dl>
-      <div className="flex flex-wrap gap-3">
+      <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
           <Button
             onClick={() => {
@@ -140,7 +140,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
             </Button>
           </>
         )}
-      </div>
+      </fieldset>
     </article>
   );
 }
@@ -150,7 +150,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
   const toast = useToast();
   const sheets = useSheets();
   const people = usePeople();
-  const { pendingIds } = useSyncStatus();
+  const { pendingIds, otherWindow: readOnly } = useSyncStatus();
   const from = people.list.find((p) => p.id === row.from_user);
   const to = people.list.find((p) => p.id === row.to_user);
   const heading = strings.activity.settled(from?.name ?? '', to?.name ?? '', formatPence(pence(row.amount_pence)));
@@ -171,7 +171,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
         {row.method === 'monzo' ? <Detail label={strings.settle.title}>{strings.entry.viaMonzo}</Detail> : null}
         {row.note ? <Detail label={strings.entry.note}>{row.note}</Detail> : null}
       </dl>
-      <div className="flex flex-wrap gap-3">
+      <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
           <Button onClick={() => { restoreSettlement(row.id); toast.show({ message: strings.entry.restored(heading) }); }}>
             {strings.entry.restore}
@@ -194,7 +194,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
             </Button>
           </>
         )}
-      </div>
+      </fieldset>
     </article>
   );
 }

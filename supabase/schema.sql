@@ -359,6 +359,28 @@ begin
 end $_$;
 
 --
+-- Name: stamp_author(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.stamp_author() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then
+      new.created_by := auth.uid();
+      if tg_table_name = 'expenses' then new.updated_by := auth.uid(); end if;
+    end if;
+  else
+    -- Nobody changes who made a row, whoever asks.
+    new.created_by := old.created_by;
+    if tg_table_name = 'expenses' and auth.uid() is not null then new.updated_by := auth.uid(); end if;
+  end if;
+  return new;
+end $$;
+
+--
 -- Name: stamp_update(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -498,7 +520,7 @@ CREATE TABLE public.chapters (
     start_date date,
     end_date date,
     closed boolean DEFAULT false NOT NULL,
-    created_by uuid,
+    created_by uuid DEFAULT auth.uid(),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chapters_check CHECK (((end_date IS NULL) OR (start_date IS NULL) OR (end_date >= start_date))),
@@ -587,7 +609,7 @@ CREATE TABLE public.expenses (
     recurring_id uuid,
     occurrence_date date,
     refund_of uuid,
-    created_by uuid,
+    created_by uuid DEFAULT auth.uid(),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by uuid,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -657,7 +679,7 @@ CREATE TABLE public.inbox_items (
     occurrence_date date,
     external_id text,
     expense_id uuid,
-    created_by uuid,
+    created_by uuid DEFAULT auth.uid(),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT inbox_items_source_check CHECK ((source = ANY (ARRAY['bill'::text, 'scan'::text, 'share'::text, 'monzo'::text]))),
@@ -702,7 +724,7 @@ CREATE TABLE public.settlements (
     date date DEFAULT CURRENT_DATE NOT NULL,
     note text,
     method text DEFAULT 'other'::text NOT NULL,
-    created_by uuid,
+    created_by uuid DEFAULT auth.uid(),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
@@ -768,7 +790,7 @@ CREATE TABLE public.recurring (
     posted_count integer DEFAULT 0 NOT NULL,
     active boolean DEFAULT true NOT NULL,
     notes text,
-    created_by uuid,
+    created_by uuid DEFAULT auth.uid(),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT recurring_amount_pence_check CHECK ((amount_pence > 0)),
@@ -1019,10 +1041,22 @@ CREATE UNIQUE INDEX members_one_household ON public.members USING btree (user_id
 CREATE TRIGGER categories_stamp BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
+-- Name: chapters chapters_author; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER chapters_author BEFORE INSERT OR UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
+
+--
 -- Name: chapters chapters_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER chapters_stamp BEFORE UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
+
+--
+-- Name: expenses expenses_author; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER expenses_author BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: expenses expenses_check_money; Type: TRIGGER; Schema: public; Owner: -
@@ -1049,6 +1083,12 @@ CREATE TRIGGER expenses_stamp BEFORE UPDATE ON public.expenses FOR EACH ROW EXEC
 CREATE TRIGGER households_guard BEFORE UPDATE ON public.households FOR EACH ROW EXECUTE FUNCTION public.guard_household();
 
 --
+-- Name: inbox_items inbox_items_author; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER inbox_items_author BEFORE INSERT OR UPDATE ON public.inbox_items FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
+
+--
 -- Name: inbox_items inbox_items_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1059,6 +1099,12 @@ CREATE TRIGGER inbox_items_stamp BEFORE UPDATE ON public.inbox_items FOR EACH RO
 --
 
 CREATE TRIGGER members_guard BEFORE UPDATE ON public.members FOR EACH ROW EXECUTE FUNCTION public.guard_member_identity();
+
+--
+-- Name: recurring recurring_author; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER recurring_author BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: recurring recurring_check_money; Type: TRIGGER; Schema: public; Owner: -
@@ -1077,6 +1123,12 @@ CREATE TRIGGER recurring_log AFTER INSERT OR UPDATE ON public.recurring FOR EACH
 --
 
 CREATE TRIGGER recurring_stamp BEFORE UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
+
+--
+-- Name: settlements settlements_author; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER settlements_author BEFORE INSERT OR UPDATE ON public.settlements FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: settlements settlements_log; Type: TRIGGER; Schema: public; Owner: -
@@ -1779,6 +1831,14 @@ GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO service
 REVOKE ALL ON FUNCTION public.set_monzo_me(p_username text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO authenticated;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO service_role;
+
+--
+-- Name: FUNCTION stamp_author(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.stamp_author() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.stamp_author() TO authenticated;
+GRANT ALL ON FUNCTION public.stamp_author() TO service_role;
 
 --
 -- Name: FUNCTION stamp_update(); Type: ACL; Schema: public; Owner: -

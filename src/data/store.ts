@@ -13,6 +13,7 @@ import type { Network } from './network';
 import { createDataLayer, type DataLayer } from './queryClient';
 import { createSessionKeeper } from './session';
 import { checkClientVersion } from './version';
+import type { QueueLocks } from './windows';
 import type { ExpenseDraft, SettlementDraft } from './writes';
 
 /** idb-keyval-shaped; the persisted cache, the queue and kept-back writes live here. */
@@ -34,6 +35,8 @@ export interface StoreDeps {
   onStale?: () => void;
   report?: (err: unknown, context: Record<string, unknown>) => void;
   onSignedIn?: (user: AuthUser) => void;
+  /** Web Locks shared by the app's windows on this phone (windows.ts); none: this is the only window. */
+  locks?: QueueLocks | null;
 }
 
 export interface RefusedChange {
@@ -91,6 +94,7 @@ export function createStore(deps: StoreDeps): Store {
     ...(deps.onStale ? { onStale: deps.onStale } : {}),
     ...(deps.report ? { report: deps.report } : {}),
     ...(deps.onSignedIn ? { onSignedIn: deps.onSignedIn } : {}),
+    ...(deps.locks ? { locks: deps.locks } : {}),
   });
   return storeOver(layer, () => { session.dispose(); });
 }
@@ -112,7 +116,7 @@ export function storeOver(layer: DataLayer, onDispose: () => void = () => undefi
     settlements: () => layer.settlements(),
     balance: () => layer.balance(),
     pendingCount: () => layer.waiting().length,
-    refused: () => layer.problems.list().map((p) => ({ id: p.rowId, message: p.message, input: p.input })),
+    refused: () => m.refusedFor(layer).map((p) => ({ id: p.rowId, message: p.message, input: p.input })),
     addExpense: (input) => m.addExpense(input, layer),
     editExpense: (id, patch) => { m.editExpense(id, patch, layer); },
     deleteExpense: (id) => { m.deleteExpense(id, layer); },
