@@ -23,7 +23,7 @@ test('BAL-1 BAL-2 BAL-3 BAL-4: the sentence, the plank and whose turn, on both p
     await expectSentence(p.page, 'All square');
     expect(await tilt(p.page)).toBe(0);
     await expect(balanceRegion(p.page).getByRole('button', { name: 'Settle up' })).toBeHidden();
-    await expect(balanceRegion(p.page).getByText(/Next one's on/)).toBeHidden();
+    await expect(balanceRegion(p.page).getByText(/Next one’s on/)).toBeHidden();
     await expect(balanceRegion(p.page).getByRole('img', { name: /level/ })).toBeVisible();
   }
 
@@ -31,15 +31,15 @@ test('BAL-1 BAL-2 BAL-3 BAL-4: the sentence, the plank and whose turn, on both p
   await quickAdd(jae.page, '8 coffee');
   for (const p of [jae, sam]) {
     await expectSentence(p.page, 'Sam owes Jae £4.00');
-    await expect(balanceRegion(p.page).getByText(/Next one's on/)).toBeHidden();
+    await expect(balanceRegion(p.page).getByText(/Next one’s on/)).toBeHidden();
     await expect(balanceRegion(p.page).getByRole('button', { name: 'Settle up' })).toBeVisible();
   }
 
-  // £10 or more: "Next one's on Sam", on both phones.
+  // £10 or more: "Next one’s on Sam", on both phones.
   await quickAdd(jae.page, '30 cinema');
   for (const p of [jae, sam]) {
     await expectSentence(p.page, 'Sam owes Jae £19.00');
-    await expect(balanceRegion(p.page).getByText("Next one's on Sam")).toBeVisible();
+    await expect(balanceRegion(p.page).getByText("Next one’s on Sam")).toBeVisible();
     // BAL-3: tilt in proportion; the person owed (Jae, the cat) sits higher.
     await expect.poll(() => tilt(p.page).then(Math.abs)).toBeCloseTo(Math.abs(plankTilt(1900)), 5);
     await expect(balanceRegion(p.page).getByRole('img', { name: 'The plank tilts: the cat sits higher than the dog' })).toBeVisible();
@@ -56,12 +56,12 @@ test('BAL-1 BAL-2 BAL-3 BAL-4: the sentence, the plank and whose turn, on both p
   await quickAdd(sam.page, '50 Big shop');
   for (const p of [jae, sam]) {
     await expectSentence(p.page, 'Jae owes Sam £6.00');
-    await expect(balanceRegion(p.page).getByText(/Next one's on/)).toBeHidden();
+    await expect(balanceRegion(p.page).getByText(/Next one’s on/)).toBeHidden();
     await expect(balanceRegion(p.page).getByRole('img', { name: 'The plank tilts: the dog sits higher than the cat' })).toBeVisible();
   }
   // Big balances cap the tilt.
   await quickAdd(sam.page, '1,200 Sofa');
   await expectSentence(jae.page, 'Jae owes Sam £606.00');
-  await expect(balanceRegion(jae.page).getByText("Next one's on Jae")).toBeVisible();
+  await expect(balanceRegion(jae.page).getByText("Next one’s on Jae")).toBeVisible();
   await expect.poll(() => tilt(jae.page).then(Math.abs)).toBe(8);
 });

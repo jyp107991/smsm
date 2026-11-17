@@ -2,6 +2,21 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~08:00 UTC: STOPPED BY THE ACCOUNT'S WEEKLY USAGE LIMIT (resets 22 Nov, 16:00 UTC) — exact handoff
+**Where things stand**
+- `main` (live): S0, S1, the gallery with owner feedback round 1 (deploy 3). Untouched since; safe.
+- Branch `ccr-d34ab85d-b429dn` (not merged): the whole of S2 so far — data layer + review fixes, all S2 screens, the two-user e2e suite and its CI job, and most of the screens-review fixes. Locally: 1,040 unit tests, 47 SQL checks, production build clean.
+- Screens-review fixes DONE (with tests): duplicating a money-back keeps it money-back; Monzo offered only to the person who owes; Undo of an edit; no swipes on deleted rows; plain-word errors; sign-out forgets a pending "Did it go through?"; refunds dated today; the "Next one’s on" apostrophe aligned in specs/docs; setup-join spec goes Home before checking the sentence.
+- Screens-review fixes NOT DONE: focus returns to the opener when a sheet/long-press menu closes (and the menu registers with the history coordinator); the Add button overlapping Quick add at 320×640 and the Saved toast covering it; category chips shifting (pass `c.colour`, fixed slot for the suggested dot; "Other" shows tick + "•"); settle-up "more than is owed" line; reword "…went through in Monzo, it’s recorded here"; Exact/validation messages into `strings.ts`.
+- Two-user suite, first full CI run (run 44032201912, job 133866629629, traces in artifact 14306161676): **1 passed, ~19 failed in 11 min**. Not yet diagnosed. So many failing together suggests one shared cause early in the flow (sign-in via Mailpit, setup, or app wiring against the local stack).
+
+**Next actions, in order (new session: "Continue from docs/BUILD_LOG.md")**
+1. Read the first failing scenario's error in the job log (or download the artifact) and fix the shared cause; push and let the two-user job run WITHOUT pushing again until it finishes (a push cancels the running job).
+2. Finish the open screens-review fixes above (failing test first).
+3. PR to main when CI (incl. two-user) is green → deploy → smoke.
+4. Nightly off-site backup (EXP-2) needs a private destination (the repo is public): propose a private `smsm-backups` repo or Cloudflare R2 to the owner.
+5. Owner answers still outstanding: logo A/B/C, type A/B/C, fifth colour A/B, approve the 4 Auth changes, the sign-in email sender (recommended: a new Gmail account just for smsm, app password as two GitHub secrets). The sign-in email is the only thing that truly blocks first real use.
+
 ## 2026-11-17 (evening): S2 screens built
 **Done** (branch `worktree-agent-a6a2472cb41b4d544`): every S2 screen on the real data layer: sign-in (email → one code field drawn as six boxes, paste accepted), setup (start or join, name, the animals as cards with the taken one saying whose), Home (the plank with moods, the sentence with names, "Next one's on …", Settle up, quick add with its live reading, today's entries, changes waiting, offline, waiting for your partner with Share invite, approvals, refused entries to fix), the add / edit / money-back sheet, the entry page with history, Activity (search, filters, days, settle-ups, swipes), settle up with the Monzo handoff and the all-square moment, Settings (names and animals with Request a change, the usual split, monzo.me name, join code, backup download, theme, version, sign out). Learning categories and splits (`category_memory`). One history coordinator for back and sheets; one live region for toasts. The demo build now shows the working app at `/` (gallery still at `/gallery`). The `two-users` CI job added.
 **Tested:** unit and screen tests (wording, quick add, the form, history, category memory, backup, screens over the in-memory server); demo e2e tour of every screen at 390 and 320, both themes, axe clean, plus the daily loop; screenshots in both themes at both sizes looked at and fixed (Add expense pill at 320, filter row wrapping, category chips without the extra dot).

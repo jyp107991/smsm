@@ -22,6 +22,7 @@ import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
 import { ratioWords } from '../shared/words';
 import { RATIO_PRESETS } from '../entry/form';
+import { savePending } from '../settle/monzo';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId();
@@ -216,6 +217,8 @@ function SignOut() {
     setError(null);
     try {
       await signOut({ discardWaiting });
+      // A "Did it go through?" question belongs to the person who asked it, not the next one to sign in.
+      savePending(null);
       go({ name: 'home' }, { replace: true });
     } catch (err) {
       if (err instanceof ChangesWaitingError) {

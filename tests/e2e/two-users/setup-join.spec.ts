@@ -9,6 +9,7 @@ import {
   enterCode,
   enterJoinCode,
   expectSentence,
+  goHome,
   goSettings,
   quickAdd,
   requestCode,
@@ -80,6 +81,8 @@ test('PPL-1 PPL-2 PPL-3 BAL-6: sign in with a code, start, join with the code; a
   const [tesco] = await expensesOf(joined?.id ?? '');
   expect(tesco?.date).toBe(TODAY_LONDON);
   await expectSentence(sam.page, 'Sam owes Jae £21.25');
+  // Jae was last on Settings; the balance lives on Home.
+  await goHome(jae.page);
   await expectSentence(jae.page, 'Sam owes Jae £21.25');
   await expect(jae.page.getByText(/Waiting for your partner/)).toBeHidden();
 
