@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, type FocusEvent, type SyntheticEvent } from 'react';
 import { formatPlainPounds } from '../../core/money';
 import {
-  addExpense, deleteExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus,
+  addExpense, deleteExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus,
 } from '../../data';
 import { registerFocusFallback } from '../../ui/focus';
 import { tickSaved } from '../../ui/haptics';
@@ -35,6 +35,10 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const [text, setText] = useState('');
+  // Q-U3: Enter with nothing it can read as an amount says what it needs.
+  const [needsAmount, setNeedsAmount] = useState(false);
+  // Q-F1: the text just saved; a second Enter on it before the box clears (Enter held) saves nothing more.
+  const savedText = useRef<string | null>(null);
   const box = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   useEffect(() => { onInUse?.(focused); }, [focused, onInUse]);
@@ -67,7 +71,11 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
 
   const save = (e: SyntheticEvent) => {
     e.preventDefault();
-    if (!reading) return;
+    if (savedText.current === text) return;
+    if (!reading) {
+      if (text.trim() !== '') setNeedsAmount(true);
+      return;
+    }
     if (!reading.confident || reading.saveAs.trim() === '') {
       openForm(reading);
       return;
@@ -75,6 +83,7 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
     let id: string;
     try {
       id = addExpense({
+        id: newId(),
         description: reading.saveAs, amount: reading.amount, date: reading.date, categoryId: reading.categoryId,
         payer: reading.payer, split: reading.split, tags: reading.tags,
       });
@@ -83,6 +92,7 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
       openForm(reading);
       return;
     }
+    savedText.current = text;
     // CAT-3, CAT-4: a category or split the person typed teaches the app.
     try {
       rememberChoice(reading.saveAs, {
@@ -121,9 +131,9 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
           disabled={otherWindow}
           placeholder={strings.home.quickAddPlaceholder}
           value={text}
-          onChange={(e) => { setText(e.target.value); }}
+          onChange={(e) => { setText(e.target.value); setNeedsAmount(false); savedText.current = null; }}
           onKeyDown={holdEnterWhileComposing}
-          enterKeyHint="done"
+          enterKeyHint="send"
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
@@ -140,6 +150,8 @@ export function QuickAdd({ onInUse }: { onInUse?: (inUse: boolean) => void }) {
           >
             {words}
           </button>
+        ) : needsAmount ? (
+          <p className="text-secondary text-ink m-0 px-1 py-2" role="status">{strings.home.quickAddNeedsAmount}</p>
         ) : (
           <p className="text-secondary text-ink-2 m-0 px-1 py-2">{strings.home.quickAddHint}</p>
         )}

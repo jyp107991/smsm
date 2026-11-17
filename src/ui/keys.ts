@@ -15,3 +15,15 @@ export function holdEnterWhileComposing(e: KeyboardEvent<HTMLElement>): void {
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- keyCode 229: see isComposingKey
   if (e.key === 'Enter' && isComposingKey({ keyCode: e.keyCode, nativeEvent: e.nativeEvent })) e.preventDefault();
 }
+
+/**
+ * S2 polish Q-U1: onKeyDown for a field whose Enter (Android's "Next") moves on to the next field or button
+ * instead of saving the form. While composing, the Enter belongs to the keyboard: nothing moves.
+ */
+export function enterMovesTo(e: KeyboardEvent<HTMLElement>, next: HTMLElement | null | undefined): void {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- keyCode 229: see isComposingKey
+  if (isComposingKey({ keyCode: e.keyCode, nativeEvent: e.nativeEvent })) return;
+  next?.focus();
+}

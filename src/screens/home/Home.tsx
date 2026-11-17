@@ -16,6 +16,7 @@ import { strings } from '../../ui/strings';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { copyForm } from '../entry/form';
 import { ApprovalBanners } from '../shared/Approvals';
+import { MonzoBanner } from '../settle/question';
 import { usePeople } from '../shared/people';
 import { EntryRowView } from '../shared/rows';
 import { useSheets } from '../sheets';
@@ -46,6 +47,7 @@ export function Home() {
         </button>
       </header>
       <ApprovalBanners />
+      <MonzoBanner />
       <Problems />
       <BalanceRegion />
       <div className="flex flex-col gap-2">

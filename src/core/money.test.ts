@@ -62,6 +62,17 @@ describe('parseAmount', () => {
     expect(parseAmount(text)).toBe(expected);
   });
 
+  it('Q-U3 TXT-4: a comma followed by exactly two digits is a decimal comma, in quick add and the form alike', () => {
+    expect(parseAmount('4,50')).toBe(450);
+    expect(parseAmount('12,34')).toBe(1234);
+    expect(parseAmount('£42,50')).toBe(4250);
+    expect(parseAmount('４２，５０')).toBe(4250);
+    expect(parseAmount('12,50+1')).toBe(1350);
+    // A group of three is still thousands.
+    expect(parseAmount('1,200')).toBe(120000);
+    expect(parseAmount('12,345')).toBe(1234500);
+  });
+
   it('ADD-5 accepts simple sums with + and returns the total', () => {
     expect(parseAmount('12+8.50')).toBe(2050);
     expect(parseAmount('18.50+4+12')).toBe(3450);
@@ -121,9 +132,11 @@ describe('parseAmount', () => {
     '12abc',
     'abc12',
     '42.50.1',
-    '4,50',
+    // '4,50' and '12,34' read as decimal commas since S2 polish Q-U3 (see the test below).
     '1,2',
-    '12,34',
+    '1,234,56',
+    '4,5',
+    '4,500,0',
     '1,2345',
     '1000000.01',
     '1,000,001',

@@ -9,7 +9,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
 import {
-  addExpense, deleteExpense, restoreExpense, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus,
+  addExpense, deleteExpense, newId, restoreExpense, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus,
   type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -299,7 +299,8 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
     } else {
       const draft = duplicateDraft(row, people, today);
       if (!draft) return;
-      const id = addExpense(draft);
+      // Q-F1: each swipe is its own action, with its own row id made here.
+      const id = addExpense({ ...draft, id: newId() });
       tickSaved();
       toast.show({ message: strings.entry.saved, action: { label: strings.entry.undo, onAction: () => { deleteExpense(id); } }, duration: 5000 });
     }

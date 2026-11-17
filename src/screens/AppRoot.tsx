@@ -13,7 +13,8 @@ import { Activity } from './activity/Activity';
 import { EntryPage } from './entry/EntryPage';
 import { EntrySheet } from './entry/EntrySheet';
 import { Home, HOME_TOAST_LIFT } from './home/Home';
-import { loadPending, savePending } from './settle/monzo';
+import { savePending } from './settle/monzo';
+import { MonzoQuestionProvider } from './settle/question';
 import { SettleSheet } from './settle/SettleSheet';
 import { Settings } from './settings/Settings';
 import { usePeople } from './shared/people';
@@ -32,7 +33,7 @@ export function Root() {
   const signedOut = session.status === 'signed-out';
   useEffect(() => {
     // A "Did it go through?" question belongs to the person who asked it: signing out forgets it (SET-2).
-    if (signedOut) savePending(null);
+    if (signedOut) void savePending(null);
   }, [signedOut]);
   if (session.status === 'loading') return <Blank />;
   if (session.status === 'signed-out') return <SignIn />;
@@ -98,11 +99,7 @@ function MainApp() {
   const route = useRoute();
   const [lastTab, setLastTab] = useState<MainTab>('home');
   const [entry, setEntry] = useState<EntryRequest | null>(null);
-  // Back from Monzo after the page reloaded: ask "Did it go through?" (SET-2).
-  const [settle, setSettle] = useState<SettleRequest | null>(() => {
-    const pending = loadPending();
-    return pending ? { mode: 'asking', pending } : null;
-  });
+  const [settle, setSettle] = useState<SettleRequest | null>(null);
   const [sheets] = useState(() => ({ openEntry: setEntry, openSettle: setSettle }));
   const tab = tabOf(route, lastTab);
   const { otherWindow } = useSyncStatus();
@@ -118,25 +115,28 @@ function MainApp() {
 
   return (
     <SheetsContext value={sheets}>
-      <div style={{ '--toast-lift': toastLift } as CSSProperties}>
-        <ToastProvider>
-          <BottomTabs
-            items={TABS}
-            value={tab}
-            onValueChange={(t) => {
-              const target: Route = t === 'activity' ? { name: 'activity' } : { name: 'home' };
-              if (route.name !== target.name) go(target);
-            }}
-          >
-            <TabPanel value={tab}>
-              <OtherWindowNote />
-              <Page route={route} />
-            </TabPanel>
-          </BottomTabs>
-          <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
-          <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
-        </ToastProvider>
-      </div>
+      {/* Back from Monzo, even after the app was closed: ask "Did it go through?" (SET-2, Q-U2). */}
+      <MonzoQuestionProvider onUnanswered={(pending) => { setSettle({ mode: 'asking', pending }); }}>
+        <div style={{ '--toast-lift': toastLift } as CSSProperties}>
+          <ToastProvider>
+            <BottomTabs
+              items={TABS}
+              value={tab}
+              onValueChange={(t) => {
+                const target: Route = t === 'activity' ? { name: 'activity' } : { name: 'home' };
+                if (route.name !== target.name) go(target);
+              }}
+            >
+              <TabPanel value={tab}>
+                <OtherWindowNote />
+                <Page route={route} />
+              </TabPanel>
+            </BottomTabs>
+            <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
+            <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
+          </ToastProvider>
+        </div>
+      </MonzoQuestionProvider>
     </SheetsContext>
   );
 }

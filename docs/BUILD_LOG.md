@@ -2,6 +2,17 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17: S2 polish 1a built: money and input safety (Q-F1…Q-F5, Q-U1…Q-U3)
+- **A double tap records once.** Save, Record it, "Yes", Duplicate and the Money back Save each make their entry's id once, so tapping twice (or holding Enter) saves one entry, one settle-up, one copy. A second tap at the same spot just after a sheet closes is ignored, so it can't switch you to Activity either.
+- **No dates after today** in the form ("That date is after today."), as quick add already did.
+- **Quick add reads better:** "70/30 for sam" no longer makes Sam the payer (it opens the form to check); "cat"/"dog" mean who paid anywhere in the line, except before words like food, litter, walker; "42,50" is £42.50 (also in the form's Amount); Enter with no amount says "Start with an amount, like 12.50."; the keyboard's key says send.
+- **Enter moves on:** Amount → Description → saves; Exact shares step to the next and then to Save; Enter in Settle up's amount records nothing.
+- **"Did it go through?" survives closing the app.** After "Not yet", a quiet banner on Home asks until you answer Yes (records it) or Forget it.
+- **Money back on an exact split** starts in the same proportion, to the penny, so a partial refund saves at once. Deleting or restoring twice no longer adds a second history line.
+- **Tested:** all 1a tests-first tests pass; `npm run verify` green (1100 unit/component tests, trace clean, SQL 47/47); production and demo builds; demo browser tests 39/39 (the 1a file 3 times over, 33/33). One test fix: the browser tests looked for the balance while a sheet covered it (a sheet correctly hides the page from screen readers); they now look past the sheet, with the same checks.
+- **Not checked here:** the two-user suite (CI only); no accessible name it uses changed.
+- **Next:** fresh review, then merge on green (1a doesn't wait for the screenshots checkpoint).
+
 ## 2026-11-17 ~11:00 UTC: full QA pass → S2 polish; owner decisions
 - Owner asked for a full QA (function, use, look; "top of the line and premium"). Three independent audits ran on the demo build; results triaged into `docs/slices/S2-polish.md` (waves 1a money/input safety, 1b visual system, 2 Add sheet/Home/Activity). Most serious: a double tap on Save/Record/Duplicate recorded twice (Q-F1).
 - Local `node_modules` was stale (demo builds fell back to system fonts; live was fine). `npm ci` fixed it; CI now fails any build whose font paths don't resolve.

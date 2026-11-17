@@ -15,7 +15,10 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { JAE, SAM } from '../fixtures/household';
 
-const balance = (page: Page) => page.getByRole('region', { name: 'Balance' });
+// The balance is read while a sheet may be open over Home (Settle up, or "Did it go through?" asked as the
+// app opens): a modal sheet hides the page behind it from the accessibility tree, so the region is found
+// with `includeHidden` (it is still checked to be visible on screen).
+const balance = (page: Page) => page.getByRole('region', { name: 'Balance', includeHidden: true });
 
 async function home(page: Page): Promise<void> {
   await page.goto('/');
