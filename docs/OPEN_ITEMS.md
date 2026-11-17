@@ -35,7 +35,6 @@
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
 - TXT-6: grapheme truncation and wrapping are tested (S0) and the screens use them; the Hangul font fallback on real screens is checked by eye (screenshots), not yet by an automated test (S9 visual snapshots).
 - REC-2: the TypeScript and SQL schedules agree (S1); posting by the database arrives in S3.
-- EXP-2: the nightly off-site backup (a scheduled GitHub Action to a private destination) is the remaining S2 piece, built separately from the screens.
 - REC-1, REC-3, REC-4, REC-5, REC-6, REC-7, REC-8, INB-1, INB-2, INB-3, CAT-1: S3, recurring, bills, inbox, categories.
 - CHP-1, CHP-2, CHP-3, CHP-4, CHP-5, CHP-6, PLC-1, PLC-2, PLC-3, PLC-4, PLC-5, PLC-6, PLC-7: S4, chapters and places.
 - INS-1, INS-2, INS-3, INS-4, INS-5, INS-6, INS-7, INS-8, SET-4, ACT-4: S5, insights, recap, settle day, comments.

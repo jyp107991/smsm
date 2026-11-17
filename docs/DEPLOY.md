@@ -35,6 +35,9 @@ Receipt photos are compressed to about 200 KB each, so 1 GB holds roughly 5,000;
 
 The schema, migrations, storage buckets, scheduled jobs and functions are applied by the pipeline, not by hand.
 
+## 1b. Nightly backups (EXP-2)
+`.github/workflows/backup.yml` exports the household's data every night (02:23 UTC), encrypts it with a passphrase and keeps it 30 days as a downloadable file in the repo's Actions. The repo is public, so the file is encrypted (AES-256) before it is stored; without the passphrase it can't be read. It needs one GitHub secret, **`BACKUP_PASSPHRASE`**: a long passphrase (at least 20 characters; four or five unrelated words is good). Keep a copy somewhere safe outside GitHub too (a password manager): GitHub never shows a secret again, and without it the backups can't be opened. Until the secret exists the backup job stops with a message saying so. Restore: `BACKUP_PASSPHRASE=… scripts/restore-backup.sh <file> <database URL>` (tested in CI by `tests/unit/backup-restore.test.ts`).
+
 ## 2. Cloudflare
 1. **API token:** `dash.cloudflare.com/profile/api-tokens` → Create Token → template **Edit Cloudflare Workers** → Use template → Account Resources: your account → Continue to summary → Create Token. Copy it (shown once).
 2. **Account ID:** Workers & Pages overview, or the account's Overview page.

@@ -1,0 +1,64 @@
+# Nightly off-site backup (SPEC EXP-2, DEPLOY §1). The household's data is exported, encrypted with the
+# BACKUP_PASSPHRASE secret (AES-256, gpg), and kept 30 days as an Actions artifact. The repository is public,
+# so nothing readable is ever stored or printed: only the encrypted file and its size.
+# Restore: scripts/restore-backup.sh (needs the passphrase, which the owner keeps outside GitHub too).
+name: backup
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Passphrase present
+        run: |
+          if [ ${#BACKUP_PASSPHRASE} -lt 20 ]; then
+            echo "BACKUP_PASSPHRASE is missing or shorter than 20 characters: add it under GitHub → Settings → Secrets and variables → Actions (see docs/DEPLOY.md, backups)."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes > /dev/null
+      - name: Export and encrypt (nothing readable touches the log or the disk outside this step)
+        run: |
+          set -euo pipefail
+          umask 077
+          day=$(date -u +%F)
+          # The household's tables, and who can sign in (so restored rows keep their people). Sessions,
+          # refresh tokens and audit logs are left out: they are short-lived and not needed to restore.
+          npx supabase db dump --remote --data-only --use-copy --password "$SUPABASE_DB_PASSWORD" \
+            --schema public,auth \
+            -x auth.sessions,auth.refresh_tokens,auth.audit_log_entries,auth.flow_state,auth.one_time_tokens,auth.mfa_challenges,auth.mfa_amr_claims \
+            --file data.sql > /dev/null 2>&1
+          test -s data.sql
+          gzip -9 data.sql
+          gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+            --passphrase-fd 3 --output "smsm-$day.sql.gz.gpg" data.sql.gz 3<<<"$BACKUP_PASSPHRASE"
+          shred -u data.sql.gz
+          echo "Encrypted backup: smsm-$day.sql.gz.gpg ($(stat -c %s "smsm-$day.sql.gz.gpg") bytes)"
+          echo "FILE=smsm-$day.sql.gz.gpg" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 30
+          if-no-files-found: error
