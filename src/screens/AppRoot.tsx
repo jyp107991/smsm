@@ -13,7 +13,7 @@ import { Activity } from './activity/Activity';
 import { EntryPage } from './entry/EntryPage';
 import { EntrySheet } from './entry/EntrySheet';
 import { Home } from './home/Home';
-import { loadPending } from './settle/monzo';
+import { loadPending, savePending } from './settle/monzo';
 import { SettleSheet } from './settle/SettleSheet';
 import { Settings } from './settings/Settings';
 import { usePeople } from './shared/people';
@@ -29,6 +29,11 @@ function Blank() {
 
 export function Root() {
   const session = useSession();
+  const signedOut = session.status === 'signed-out';
+  useEffect(() => {
+    // A "Did it go through?" question belongs to the person who asked it: signing out forgets it (SET-2).
+    if (signedOut) savePending(null);
+  }, [signedOut]);
   if (session.status === 'loading') return <Blank />;
   if (session.status === 'signed-out') return <SignIn />;
   return <Household />;

@@ -58,7 +58,7 @@ function Problems() {
     <div role="alert" className="bg-surface border-berry flex flex-col gap-3 rounded-[16px] border-2 px-4 py-3">
       {problems.map((p) => (
         <div key={p.id} className="flex flex-col gap-2">
-          <p className="m-0 break-words">{strings.sync.problem(p.label, p.message)}</p>
+          <p className="m-0 break-words">{strings.sync.problem(p.label, (strings.sync.reasons as Partial<Record<string, string>>)[p.reason] ?? strings.sync.reasons.other)}</p>
           <div className="flex flex-wrap gap-3">
             {p.table === 'expenses' && p.row ? (
               <Button

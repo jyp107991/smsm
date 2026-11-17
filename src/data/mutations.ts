@@ -18,7 +18,8 @@ import type { DataLayer } from './queryClient';
 import { OtherWindowError } from './windows';
 import {
   buildExpense, buildProvisionalExpense, buildSettlement, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
-  newId, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type MoneyOp, type SettlementDraft,
+  newId, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
+  type SettlementDraft,
 } from './writes';
 import type { Json as JsonValue } from './database.types';
 
@@ -75,9 +76,9 @@ export class ChangesWaitingError extends Error {
 }
 
 /** ACT-5 (S2 review): the joint account isn't in the app yet (SPL-4), so its rows' money can't be rebuilt. */
-export const JOINT_MONEY_EDIT = 'This entry was paid from the joint account. Its amount, payer and split can’t be changed in the app yet.';
+export const JOINT_MONEY_EDIT = 'jointMoney' satisfies InvalidReason;
 /** A split stored without its percentages, that no whole-number split reproduces: it is never guessed. */
-export const SPLIT_AGAIN = 'Choose the split again to change the amount or who paid.';
+export const SPLIT_AGAIN = 'splitAgain' satisfies InvalidReason;
 
 interface Ctx { uid: string; hid: string; memberIds: string[]; pair: readonly [UserId, UserId] | null; layer: DataLayer }
 
@@ -98,7 +99,7 @@ type ExpenseBuilt = { row: ExpenseRow; input: ExpenseDraft; awaitingPartner: tru
 function expenseRowFor(ctx: Ctx, input: ExpenseDraft, base?: ExpenseRow): ExpenseBuilt {
   const now = ctx.layer.now();
   if (!ctx.pair) {
-    if (!ctx.memberIds.includes(input.payer)) throw new EntryInvalidError(['Check who paid and the split.']);
+    if (!ctx.memberIds.includes(input.payer)) throw new EntryInvalidError(['payerSplit']);
     return { row: buildProvisionalExpense({ householdId: ctx.hid, userId: ctx.uid, now }, input, base), input, awaitingPartner: true };
   }
   const full = { ...input, split: completeSplit(input.split, ctx.pair, defaultRatioOf(ctx.layer.household())) };
@@ -331,7 +332,7 @@ export const NAME_MAX = 24;
 
 function checkName(name: string): string {
   const trimmed = name.trim();
-  if (trimmed.length === 0 || Array.from(trimmed).length > NAME_MAX) throw new EntryInvalidError([`A name is 1 to ${String(NAME_MAX)} characters.`]);
+  if (trimmed.length === 0 || Array.from(trimmed).length > NAME_MAX) throw new EntryInvalidError(['name']);
   return trimmed;
 }
 
@@ -345,7 +346,7 @@ export async function setIdentity(name: string, animal: 'cat' | 'dog', layer = a
 /** SET-2: the monzo.me name for the settle-up handoff; null or empty clears it. A pasted link is accepted. */
 export async function setMonzoMe(username: string | null, layer = activeDataLayer()): Promise<void> {
   const value = username === null ? '' : username.trim().replace(/^(https?:\/\/)?monzo\.me\//i, '').replace(/\/+$/, '');
-  if (value !== '' && !/^[A-Za-z0-9_-]{1,40}$/.test(value)) throw new EntryInvalidError(['That doesn’t look like a monzo.me name.']);
+  if (value !== '' && !/^[A-Za-z0-9_-]{1,40}$/.test(value)) throw new EntryInvalidError(['monzoName']);
   await online(layer, () => layer.api.setMonzoMe(value === '' ? null : value));
   await layer.refresh();
 }
@@ -364,7 +365,7 @@ export async function requestChange(change: ChangeRequest, layer = activeDataLay
   } else {
     const parts = Object.values(change.ratio);
     if (parts.length !== 2 || parts.some((p) => !Number.isInteger(p) || p < 0) || parts.reduce((t, p) => t + p, 0) !== 100) {
-      throw new EntryInvalidError(['The split must add up to 100%.']);
+      throw new EntryInvalidError(['ratio100']);
     }
     payload = { ratio: { ...change.ratio } };
   }

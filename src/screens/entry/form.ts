@@ -112,15 +112,27 @@ export function formFromRow(row: ExpenseRow, people: readonly Person[], input?: 
   return base;
 }
 
-/** MB-2: "Refund this": a money-back entry linked to the original; MB-1 default: the same split, received by whoever paid. */
-export function refundForm(original: ExpenseRow, people: readonly Person[]): FormState {
+/**
+ * MB-2: "Refund this": a money-back entry linked to the original, dated today (the money comes back now,
+ * not on the day of the purchase); MB-1 default: the same split, received by whoever paid.
+ */
+export function refundForm(original: ExpenseRow, people: readonly Person[], today: IsoDate): FormState {
   const f = formFromRow(original, people);
-  return { ...f, kind: 'money_back', amountText: '', refundOf: original.id, notes: '', date: f.date, categoryTouched: true };
+  return { ...f, kind: 'money_back', amountText: '', refundOf: original.id, notes: '', date: today, categoryTouched: true };
 }
 
-/** ADD-7: "Duplicate" and "Same as last time": the same entry, dated today. */
+/**
+ * ADD-7: "Duplicate" and "Same as last time": the same entry, dated today. A copy of money back is money
+ * back, refunding the same original (MB-1, MB-3): it moves the balance the way the one copied did.
+ */
 export function copyForm(original: ExpenseRow, people: readonly Person[], today: IsoDate): FormState {
-  return { ...formFromRow(original, people), date: today, refundOf: null, kind: 'expense' };
+  return { ...formFromRow(original, people), date: today };
+}
+
+/** What Duplicate saves (the entry page's button and Activity's swipe), or null when it can't be read back. */
+export function duplicateDraft(original: ExpenseRow, people: readonly Person[], today: IsoDate): ExpenseDraft | null {
+  const r = draftOf(copyForm(original, people, today), people);
+  return 'draft' in r ? r.draft : null;
 }
 
 export function parsedAmount(s: FormState): Pence | null {

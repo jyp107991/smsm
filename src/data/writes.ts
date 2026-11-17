@@ -8,7 +8,7 @@
  */
 import { isIsoDate, type IsoDate } from '../core/dates';
 import { formatPence, type Pence } from '../core/money';
-import { computeEntry, validateEntry, type PenceMap, type SplitParams, type UserId } from '../core/split';
+import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
   EXPENSE_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
   type CategoryMemoryRow, type CategoryMemoryWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow, type SettlementRow, type SettlementWrite,
@@ -40,9 +40,17 @@ export interface SettlementDraft {
   method?: 'monzo' | 'other';
 }
 
-/** The phone refused the entry before it was queued; `reasons` are plain sentences for the form. */
+/**
+ * Why the phone refused something before saving it, as codes; the screens word them (strings.invalid,
+ * TXT-7). The money checks are the core's (validateEntry); the rest are the data layer's own.
+ */
+export type InvalidReason =
+  | EntryIssue
+  | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100';
+
+/** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
-  constructor(public readonly reasons: readonly string[]) {
+  constructor(public readonly reasons: readonly InvalidReason[]) {
     super(reasons.join(' '));
     this.name = 'EntryInvalidError';
   }
@@ -95,9 +103,9 @@ function mapJson(m: PenceMap): { [key: string]: Json } {
   return { ...m };
 }
 
-function checkCommon(description: string, date: IsoDate, reasons: string[]): void {
-  if (description.trim().length === 0) reasons.push('Add a description.');
-  if (!isIsoDate(date)) reasons.push('Pick a date.');
+function checkCommon(description: string, date: IsoDate, reasons: InvalidReason[]): void {
+  if (description.trim().length === 0) reasons.push('description');
+  if (!isIsoDate(date)) reasons.push('date');
 }
 
 function blankExpense(householdId: string, userId: UserId, date: IsoDate, stamp: string): ExpenseRow {
@@ -117,9 +125,9 @@ function blankExpense(householdId: string, userId: UserId, date: IsoDate, stamp:
  * in the household. Its text is checked now like any other entry.
  */
 export function buildProvisionalExpense(ctx: { householdId: string; userId: UserId; now: Date }, draft: ExpenseDraft, base?: ExpenseRow): ExpenseRow {
-  const reasons: string[] = [];
+  const reasons: InvalidReason[] = [];
   checkCommon(draft.description, draft.date, reasons);
-  if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('The amount must be more than £0.00.');
+  if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('amount');
   if (reasons.length > 0) throw new EntryInvalidError(reasons);
   const stamp = ctx.now.toISOString();
   const fresh = base ?? blankExpense(ctx.householdId, ctx.userId, draft.date, stamp);
@@ -276,7 +284,7 @@ export function inputFromRow(row: ExpenseRow, members: readonly UserId[]): { dra
 export function withDetails(row: ExpenseRow, patch: Partial<ExpenseDraft>, ctx: { userId: UserId; now: Date }): ExpenseRow {
   const description = patch.description ?? row.description;
   const date = patch.date ?? row.date;
-  const reasons: string[] = [];
+  const reasons: InvalidReason[] = [];
   checkCommon(description, date, reasons);
   if (reasons.length > 0) throw new EntryInvalidError(reasons);
   return {
@@ -297,13 +305,13 @@ export function withDetails(row: ExpenseRow, patch: Partial<ExpenseDraft>, ctx: 
  * would refuse it, with the same reasons the database would give.
  */
 export function buildExpense(ctx: WriteContext, draft: ExpenseDraft, base?: ExpenseRow): ExpenseRow {
-  const reasons: string[] = [];
+  const reasons: InvalidReason[] = [];
   checkCommon(draft.description, draft.date, reasons);
   let money: { paid: PenceMap; shares: PenceMap } | null = null;
   try {
     money = computeEntry({ amount: draft.amount, payer: draft.payer, members: ctx.members, split: draft.split });
   } catch (e) {
-    reasons.push(e instanceof RangeError ? 'Check who paid and the split.' : 'The amount must be whole pence.');
+    reasons.push(e instanceof RangeError ? 'payerSplit' : 'wholePence');
   }
   if (money) {
     reasons.push(...validateEntry({ amount: draft.amount, paid: money.paid, shares: money.shares, mode: draft.split.mode, members: ctx.members }));
@@ -332,12 +340,12 @@ export function buildExpense(ctx: WriteContext, draft: ExpenseDraft, base?: Expe
 }
 
 export function buildSettlement(ctx: WriteContext, draft: SettlementDraft, base?: SettlementRow): SettlementRow {
-  const reasons: string[] = [];
-  if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('The amount must be more than £0.00.');
+  const reasons: InvalidReason[] = [];
+  if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('amount');
   if (draft.from === draft.to || !ctx.members.includes(draft.from) || !ctx.members.includes(draft.to)) {
-    reasons.push('A settle-up is from one of you to the other.');
+    reasons.push('settleBetween');
   }
-  if (!isIsoDate(draft.date)) reasons.push('Pick a date.');
+  if (!isIsoDate(draft.date)) reasons.push('date');
   if (reasons.length > 0) throw new EntryInvalidError(reasons);
   const stamp = ctx.now.toISOString();
   const fresh: SettlementRow = base ?? {

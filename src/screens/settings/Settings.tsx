@@ -6,7 +6,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
-  backupJson, build, ChangesWaitingError, EntryInvalidError, requestChange, setMonzoMe, signOut, useChangeRequests,
+  backupJson, build, ChangesWaitingError, requestChange, setMonzoMe, signOut, useChangeRequests,
   useHousehold, useSyncStatus,
 } from '../../data';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -19,6 +19,7 @@ import { ApprovalBanners, MyRequests } from '../shared/Approvals';
 import { Head } from '../shared/Head';
 import { shareInvite } from '../shared/invite';
 import { usePeople } from '../shared/people';
+import { plainError } from '../shared/plain';
 import { ratioWords } from '../shared/words';
 import { RATIO_PRESETS } from '../entry/form';
 
@@ -171,7 +172,7 @@ function MonzoName() {
       await setMonzoMe(value.trim() === '' ? null : value);
       setState({ kind: 'saved' });
     } catch (err) {
-      setState({ kind: 'error', message: err instanceof EntryInvalidError ? err.reasons.join(' ') : err instanceof Error ? err.message : String(err) });
+      setState({ kind: 'error', message: plainError(err) });
     }
   };
   const hint = state.kind === 'saved' ? strings.settings.monzoSaved : strings.settings.monzoHint(people.partner?.name ?? '');
@@ -221,7 +222,7 @@ function SignOut() {
         setCounts({ waiting: err.count - err.refused, refused: err.refused });
         setConfirm(true);
       }
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(plainError(err));
     } finally {
       setBusy(false);
     }
@@ -288,7 +289,7 @@ function RequestSheet({ open, onClose }: { open: boolean; onClose: () => void })
       toast.show({ message: strings.settings.requestSent });
       onClose();
     } catch (err) {
-      setError(err instanceof EntryInvalidError ? err.reasons.join(' ') : err instanceof Error ? err.message : String(err));
+      setError(plainError(err));
     } finally {
       setBusy(false);
     }
@@ -332,7 +333,7 @@ function SplitSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
       toast.show({ message: strings.settings.requestSent });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(plainError(err));
     } finally {
       setBusy(false);
     }

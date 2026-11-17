@@ -6,20 +6,14 @@
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { z } from 'zod';
 import type { ExpenseRow, SettlementRow } from './api';
+import { strings } from '../ui/strings';
 import { opLabel, opRowId, type MoneyOp } from './writes';
 
 /** Why the server said no, in categories the interface can explain (strings.sync.reasons). */
 export type RefusalReason = 'money' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'other';
 
-/** What the person is told (DESIGN §5: plain words, no codes). */
-export const REFUSAL_MESSAGES: Record<RefusalReason, string> = {
-  money: 'The amounts didn’t add up, so it wasn’t saved. Open it to fix it.',
-  'not-member': 'It names someone who isn’t in your household, so it wasn’t saved.',
-  'not-allowed': 'This phone wasn’t allowed to save it. Sign in again and try once more.',
-  missing: 'It was no longer there to change.',
-  category: 'Its category has been removed. Pick another one and save again.',
-  other: 'It couldn’t be saved. Open it to check it and save again.',
-};
+/** What the person is told (DESIGN §5: plain words, no codes); the words live with the interface's (TXT-7). */
+export const REFUSAL_MESSAGES: Record<RefusalReason, string> = strings.sync.reasons;
 
 export interface WriteProblem {
   /** The id of the refused write (one per write, not per entry). */

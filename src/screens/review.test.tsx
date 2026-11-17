@@ -233,8 +233,10 @@ describe('signing out', () => {
     const { layer } = couple({ expenses: [storedExpense()] });
     at('/settings');
     show(layer);
+    const signOut = await screen.findByRole('button', { name: 'Sign out' });
+    // Asked in this tab (it was on its way to Monzo), then the person signs out instead.
     savePending({ from: SAM_ID, to: JAE_ID, amount: 2000, date: TODAY, note: null });
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+    fireEvent.click(signOut);
     await waitFor(() => { expect(sessionStorage.getItem('smsm-monzo-pending')).toBeNull(); });
   });
 });

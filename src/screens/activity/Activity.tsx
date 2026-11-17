@@ -18,7 +18,7 @@ import { Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { Animal } from '../../ui/rig/Animal';
 import { strings } from '../../ui/strings';
-import { copyForm, draftOf } from '../entry/form';
+import { duplicateDraft } from '../entry/form';
 import { usePeople } from '../shared/people';
 import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { payerOf, type Person } from '../shared/words';
@@ -151,7 +151,8 @@ export function Activity() {
               <ul className="m-0 list-none p-0">
                 {d.items.map((i) => (
                   <li key={i.row.id} className="border-line border-b last:border-b-0">
-                    {i.kind === 'expense' && otherWindow ? (
+                    {/* A read-only window, or a deleted entry (Restore is on its page), has nothing to swipe. */}
+                    {i.kind === 'expense' && (otherWindow || i.row.deleted_at !== null) ? (
                       <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} />
                     ) : i.kind === 'expense' ? (
                       <Swipeable row={i.row} people={people.list} today={today}>
@@ -296,9 +297,9 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
         duration: 5000,
       });
     } else {
-      const r = draftOf(copyForm(row, people, today), people);
-      if (!('draft' in r)) return;
-      const id = addExpense(r.draft);
+      const draft = duplicateDraft(row, people, today);
+      if (!draft) return;
+      const id = addExpense(draft);
       tickSaved();
       toast.show({ message: strings.entry.saved, action: { label: strings.entry.undo, onAction: () => { deleteExpense(id); } }, duration: 5000 });
     }

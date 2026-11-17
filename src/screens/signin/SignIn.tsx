@@ -3,20 +3,19 @@
  * Errors say what happened and what to do in plain words; offline it says the first sign-in needs a connection.
  */
 import { useState, type SyntheticEvent } from 'react';
-import { ApiError, OfflineError, sendCode, verifyCode } from '../../data';
+import { ApiError, sendCode, verifyCode } from '../../data';
 import { Logo } from '../../ui/Logo';
 import { Button, Field } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
+import { plainError } from '../shared/plain';
 import { CODE_LENGTH, CodeField } from './CodeField';
 
 function plain(err: unknown, step: 'send' | 'verify'): string {
-  if (err instanceof OfflineError) return err.message;
-  if (err instanceof ApiError) {
-    if (err.kind === 'network') return strings.errors.offline;
+  if (err instanceof ApiError && err.kind !== 'network') {
     if (err.status === 429 || /rate|too many|security purposes/i.test(err.message)) return strings.signIn.tooMany;
     if (step === 'send' && /email/i.test(err.message) && err.kind === 'refused') return strings.signIn.badEmail;
   }
-  return step === 'verify' ? strings.signIn.wrongCode : strings.signIn.failed;
+  return plainError(err, step === 'verify' ? strings.signIn.wrongCode : strings.signIn.failed);
 }
 
 export function SignIn() {

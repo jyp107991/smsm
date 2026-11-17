@@ -19,7 +19,7 @@ import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
 import { entrySentence, historyLine, payerOf } from '../shared/words';
 import { useSheets } from '../sheets';
-import { draftOf, copyForm } from './form';
+import { duplicateDraft } from './form';
 
 export function EntryPage({ id }: { id: string }) {
   const entries = useEntries();
@@ -73,9 +73,9 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const label = row.description;
 
   const duplicate = () => {
-    const r = draftOf(copyForm(row, people.list, today), people.list);
-    if (!('draft' in r)) return;
-    const newId = addExpense(r.draft);
+    const draft = duplicateDraft(row, people.list, today);
+    if (!draft) return;
+    const newId = addExpense(draft);
     tickSaved();
     toast.show({
       message: strings.entry.saved,

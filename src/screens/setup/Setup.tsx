@@ -5,26 +5,24 @@
  */
 import { useState, type SyntheticEvent, type ReactNode } from 'react';
 import {
-  ApiError, createHousehold, EntryInvalidError, joinHousehold, NAME_MAX, OfflineError, setIdentity,
+  ApiError, createHousehold, joinHousehold, NAME_MAX, setIdentity,
 } from '../../data';
 import { holdEnterWhileComposing } from '../../ui/keys';
 import { Logo } from '../../ui/Logo';
 import { Button, Field } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { AnimalPicker } from '../shared/AnimalPicker';
+import { plainError } from '../shared/plain';
 import { usePeople } from '../shared/people';
 
 function message(err: unknown): string {
-  if (err instanceof OfflineError) return err.message;
-  if (err instanceof EntryInvalidError) return err.reasons.join(' ');
-  if (err instanceof ApiError) {
-    if (err.kind === 'network') return strings.errors.offline;
+  if (err instanceof ApiError && err.kind !== 'network') {
     if (/two people/i.test(err.message)) return strings.setup.full;
     if (/too many wrong codes/i.test(err.message)) return strings.setup.tooManyCodes;
     if (/no household with that code/i.test(err.message)) return strings.setup.noSuchCode;
     if (/already picked/i.test(err.message)) return strings.setup.animalTaken;
   }
-  return strings.errors.cantLoad;
+  return plainError(err, strings.errors.cantLoad);
 }
 
 function Frame({ children }: { children: ReactNode }) {

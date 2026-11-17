@@ -21,7 +21,7 @@ export {
   NAME_MAX, OtherWindowError, JOINT_MONEY_EDIT, SPLIT_AGAIN, type ChangeRequest,
 } from './mutations';
 export type { WindowRole } from './windows';
-export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, type ExpenseDraft, type SettlementDraft } from './writes';
+export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, type ExpenseDraft, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
   type ActivityRow, type CategoryMemoryRow,

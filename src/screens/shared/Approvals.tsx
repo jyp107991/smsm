@@ -9,6 +9,7 @@ import { Animal } from '../../ui/rig/Animal';
 import { Button } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { usePeople } from './people';
+import { plainError } from './plain';
 import { requestWords } from './words';
 
 function usePending(): ChangeRequestRow[] {
@@ -24,7 +25,7 @@ function useDecide() {
     try {
       await decideChange(id, approve);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(plainError(err));
     } finally {
       setBusy(null);
     }

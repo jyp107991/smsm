@@ -7,7 +7,7 @@ import { useState, type SyntheticEvent } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, formatPlainPounds, parseAmount, pence } from '../../core/money';
 import {
-  addSettlement, deleteSettlement, editSettlement, EntryInvalidError, useBalance, useDataLayer, type SettlementDraft,
+  addSettlement, deleteSettlement, editSettlement, useBalance, useDataLayer, type SettlementDraft,
 } from '../../data';
 import { tickSettled } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -15,6 +15,7 @@ import { Button, Chip, Field, Sheet, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
+import { plainError } from '../shared/plain';
 import type { SettleRequest } from '../sheets';
 import { yesterdayOf } from '../entry/form';
 import { monzoLink, savePending, type PendingMonzo } from './monzo';
@@ -58,8 +59,16 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
 
   const from = people.list.find((p) => p.id === start.from);
   const to = people.list.find((p) => p.id === start.to);
-  const monzoName = people.rows.find((m) => m.user_id === start.to)?.monzo_me ?? null;
   const editing = request.mode === 'edit';
+  // SET-2: Monzo is how the person who owes pays, so only they are offered it (from their own phone).
+  const payer = people.me?.id === start.from;
+  const monzoName = payer ? (people.rows.find((m) => m.user_id === start.to)?.monzo_me ?? null) : null;
+  // SET-1: a part payment is fine; more than is owed gets a quiet line (it would turn the debt round).
+  const owed = balance.status === 'ready' && balance.state.kind === 'owes' && balance.state.debtor === start.from ? balance.state.amount : null;
+  const typed = parseAmount(amountText);
+  const overLine = editing || typed === null || (owed !== null && typed <= owed) ? null
+    : owed !== null ? strings.settle.moreThanOwed(from?.name ?? '', to?.name ?? '', formatPence(owed))
+    : strings.settle.nothingOwed(from?.name ?? '', to?.name ?? '');
 
   const draft = (method: 'monzo' | 'other'): SettlementDraft | null => {
     const amount = parseAmount(amountText);
@@ -75,7 +84,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
     try {
       id = addSettlement(d);
     } catch (err) {
-      setError(err instanceof EntryInvalidError ? err.reasons.join(' ') : err instanceof Error ? err.message : String(err));
+      setError(plainError(err));
       return;
     }
     tickSettled();
@@ -96,7 +105,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
       try {
         editSettlement(before.id, d);
       } catch (err) {
-        setError(err instanceof EntryInvalidError ? err.reasons.join(' ') : String(err));
+        setError(plainError(err));
         return;
       }
       toast.show({
@@ -192,7 +201,9 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
           onKeyDown={holdEnterWhileComposing}
           enterKeyHint="done"
         />
-        {!editing && !monzoName && to ? <p className="text-secondary text-ink-2 m-0">{strings.settle.noMonzo(to.name)}</p> : null}
+        {/* A fixed place for the line, so it never moves what is under it. */}
+        {!editing ? <p className="text-secondary text-ink-2 m-0 -mt-3 min-h-[1.4rem]" aria-live="polite">{overLine}</p> : null}
+        {!editing && payer && !monzoName && to ? <p className="text-secondary text-ink-2 m-0">{strings.settle.noMonzo(to.name)}</p> : null}
         <div>
           <Button variant="plain" aria-expanded={more} onClick={() => { setMore(!more); }}>{strings.entry.more}</Button>
           {more ? (

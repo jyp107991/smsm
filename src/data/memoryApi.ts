@@ -5,7 +5,7 @@
  * It holds no data of its own: the demo's seed is passed in, so none of it reaches the production bundle.
  */
 import { pence, type Pence } from '../core/money';
-import { validateEntry, type PenceMap, type SplitMode, type UserId } from '../core/split';
+import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
@@ -56,6 +56,18 @@ const DEFAULT_CATEGORIES: readonly [string, string, string][] = [
   ['Transport', '🚆', 'slate'], ['Subscriptions', '📺', 'plum'], ['Household', '🧺', 'oak'], ['Going out', '🍸', 'berry'],
   ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '•', 'stone'],
 ];
+
+/** What the database says for each refusal (supabase/schema.sql check_money and the amount checks). */
+const SERVER_WORDS: Record<EntryIssue, string> = {
+  amount: 'new row violates check constraint "expenses_amount_pence_check"',
+  wholePence: 'amounts must be whole pence',
+  sharesSum: 'shares must sum to amount',
+  paidSum: 'paid must sum to amount',
+  negative: 'amounts must not be negative',
+  members: 'paid or shares name a non-member',
+  forOther: 'paid-for-the-other: one person pays and owes nothing',
+  treat: 'treat: whoever pays covers it',
+};
 
 function clone<T>(v: T): T {
   return structuredClone(v);
@@ -170,7 +182,7 @@ export function createMemoryApi(
       return refuse('amounts must be whole pence');
     }
     const errors = validateEntry({ amount: row.amount_pence as Pence, paid, shares, mode: row.split_mode as SplitMode, members });
-    if (errors.length > 0) refuse(errors.join(' '));
+    if (errors.length > 0) refuse(errors.map((e) => SERVER_WORDS[e]).join('; '));
   }
 
   function writeRow<R extends { id: string; household_id: string; updated_at: string; deleted_at: string | null }>(

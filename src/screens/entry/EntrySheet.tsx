@@ -8,7 +8,7 @@ import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import {
-  addExpense, deleteExpense, editExpense, EntryInvalidError, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
+  addExpense, deleteExpense, editExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
   useEntries, useHousehold, type ExpenseDraft, type ExpenseRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -19,6 +19,7 @@ import { strings } from '../../ui/strings';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
+import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
@@ -54,7 +55,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   // The form starts once, from what was asked; later changes to the lists don't reset what is typed.
   const [initial] = useState((): FormState => {
     if (request.mode === 'edit' && existing) return formFromRow(existing, pair, request.input);
-    if (request.mode === 'refund') return refundForm(request.of, pair);
+    if (request.mode === 'refund') return refundForm(request.of, pair, today);
     const split = defaultSplit({ remembered: null, category: undefined, householdRatio: household?.default_ratio, people: pair, me: me?.id ?? '' });
     const blank = blankForm({ me: me?.id ?? '', people: pair, today, split });
     return { ...blank, categoryId: otherCategoryId(live), ...(request.mode === 'add' ? request.prefill : undefined) };
@@ -118,15 +119,17 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         // Only what changed is sent: a new description or date never rebuilds the money (ACT-5).
         const patch = 'draft' in before ? changedFields(before.draft, draft, picked.current.split) : draft;
         editExpense(id, patch);
+        // Undo sends back only what the edit changed: the split only if it differs, so undoing a rename
+        // never rebuilds the money (a joint-account entry can't be rebuilt at all).
         undo = () => {
-          if ('draft' in before) editExpense(id, changedFields(draft, before.draft, true));
+          if ('draft' in before) editExpense(id, changedFields(draft, before.draft, false));
         };
       } else {
         id = addExpense(draft);
         undo = () => { deleteExpense(id); };
       }
     } catch (err) {
-      setErrors(err instanceof EntryInvalidError ? [...err.reasons] : [err instanceof Error ? err.message : String(err)]);
+      setErrors([plainError(err)]);
       return;
     }
     // CAT-3, CAT-4: what the person chose teaches the app (never delays the save: it is queued).
