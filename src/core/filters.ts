@@ -26,6 +26,8 @@ export interface Filter {
   categories?: readonly string[];
   chapters?: readonly (string | null)[];
   countries?: readonly string[];
+  /** PLC-7: place names, exactly as stored. */
+  places?: readonly string[];
   from?: IsoDate;
   to?: IsoDate;
   tags?: readonly string[];
@@ -43,6 +45,7 @@ export function applyFilter<T extends FilterEntry>(rows: readonly T[], f: Filter
     if (f.categories && f.categories.length > 0 && (r.categoryId === null || !f.categories.includes(r.categoryId))) return false;
     if (f.chapters && f.chapters.length > 0 && !f.chapters.includes(r.chapterId)) return false;
     if (f.countries && f.countries.length > 0 && !f.countries.includes(r.country)) return false;
+    if (f.places && f.places.length > 0 && (r.place === null || !f.places.includes(r.place))) return false;
     if (f.from !== undefined && r.date < f.from) return false;
     if (f.to !== undefined && r.date > f.to) return false;
     if (f.tags && f.tags.length > 0) {

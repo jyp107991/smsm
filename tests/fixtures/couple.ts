@@ -15,7 +15,7 @@
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { createMemoryApi, type MemoryControls, type MemoryTables } from '../../src/data/memoryApi';
 import { manualNetwork } from '../../src/data/network';
-import { createDataLayer, type DataLayer } from '../../src/data/queryClient';
+import { createDataLayer, type DataLayer, type DataLayerOptions } from '../../src/data/queryClient';
 import { fixedSession } from '../../src/data/session';
 import { memoryStorage } from '../../src/data/storage';
 import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from '../../src/data/api';
@@ -147,7 +147,7 @@ export function couple(
   const { api, controls } = createMemoryApi(seed, apiOpts);
   const network = manualNetwork(opts.online ?? true);
   // `geo` and `rates` are S4b's additions to the data layer options (docs/slices/S4b.md).
-  const services = { ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }) };
+  const services = { ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }) } as Pick<DataLayerOptions, 'geo' | 'rates'>;
   const layer = createDataLayer(Object.assign({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => TODAY }, services));
   return { layer, controls, network };
 }

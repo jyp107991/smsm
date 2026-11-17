@@ -7,6 +7,7 @@
  * after a restart. Each carries its whole row, so a replay is an upsert by id and can't duplicate (OFF-7).
  */
 import { isIsoDate, type IsoDate } from '../core/dates';
+import { roundPosition } from '../core/fx';
 import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
@@ -48,8 +49,9 @@ function placeColumns(draft: ExpenseDraft, fresh: ExpenseRow, amountChanged: boo
   return {
     country: draft.country !== undefined && /^[A-Z]{2}$/.test(draft.country) ? draft.country : fresh.country,
     place: draft.place === undefined ? fresh.place : draft.place === null || draft.place.trim() === '' ? null : draft.place.trim().slice(0, 80),
-    lat: draft.lat === undefined ? fresh.lat : draft.lat,
-    lng: draft.lng === undefined ? fresh.lng : draft.lng,
+    // PLC-1: never finer than about 100 m.
+    lat: draft.lat === undefined ? fresh.lat : draft.lat === null ? null : roundPosition(draft.lat),
+    lng: draft.lng === undefined ? fresh.lng : draft.lng === null ? null : roundPosition(draft.lng),
     original_amount: orig === undefined ? fresh.original_amount : orig ? Number(orig.amount.replace(/,/g, '')) : null,
     original_currency: orig === undefined ? fresh.original_currency : orig ? orig.currency : null,
     fx_rate: orig === undefined ? fresh.fx_rate : orig ? Number(orig.rate) : null,

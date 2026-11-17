@@ -719,12 +719,15 @@ export function setUseLocation(on: boolean): void {
  * PLC-2: where the phone is now, rounded to about 100 m, with the country and town when online; null when location
  * is off, not allowed, or slower than 4 s. `prompt` lets the browser ask (only when the person turns it on).
  */
-export async function locate(opts: { prompt?: boolean; timeoutMs?: number } = {}, layer = activeDataLayer()): Promise<Located | null> {
+export async function locate(opts: { prompt?: boolean; timeoutMs?: number } | DataLayer = {}, given?: DataLayer): Promise<Located | null> {
+  // `locate(layer)` as well as `locate(opts, layer)`.
+  const layer = given ?? ('client' in opts ? opts : activeDataLayer());
+  if ('client' in opts) opts = {};
   if (!storedUseLocation() && opts.prompt !== true) return null;
   return locateWith(layer.geo, { ...opts, online: layer.network.online });
 }
 
 /** PLC-6, OFF-4: the day's rate (pounds per unit) for a currency; offline, the last one known (`stale`). */
 export async function rateFor(currency: string, date?: string, layer = activeDataLayer()) {
-  return rateWith(layer.rates, currency.toUpperCase(), { online: layer.network.online, ...(date ? { date } : {}) });
+  return rateWith(layer.rates, currency.toUpperCase(), { online: layer.network.online, today: layer.today(), ...(date ? { date } : {}) });
 }
