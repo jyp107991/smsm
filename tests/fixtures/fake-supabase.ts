@@ -273,7 +273,9 @@ export class FakeAuth {
   onAuthStateChange(cb: AuthListener): { data: { subscription: { id: string; callback: AuthListener; unsubscribe: () => void } } } {
     this.calls.push('onAuthStateChange');
     this.listeners.add(cb);
-    queueMicrotask(() => cb('INITIAL_SESSION', this.session && !this.expired() ? clone(this.session) : null));
+    queueMicrotask(() => {
+      cb('INITIAL_SESSION', this.session && !this.expired() ? clone(this.session) : null);
+    });
     return { data: { subscription: { id: 'fake', callback: cb, unsubscribe: () => { this.listeners.delete(cb); } } } };
   }
 
