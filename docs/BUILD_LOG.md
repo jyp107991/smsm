@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~23:35 UTC: S5 LIVE; S6a built on Workers AI
+- S5 is live (PR #12 merged as 7ad6e76; deploy run 44196715178; version.json 7ad6e76): Insights, the monthly recap, settle day, year in review, on this day, comments. The toast hardening held on CI.
+- Owner: smart features use free Cloudflare Workers AI through the app's own Worker, as MacroPy does: no API key, no new secret. The Gemini plan and the Supabase function are gone.
+- S6a built: the `/api/ai` route (vision models for receipts, with fallbacks), receipt photos (kept on the phone, uploaded ahead of their entry in the queue), Scan receipt filling only untouched fields, Itemise, Sort it later and the Inbox's "Receipt to sort", loose wording in quick add, AI category guesses marked "(a guess)", the Smart features switch. Tests first by a separate agent (core 37, Worker 57, SQL 33 + 8 refusals, data 46, screens 31, e2e 4); all pass. Suite 1,871; SQL 174/174; browser suite 128/128. Fresh review running.
+- Next: review fixes, release S6a; then S6b (AI recap wording, Ask smsm, share sheet and shortcuts, the live eval).
+
 ## 2026-11-17 ~23:00 UTC: S4 LIVE; S5a held by one browser check, fixed; S5b built
 - S4 is live (deploy run 44182659599; version.json 2531ba5).
 - S5a (PR #12): CI's browser check at 320×640 failed: the new "This month" line sat above quick add, pushing it below the fold, so typing scrolled the page. Fixed to DESIGN's order (quick add first, then the month so far); pushed, CI re-running, releases on green.
