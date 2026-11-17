@@ -7,7 +7,7 @@
  * curious), the field and button sit on the 20 px margin, and there is no example address. The code field
  * has focus as soon as the code is sent and signs in by itself when the sixth digit arrives, typed or pasted.
  */
-import { useState, type SyntheticEvent } from 'react';
+import { useRef, useState, type SyntheticEvent } from 'react';
 import { ApiError, sendCode, verifyCode } from '../../data';
 import { Logo } from '../../ui/Logo';
 import { Button, Field } from '../../ui/primitives';
@@ -30,10 +30,20 @@ export function SignIn() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Sending a code and checking one are tracked apart, in refs as well as state, so a press that arrives
+  // while either runs sees it at once (state would only show it on the next render).
+  const [sending, setSending] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const sendingNow = useRef(false);
+  const checkingNow = useRef(false);
+  /** The digits as they are now, typed or pasted, even while an earlier set is being checked. */
+  const latest = useRef('');
+  const busy = sending || checking;
 
   const send = async (e?: SyntheticEvent) => {
     e?.preventDefault();
+    // Not while a code is being sent or checked: a new code would make the one being checked stale.
+    if (sendingNow.current || checkingNow.current) return;
     const address = email.trim();
     if (address === '') {
       setError(strings.signIn.emailFirst);
@@ -43,39 +53,60 @@ export function SignIn() {
       setError(strings.signIn.badEmail);
       return;
     }
-    setBusy(true);
+    sendingNow.current = true;
+    setSending(true);
     setError(null);
     try {
       await sendCode(address);
       if (sentTo !== null) setNote(strings.signIn.sentAgain);
       setSentTo(address);
       setCode('');
+      latest.current = '';
     } catch (err) {
       setError(plain(err, 'send'));
     } finally {
-      setBusy(false);
+      sendingNow.current = false;
+      setSending(false);
     }
   };
 
-  const verify = async (digits: string) => {
-    if (sentTo === null || busy) return;
+  /**
+   * Checks a code. One check at a time: digits changed while one runs are kept (`latest`) and checked when
+   * it settles; its own answer is then out of date and not shown.
+   */
+  const verify = async (digits: string): Promise<void> => {
+    if (sentTo === null || sendingNow.current || checkingNow.current) return;
     if (digits.length !== CODE_LENGTH) {
       setError(strings.signIn.wrongCode);
       return;
     }
-    setBusy(true);
+    checkingNow.current = true;
+    setChecking(true);
     setError(null);
+    let failed: string | null = null;
     try {
       await verifyCode(sentTo, digits);
-      // Signed in: the session keeper moves the app on to setup or Home.
     } catch (err) {
-      setError(plain(err, 'verify'));
-      setBusy(false);
+      failed = plain(err, 'verify');
     }
+    checkingNow.current = false;
+    // Signed in: the session keeper moves the app on to setup or Home; stay busy until it does.
+    if (failed === null) return;
+    if (latest.current !== digits) {
+      if (latest.current.length === CODE_LENGTH) {
+        await verify(latest.current);
+        return;
+      }
+      setChecking(false);
+      return;
+    }
+    setError(failed);
+    setChecking(false);
   };
 
   /** Typed or pasted: the sixth digit signs in by itself. */
   const typed = (digits: string) => {
+    latest.current = digits;
     setCode(digits);
     setError(null);
     if (digits.length === CODE_LENGTH && digits !== code) void verify(digits);

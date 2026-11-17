@@ -88,9 +88,19 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     setS(followExact(next));
     setErrors([]);
   };
-  // Closing asks first only when something was typed (Q-U11): a tapped chip or toggle is one tap to redo.
-  const typed = (f: FormState) => JSON.stringify([f.amountText, f.description, f.notes, f.splitMode === 'exact' ? f.exactText : null]);
-  const dirty = typed(s) !== typed(initial);
+  /**
+   * When closing asks "Discard your changes?" first. Editing a saved entry: any change from it (amount,
+   * description, category, who paid, the split and its shares, the date, notes), since a tap outside would
+   * otherwise drop it unseen. A new entry (add, money back): only typed text, as a tapped chip on an
+   * otherwise empty form is one tap to redo (Q-U11).
+   */
+  const asked = (f: FormState) => {
+    const exact = f.splitMode === 'exact' ? f.exactText : null;
+    return JSON.stringify(request.mode === 'edit'
+      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes]
+      : [f.amountText, f.description, f.notes, exact]);
+  };
+  const dirty = asked(s) !== asked(initial);
 
   /** A new description: the category and split follow the household's guess until the person picks them. */
   const describe = (description: string) => {

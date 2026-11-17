@@ -111,6 +111,8 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
   const current = showing(toasts);
   const layer = useRef<HTMLDivElement>(null);
   const place = useClearPlace(layer, current !== undefined);
+  // Toasts already read out: the update prompt coming back after a passing toast isn't read again.
+  const [announced] = useState(() => new Set<number>());
   return (
     <div
       ref={layer}
@@ -120,7 +122,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
       className="pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4"
     >
       <AnimatePresence initial={false}>
-        {current ? <ToastSlot key="toast" toast={current} reduce={reduce} onDismiss={onDismiss} /> : null}
+        {current ? <ToastSlot key="toast" toast={current} reduce={reduce} onDismiss={onDismiss} announced={announced} /> : null}
       </AnimatePresence>
     </div>
   );
@@ -131,19 +133,27 @@ const CLEARANCE = 12;
 /** The least room at the screen's edges, in px. */
 const EDGE = 16;
 
+/** How long to keep measuring every frame after something changed (a sheet rising or closing takes ~500 ms). */
+const SETTLE_MS = 700;
+
 /**
  * Where the toast goes so it never covers what must stay in view (Q-L4): anything marked `data-toast-avoid`
  * (the tab bar, the Quick add box, an open sheet's footer). It starts at the bottom and steps up over each
  * marked thing it would cover; if that would push it off the top, it sits at the top instead. While a sheet
- * is open only the sheet's own marks count (the page under the scrim can be covered). Measured every frame
- * while a toast shows, since sheets rise, pages scroll and the keyboard comes and goes under it.
+ * is open only the sheet's own marks count (the page under the scrim can be covered); a sheet that is
+ * closing counts for nothing, so the tab bar is avoided again the moment Save is pressed.
+ *
+ * Measured before the first paint, then only when something changes: the window or the visual viewport
+ * resizes or scrolls, a marked element or the toast changes size, or a sheet opens or closes. After each
+ * change it follows every frame for a short while (sheets slide), then stops, so a toast that stays (the
+ * update prompt) costs nothing while nothing moves.
  */
 function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean): { bottom: number; top: number | null } {
   const [place, setPlace] = useState<{ bottom: number; top: number | null }>({ bottom: EDGE, top: null });
-  // Measured before the first paint (so a toast never flashes over the tab bar), then every frame.
   useLayoutEffect(() => {
     if (!active) return;
     let frame = 0;
+    let until = 0;
     const measure = () => {
       const card = layer.current?.firstElementChild;
       if (card instanceof HTMLElement) {
@@ -152,22 +162,69 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean)
       }
     };
     const loop = () => {
+      frame = 0;
       measure();
-      frame = requestAnimationFrame(loop);
+      if (performance.now() < until) frame = requestAnimationFrame(loop);
     };
+    const changed = () => {
+      until = performance.now() + SETTLE_MS;
+      if (frame === 0) frame = requestAnimationFrame(loop);
+    };
+    // (Not every test browser has a ResizeObserver; scrolling and resizing still re-measure without it.)
+    const sized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(changed);
+    const watchMarks = () => {
+      if (!sized) return;
+      sized.disconnect();
+      for (const m of document.querySelectorAll('[data-toast-avoid]')) sized.observe(m);
+      const card = layer.current?.firstElementChild;
+      if (card) sized.observe(card);
+    };
+    const mutated = new MutationObserver(() => {
+      watchMarks();
+      changed();
+    });
+    // Sheets coming and going (their state and their marks), the tab bar hiding for the keyboard.
+    mutated.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state', 'data-toast-avoid', 'hidden'] });
+    const viewport = window.visualViewport;
+    window.addEventListener('resize', changed);
+    window.addEventListener('scroll', changed, { capture: true, passive: true });
+    viewport?.addEventListener('resize', changed);
+    viewport?.addEventListener('scroll', changed);
+    watchMarks();
+    // Before the first paint, so a toast never flashes over the tab bar; then follow whatever is settling.
     measure();
-    frame = requestAnimationFrame(loop);
-    return () => { cancelAnimationFrame(frame); };
+    changed();
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      sized?.disconnect();
+      mutated.disconnect();
+      window.removeEventListener('resize', changed);
+      window.removeEventListener('scroll', changed, { capture: true });
+      viewport?.removeEventListener('resize', changed);
+      viewport?.removeEventListener('scroll', changed);
+    };
   }, [layer, active]);
   return place;
 }
 
+/**
+ * The visible page's bottom edge, in the page's coordinates. On iPhone the keyboard covers the page without
+ * shrinking it (Safari ignores `interactive-widget`); only the visual viewport knows where the keyboard starts.
+ */
+function visibleBottom(): number {
+  const viewport = window.visualViewport;
+  return viewport ? Math.min(window.innerHeight, viewport.offsetTop + viewport.height) : window.innerHeight;
+}
+
 function clearPlace(card: DOMRect): { bottom: number; top: number | null } {
-  const height = window.innerHeight;
+  const page = window.innerHeight;
+  const height = visibleBottom();
   const tall = card.height || 64;
   const marked = [...document.querySelectorAll<HTMLElement>('[data-toast-avoid]')];
-  const inSheet = marked.filter((m) => m.closest('[role="dialog"]'));
-  const rects = (inSheet.length > 0 ? inSheet : marked)
+  // Only an open sheet's marks; a sheet sliding away (data-state="closed") counts for nothing.
+  const inOpenSheet = marked.filter((m) => m.closest('[role="dialog"][data-state="open"]'));
+  const onPage = marked.filter((m) => !m.closest('[role="dialog"]'));
+  const rects = (inOpenSheet.length > 0 ? inOpenSheet : onPage)
     .map((m) => m.getBoundingClientRect())
     .filter((r) => r.height > 0 && r.width > 0 && r.bottom > 0 && r.top < height && r.left < card.right && card.left < r.right);
   let bottom = EDGE;
@@ -182,14 +239,21 @@ function clearPlace(card: DOMRect): { bottom: number; top: number | null } {
       }
     }
   }
-  return height - bottom - tall < EDGE ? { bottom: EDGE, top: EDGE } : { bottom, top: null };
+  const viewTop = window.visualViewport?.offsetTop ?? 0;
+  // `bottom` is measured from the visible bottom; the layer is placed from the page's.
+  return height - bottom - tall < viewTop + EDGE ? { bottom: EDGE, top: Math.round(viewTop) + EDGE } : { bottom: bottom + Math.max(0, Math.round(page - height)), top: null };
 }
 
 /**
  * The slot. While the last toast plays its exit it is still on screen, so it is made inert and hidden from
  * assistive tech: its Undo can't be pressed once it is going. A toast shown meanwhile takes the slot back.
  */
-function ToastSlot({ toast, reduce, onDismiss }: { toast: ToastEntry; reduce: boolean; onDismiss: (id: number) => void }) {
+function ToastSlot({ toast, reduce, onDismiss, announced }: {
+  toast: ToastEntry;
+  reduce: boolean;
+  onDismiss: (id: number) => void;
+  announced: Set<number>;
+}) {
   const present = useIsPresent();
   return (
     <motion.div
@@ -204,15 +268,30 @@ function ToastSlot({ toast, reduce, onDismiss }: { toast: ToastEntry; reduce: bo
     >
       <div inert={!present} aria-hidden={present ? undefined : true}>
         {/* Keyed by toast: a replacement starts its own timer and makes its own small arrival. */}
-        <motion.div
-          key={toast.id}
-          initial={reduce ? false : { scale: 0.98 }}
-          animate={{ scale: 1 }}
-          transition={{ type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
-        >
+        <Arrival key={toast.id} id={toast.id} reduce={reduce} announced={announced}>
           <Toast {...toast} onDismiss={() => { onDismiss(toast.id); }} />
-        </motion.div>
+        </Arrival>
       </div>
+    </motion.div>
+  );
+}
+
+/**
+ * One toast's arrival in the slot. The first time a toast shows it is read out by the live region; when it
+ * comes back (the sticky update prompt after a passing toast), its content is marked `aria-live="off"`, so it
+ * is shown again without being announced again.
+ */
+function Arrival({ id, reduce, announced, children }: { id: number; reduce: boolean; announced: Set<number>; children: ReactNode }) {
+  const [quiet] = useState(() => announced.has(id));
+  useEffect(() => { announced.add(id); }, [announced, id]);
+  return (
+    <motion.div
+      aria-live={quiet ? 'off' : undefined}
+      initial={reduce ? false : { scale: 0.98 }}
+      animate={{ scale: 1 }}
+      transition={{ type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
+    >
+      {children}
     </motion.div>
   );
 }

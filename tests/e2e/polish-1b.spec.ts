@@ -168,7 +168,7 @@ test.describe('Q-L2: one "selected" language; outlines only for keyboard focus',
       const surface = await token(page, 'var(--surface)');
       const sunk = await token(page, 'var(--sunk)');
       const forest = await token(page, 'var(--forest)');
-      // Forest 14 % into sunk by day; 28 % by night, where 14 % hardly showed inside a sheet (owner review, 17 Nov).
+      // Forest 14 % into sunk by day; 28 % by night, where 14 % hardly showed inside a sheet (decided before the owner's review, 17 Nov).
       const tonal = await token(page, `color-mix(in oklch, var(--forest) ${theme === 'dark' ? '28%' : '14%'}, var(--sunk))`);
 
       await addExpense(page).click();

@@ -196,7 +196,7 @@ export function BalanceRegion() {
       <SyncPill />
       {balance.status === 'waiting-for-partner' ? (
         <>
-          <p className="text-sentence m-0 max-w-[22ch] text-balance">{strings.home.waiting}</p>
+          <p ref={sentenceRef} tabIndex={-1} className="text-sentence m-0 max-w-[22ch] rounded-[8px] text-balance outline-offset-4">{strings.home.waiting}</p>
           <p className="text-secondary text-ink-2 mt-1 mb-0 max-w-[32ch]">{strings.home.waitingLine}</p>
           <div className="mt-3 flex min-h-11 items-center">
             <Button
@@ -210,7 +210,7 @@ export function BalanceRegion() {
           </div>
         </>
       ) : balance.status === 'error' ? (
-        <p className="text-note m-0 max-w-[32ch]">{strings.home.balanceHidden}</p>
+        <p ref={sentenceRef} tabIndex={-1} className="text-note m-0 max-w-[32ch] rounded-[8px] outline-offset-4">{strings.home.balanceHidden}</p>
       ) : (
         <>
           <p
