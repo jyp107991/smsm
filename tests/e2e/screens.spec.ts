@@ -43,6 +43,9 @@ test.describe('the S2 screens', () => {
   for (const viewport of VIEWPORTS) {
     for (const theme of THEMES) {
       test(`${String(viewport.width)}×${String(viewport.height)}, ${theme}: every screen fits and is axe clean`, async ({ page }) => {
+        // The tour visits every S2 screen and runs axe on each: about 28 s on a quiet machine, so the default
+        // 30 s left no room (it timed out under load). A longer limit; no check changes.
+        test.setTimeout(60_000);
         await page.setViewportSize(viewport);
         await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
         await home(page);
