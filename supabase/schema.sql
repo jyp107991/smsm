@@ -184,10 +184,17 @@ declare hid uuid;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   if exists (select 1 from members where user_id = auth.uid()) then raise exception 'already in a household'; end if;
+  if (select count(*) from join_attempts where user_id = auth.uid() and at > now() - interval '1 hour') >= 10 then
+    raise exception 'too many wrong codes; try again in an hour';
+  end if;
   select id into hid from households where join_code = upper(trim(p_code)) for update;
-  if hid is null then raise exception 'no household with that code'; end if;
+  if hid is null then
+    insert into join_attempts(user_id) values (auth.uid());
+    return null;                                -- the app says "No household has that code"
+  end if;
   if (select count(*) from members where household_id = hid) >= 2 then raise exception 'this household already has two people'; end if;
   insert into members(household_id, user_id) values (hid, auth.uid());
+  delete from join_attempts where user_id = auth.uid();
   return hid;
 end $$;
 
@@ -656,6 +663,15 @@ CREATE TABLE public.inbox_items (
 );
 
 --
+-- Name: join_attempts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.join_attempts (
+    user_id uuid NOT NULL,
+    at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
 -- Name: members; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -983,6 +999,12 @@ CREATE UNIQUE INDEX inbox_external ON public.inbox_items USING btree (household_
 CREATE UNIQUE INDEX inbox_occurrence ON public.inbox_items USING btree (recurring_id, occurrence_date) WHERE (recurring_id IS NOT NULL);
 
 --
+-- Name: join_attempts_user_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX join_attempts_user_at ON public.join_attempts USING btree (user_id, at);
+
+--
 -- Name: members_one_household; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1284,6 +1306,13 @@ ALTER TABLE ONLY public.inbox_items
     ADD CONSTRAINT inbox_items_recurring_id_fkey FOREIGN KEY (recurring_id) REFERENCES public.recurring(id) ON DELETE CASCADE;
 
 --
+-- Name: join_attempts join_attempts_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.join_attempts
+    ADD CONSTRAINT join_attempts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+--
 -- Name: members members_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1562,6 +1591,12 @@ ALTER TABLE public.inbox_items ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY inbox_items_all ON public.inbox_items USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
+
+--
+-- Name: join_attempts; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.join_attempts ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: members mem_read; Type: POLICY; Schema: public; Owner: -
