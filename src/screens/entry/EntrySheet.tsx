@@ -261,25 +261,17 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     <Sheet open={open} onOpenChange={(next) => { if (!next) onDone(); }} title={title} dirty={dirty} full footer={footer}>
     <form id={formId} onSubmit={save} noValidate className="flex flex-col gap-5">
       {/* Q-L12: the hero. The display serif on a hairline, a ghost "0.00", and a sum's result inside the line. */}
-      <div className="flex min-w-0 flex-col gap-1">
-        <label htmlFor={`${formId}-amount`} className="text-secondary text-ink-2 font-medium">{strings.entry.amount}</label>
-        <div className="border-line focus-within:border-forest flex min-w-0 items-baseline gap-1 border-b transition-[border-color,box-shadow] duration-150 focus-within:shadow-[0_1px_0_var(--forest)]">
-          <span aria-hidden="true" className="text-amount text-ink-2">{strings.ui.currency}</span>
-          <input
-            id={`${formId}-amount`}
-            value={s.amountText}
-            placeholder={strings.entry.amountPlaceholder}
-            onChange={(e) => { update({ ...s, amountText: e.target.value }); }}
-            onKeyDown={(e) => { enterMovesTo(e, descriptionRef.current); }}
-            inputMode="decimal"
-            enterKeyHint="next"
-            autoComplete="off"
-            autoFocus={request.mode !== 'edit'}
-            className="text-amount nums-list text-ink placeholder:text-ink-2 w-full min-w-0 flex-1 bg-transparent py-1 outline-none"
-          />
-          <span aria-live="polite" className="text-secondary text-ink-2 nums-list shrink-0 whitespace-nowrap">{sum}</span>
-        </div>
-      </div>
+      <Field
+        label={strings.entry.amount}
+        variant="amount"
+        value={s.amountText}
+        placeholder={strings.entry.amountPlaceholder}
+        trailing={sum}
+        onChange={(e) => { update({ ...s, amountText: e.target.value }); }}
+        onKeyDown={(e) => { enterMovesTo(e, descriptionRef.current); }}
+        enterKeyHint="next"
+        autoFocus={request.mode !== 'edit'}
+      />
 
       <div className="flex flex-col gap-2">
         <Field

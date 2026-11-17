@@ -57,6 +57,10 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
   const opener = useRef<HTMLElement | null>(null);
 
   // Before the content mounts (the portal renders a beat later), so this is still the opener.
+  // A sheet opened over another (the date grid over the Add sheet) stacks above it, scrim and all.
+  const [stacked, setStacked] = useState({ open: false, depth: 0 });
+  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth });
+  const depth = stacked.depth;
   useLayoutEffect(() => {
     if (open) opener.current = focusedElement();
   }, [open]);
@@ -153,7 +157,7 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     >
       <Drawer.Portal>
         {/* The scrim (Q-L3): warm ink by day, black by night, so the sheet reads as lifted off a dimmed page. */}
-        <Drawer.Overlay className="bg-scrim fixed inset-0 z-40" />
+        <Drawer.Overlay className="bg-scrim fixed inset-0" style={{ zIndex: 40 + 10 * depth }} />
         <Drawer.Content
           {...(description ? {} : { 'aria-describedby': undefined })}
           // While it slides away it is no longer there to read or press (a sheet over a sheet closes on top of
@@ -183,8 +187,9 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
               setConfirming(true);
             }
           }}
+          style={{ zIndex: 50 + 10 * depth }}
           className={cx(
-            'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
+            'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
             'max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
             full && 'h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
           )}

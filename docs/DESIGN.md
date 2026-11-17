@@ -157,7 +157,7 @@ Four tabs along the bottom: **Home · Activity · Bills · Insights**. Settings 
 - The chapter and country chips appear beside the quick-add box only when not everyday/home ("Japan 🗾").
 
 ### 4.2 Add / edit (bottom sheet, full height)
-Amount first and largest, numeric keypad open at once; description with suggestions; category chips (most likely first, guess marked with a small dot); who paid (two heads); split (segmented: Split · Exact · For Sam · My treat; the ratio control appears under Split); date (Today, Yesterday, picker). "More" expands: chapter, place, notes, tags, photo, itemise, other currency, repeat. Save stays above the keyboard. The system back gesture closes the sheet (it has its own history entry) and asks before discarding typed changes.
+Amount first and largest, numeric keypad open at once; description with suggestions; category chips (most likely first, guess marked with a small dot); who paid (two heads); how it's shared (one row of choices that name people: 50/50 · Jae 60 · Sam 40 · Jae 40 · Sam 60 · Other, a 5 % stepper · Exact · For Sam · My treat; S2 polish Q-U5); date (Today, Yesterday, and the app's own month grid in a small sheet, Q-L13). "More details" expands: chapter, place, notes, tags, photo, itemise, other currency, repeat. Save stays above the keyboard. The system back gesture closes the sheet (it has its own history entry) and asks before discarding typed changes.
 
 ### 4.3 Entry page
 Amount and description as the heading; then who paid and the split in words ("Jae paid. Jae £21.25, Sam £21.25"); category, date, chapter, place; photo; lines if itemised; original currency if any; comments; history. Actions: Edit, Duplicate, Refund this, Delete.

@@ -2,6 +2,17 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17: S2 polish 2 built (the Add sheet, Home and Activity); waiting for the owner's look
+- **Add sheet:** the amount is the big written figure on a thin line, with "0.00" until you type and a sum's answer at the end of the same line; earlier descriptions are offered before you type; the split is one row that says who: "50/50 · Jae 60 · Sam 40 · Jae 40 · Sam 60 · Other · Exact · For Sam · My treat" (Other has − and + in 5 % steps), and its meaning never flips when you change who paid; money back reads "All Jae’s" / "All Sam’s"; the date is our own calendar in a small sheet (no days after today), and the chip then reads "Tue 10 Nov"; "More details" opens with a turning arrow.
+- **Quick add:** a small Save appears in the box when the line is clear; the line under it keeps two lines' room so nothing jumps; with the keyboard up the box moves near the top; descriptions are tidied ("tesco" → "Tesco", "ikea" → "IKEA", Korean untouched).
+- **Home:** "Recent" shows the last five entries and settle-ups by day (never a blank "nothing today"); square after a settle-up says "Settled up today" without changing height. **Toasts** say what happened ("Saved Tesco £42.50", "Removed Tesco", "Copied to today" with Open, "Money back saved") and never cover the new row.
+- **Entry page:** "Sam owes Jae £21.25 for this"; "£20.00 came back · Today" links to the money back; history starts with "Jae added this".
+- **Activity:** our own clear button in search; "Clear all" and "Clear filters"; "Last 7 days" and "Pick dates"; rows give the description the room, with the payer's head by the amount, and screen readers hear who paid; emoji on a small quiet disc.
+- **Settings / Settle up:** "@jaepark" works and the line says "Sam will pay you at monzo.me/jaepark"; "Usual split" has its own section; opened by the person owed, Settle up reads "Sam paid Jae" / "Record Sam’s payment"; editing one says "Edit settle-up".
+- **Tested:** all wave 2 tests-first tests pass; `npm run verify` green; both builds; demo browser tests all pass, the new file three times over. Two older tests now expect the tidied "Milk"/"Tesco", and three older browser tests had their locators or a pause updated for the new names and layout (DECISIONS); no check was loosened.
+- **Not checked here:** the two-user suite (CI only); the locators it needs were updated by the tests-first commit.
+- **Next:** fresh review, then the owner's yes on the before/after screenshots before wave 2 merges.
+
 ## 2026-11-17 ~13:00 UTC: wave 1b built and merged on the branch; owner reviewing screenshots
 - Quick add: cat/dog never decide who paid (owner) — live after the next merge.
 - Wave 1b (look) merged into the branch with 1a; 1149 unit tests, 68/68 demo e2e locally. Chosen-chip tint 28 % by night (14 % by day).

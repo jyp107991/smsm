@@ -222,6 +222,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
           label={strings.settle.amount}
           variant="amount"
           value={amountText}
+          placeholder={strings.entry.amountPlaceholder}
           onChange={(e) => { setAmountText(e.target.value); setError(null); }}
           onKeyDown={amountKey}
           enterKeyHint="done"

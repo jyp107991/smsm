@@ -89,9 +89,9 @@ export function SettlementRowView({ row, people }: { row: SettlementRow; people:
       data-row={row.id}
       className={cx(ROW, 'text-ink', row.deleted_at !== null && 'opacity-60')}
     >
-      <span className="flex justify-center -space-x-2.5" aria-hidden="true">
-        {from ? <Head animal={from.animal} size={18} /> : null}
-        {to ? <Head animal={to.animal} size={18} /> : null}
+      <span className="flex justify-center -space-x-1.5" aria-hidden="true">
+        {from ? <Head animal={from.animal} size={15} /> : null}
+        {to ? <Head animal={to.animal} size={15} /> : null}
       </span>
       <span className="text-moss col-span-3 min-w-0 truncate">
         {strings.activity.settled(from?.name ?? '', to?.name ?? '', formatPence(pence(row.amount_pence)))}

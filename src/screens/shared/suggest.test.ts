@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Memory } from '../../core/categorise';
 import type { CategoryRow, ExpenseRow } from '../../data';
-import { descriptionSuggestions, readingWords, readQuickAdd } from './suggest';
+import merchants from '../../../content/merchants.json';
+import { descriptionSuggestions, readingWords, readQuickAdd, tidy } from './suggest';
 import type { Person } from './words';
 
 const J: Person = { id: 'j', name: 'Jae', animal: 'cat' };
@@ -69,5 +70,34 @@ describe('description suggestions (ADD-4)', () => {
     expect(descriptionSuggestions('ＴＥ', entries)).toEqual(['Tesco Express', 'Tesco']);
     expect(descriptionSuggestions('tesco', entries)).toEqual(['Tesco Express']);
     expect(descriptionSuggestions('t', entries)).toEqual([]);
+  });
+});
+
+describe('the merchant list\'s spellings (S2 polish Q-U6)', () => {
+  it('Q-U6 CAT-2: every name is still found whatever its case, and no two names are the same once lowercased', () => {
+    const keys = Object.keys(merchants);
+    expect(new Set(keys.map((k) => k.toLowerCase())).size).toBe(keys.length);
+    // A brand written in its own case is still a lookup like any other ("ikea" → Household).
+    expect(read('80 ikea').r?.categoryId).toBe(id('Household'));
+    expect(read('9 tk maxx').r?.categoryId).toBe(id('Household'));
+    expect(read('12 pret a manger').r?.categoryId).toBe(id('Eating out'));
+  });
+
+  it('Q-U6 TXT-1: the reading says the list\'s spelling, else a capital first letter; other scripts as typed', () => {
+    expect(tidy('ikea')).toBe('IKEA');
+    expect(tidy('easyjet')).toBe('easyJet');
+    expect(tidy('tk maxx towels')).toBe('TK Maxx towels');
+    expect(tidy('tesco')).toBe('Tesco');
+    expect(tidy('gin and lime')).toBe('Gin and lime');
+    expect(tidy('이마트')).toBe('이마트');
+    expect(read('80 ikea').words).toBe('£80.00 · IKEA · Household · Jae paid · 50/50');
+  });
+});
+
+describe('From before (Q-L12 ADD-4)', () => {
+  it('Q-L12 ADD-4: before anything is typed, the most recent different descriptions, newest first', () => {
+    const at = (description: string, date: string, created: string) => ({ ...row(description, 'Groceries'), date, created_at: created });
+    const list = [at('Lamp', '2026-11-12', 'a'), at('Tesco', '2026-11-14', 'b'), at('tesco', '2026-11-13', 'c'), at('Rent', '2026-11-14', 'a')];
+    expect(descriptionSuggestions('', list)).toEqual(['Tesco', 'Rent', 'Lamp']);
   });
 });
