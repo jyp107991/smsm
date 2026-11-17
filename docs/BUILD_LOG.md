@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~17:20 UTC: the app updates itself — LIVE
+- Owner: the phone stayed on an old build (c9b1d3e): the old worker waited for every window to close and its Refresh prompt was hidden. Owner asked for an update check on launch with a progress bar.
+- PR #8 merged (CI 44131224387 green, two-user 21/21); deploy 44133039790 green; live version.json e9bfdcf; live sw.js has skipWaiting.
+- Now: the worker takes over at once; LaunchUpdate checks /version.json on launch (and on return after 10 min, no sheet open), shows "Updating smsm" with a progress bar, saves the queue and reloads once; never mid-use (the plugin's auto-reload is replaced by the prompt); toasts no longer slide over the tab bar.
+- Owner's phones need one manual full close (old code); after that, updates are automatic.
+
 ## 2026-11-17 ~16:05 UTC: polish wave 2 LIVE; S3 building
 - PR #7 merged (CI run 44117239902 all green, two-user 21/21); deploy run 44119135248 green; live version.json commit 1943cee. The owner said yes to the screenshots.
 - Live now: the Add sheet (hero amount, sums inline, recent descriptions, in-app calendar, named splits incl. 70/30, More details), quick add Save in the box and tidy descriptions, Home "Recent", toasts that name things (Duplicate offers Undo — owner), the entry page "owes … for this" line and "came back" links, Activity grid/filters, Settings monzo check line, settle-up wording.
