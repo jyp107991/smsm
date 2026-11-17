@@ -49,9 +49,9 @@ export function Home() {
       <InboxButton />
       <TripBanner />
       <BalanceRegion />
-      <ThisMonth />
       <CurrentChapterChip />
       <QuickAdd />
+      <ThisMonth />
       <SuggestRecurring />
       <RecentRows />
     </div>
