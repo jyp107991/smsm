@@ -109,7 +109,10 @@ export async function setUpCouple(first: Phone, second: Phone): Promise<Househol
 export const balanceRegion = (page: Page) => page.getByRole('region', { name: 'Balance' });
 export const quickAddBox = (page: Page) => page.getByRole('textbox', { name: 'Quick add' });
 export const todayList = (page: Page) => page.getByRole('list', { name: 'Today' });
-export const savedStatus = (page: Page) => page.getByRole('status').filter({ hasText: /^Saved/ });
+/** The toast after a save (S2 polish Q-U8: "Saved Tesco £42.50", or "Money back saved"). */
+export const savedStatus = (page: Page) => page.getByRole('status').filter({ hasText: /^(Saved|Money back saved)/ });
+/** The toast after Duplicate (S2 polish Q-U8: "Copied to today", with Open). */
+export const copiedStatus = (page: Page) => page.getByRole('status').filter({ hasText: /^Copied to today/ });
 // S2 polish Q-L10: offline it reads "Offline · 1 waiting to sync" (one pill under the plank); online "3 changes waiting to sync".
 export const waitingToSync = (page: Page) => page.getByRole('status').filter({ hasText: /waiting to sync/ });
 
@@ -155,7 +158,10 @@ export interface SheetFields {
   description?: string;
   category?: string;
   payer?: string;
-  /** "Split", "Exact", "For Sam", "My treat" */
+  /**
+   * A radio in "How it’s shared" (S2 polish Q-U5; was radiogroup "Split" with "Split", "Exact", "For Sam",
+   * "My treat"): "50/50", "Jae 60 · Sam 40", …, "Other", "Exact", "For Sam", "My treat".
+   */
   split?: string;
   exact?: Record<string, string>;
   date?: 'Today' | 'Yesterday';
@@ -171,14 +177,14 @@ export async function fillSheet(sheet: Locator, f: SheetFields): Promise<void> {
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
   }
   if (f.payer !== undefined) await sheet.getByRole('radiogroup', { name: 'Who paid' }).getByRole('radio', { name: f.payer }).check();
-  if (f.split !== undefined) await sheet.getByRole('radiogroup', { name: 'Split' }).getByRole('radio', { name: f.split }).check();
+  if (f.split !== undefined) await sheet.getByRole('radiogroup', { name: 'How it’s shared' }).getByRole('radio', { name: f.split }).check();
   for (const [person, pounds] of Object.entries(f.exact ?? {})) {
     await sheet.getByRole('textbox', { name: `${person}'s share` }).fill(pounds);
   }
   if (f.date !== undefined) await control(sheet.getByRole('group', { name: 'Date' }), f.date).click();
   if (f.notes !== undefined) {
     const notes = sheet.getByRole('textbox', { name: 'Notes' });
-    if (!(await notes.isVisible())) await sheet.getByRole('button', { name: 'More' }).click();
+    if (!(await notes.isVisible())) await sheet.getByRole('button', { name: 'More details' }).click(); // Q-L14 (was "More")
     await notes.fill(f.notes);
   }
 }

@@ -125,7 +125,7 @@ test('SET-3: settle-ups appear in Activity, are editable and soft-deletable, and
   await expect(jae.page).toHaveURL(new RegExp(`/entry/${settle.id}$`));
   await expect(jae.page.getByRole('heading', { name: 'Sam paid Jae £20.00' })).toBeVisible();
   await jae.page.getByRole('button', { name: 'Edit' }).click();
-  const edit = jae.page.getByRole('dialog', { name: 'Settle up' });
+  const edit = jae.page.getByRole('dialog', { name: 'Edit settle-up' }); // Q-U11 (was "Settle up")
   await edit.getByRole('textbox', { name: 'Amount' }).fill('21.25');
   await control(edit, /^(Save|Record it)$/).click();
   await settlementsWhen(household.id, (rows) => rows[0]?.amount_pence === 2125, 'edited');

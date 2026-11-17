@@ -29,9 +29,11 @@ describe('the quick-add reading', () => {
     expect(read('42.50 Tesco').words).toBe('£42.50 · Tesco · Groceries · Jae paid · 50/50');
   });
 
-  it('ADD-2: a date other than today and tags are said; a typed split from the payer\'s side', () => {
-    expect(read('12+8.50 pret 60/40 yesterday #lunch').words).toBe('£20.50 · pret · Eating out · Jae paid · 60/40 · Yesterday · #lunch');
-    expect(read('9 sundries sam paid 70/30').words).toBe('£9.00 · sundries · Other · Sam paid · 70/30');
+  // S2 polish wave 2: the reading shows the description as it will be saved (Q-U6: "pret" → "Pret") and names a
+  // ratio split, payer first (Q-U5: "60/40" → "Jae 60 · Sam 40"). Were '… · pret · … · 60/40 …' and '… · sundries · … · 70/30'.
+  it('ADD-2 Q-U5 Q-U6: a date other than today and tags are said; a typed split from the payer\'s side, with names', () => {
+    expect(read('12+8.50 pret 60/40 yesterday #lunch').words).toBe('£20.50 · Pret · Eating out · Jae paid · Jae 60 · Sam 40 · Yesterday · #lunch');
+    expect(read('9 sundries sam paid 70/30').words).toBe('£9.00 · Sundries · Other · Sam paid · Sam 70 · Jae 30');
   });
 
   it('CAT-3 CAT-2: what the household chose beats the built-in list; then a close match in history', () => {
@@ -42,11 +44,11 @@ describe('the quick-add reading', () => {
 
   it('CAT-4 SPL-2: the usual split for a description, and a remembered split with no category still gets one', () => {
     const memory = new Map<string, Memory>([['netflix', { categoryId: null, split: { mode: 'ratio', ratio: { j: 70, s: 30 } }, source: 'user' }]]);
-    expect(read('11 netflix', { memory }).words).toBe('£11.00 · netflix · Subscriptions · Jae paid · 70/30');
+    expect(read('11 netflix', { memory }).words).toBe('£11.00 · Netflix · Subscriptions · Jae paid · Jae 70 · Sam 30'); // Q-U5 Q-U6 (was '… netflix … 70/30')
   });
 
   it('SPL-2: the household default when nothing else is known', () => {
-    expect(read('10 thing', { householdRatio: { j: 40, s: 60 } }).words).toBe('£10.00 · thing · Other · Jae paid · 40/60');
+    expect(read('10 thing', { householdRatio: { j: 40, s: 60 } }).words).toBe('£10.00 · Thing · Other · Jae paid · Jae 40 · Sam 60'); // Q-U5 Q-U6 (was '… thing … 40/60')
   });
 
   it('BAL-6: before the partner joins, the holder paid and the split is the default', () => {

@@ -14,6 +14,7 @@ import {
   openEntry,
   openSettleUp,
   quickAdd,
+  copiedStatus,
   savedStatus,
   setUpCouple,
   todayList,
@@ -37,7 +38,8 @@ async function editAmount(page: Page, id: string, amount: string): Promise<void>
 async function recordSettleUp(page: Page, amount: string): Promise<void> {
   const dialog = await openSettleUp(page);
   await dialog.getByRole('textbox', { name: 'Amount' }).fill(amount);
-  await dialog.getByRole('button', { name: 'Record it' }).click();
+  // Q-U11: the person owed reads "Record Sam’s payment"; the one who owes, "Record it".
+  await dialog.getByRole('button', { name: /^Record (it|\S+’s payment)$/ }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -76,7 +78,7 @@ test('OFF-1 OFF-2 OFF-3 OFF-5 OFF-6 BAL-5 ADD-6: a full offline session with a b
   await savedStatus(jae.page).getByRole('button', { name: 'Undo' }).click();
   await openEntry(jae.page, tesco.id);
   await jae.page.getByRole('button', { name: 'Duplicate' }).click();
-  await expect(savedStatus(jae.page)).toBeVisible();
+  await expect(copiedStatus(jae.page)).toBeVisible(); // Q-U8 (was "Saved")
   await recordSettleUp(jae.page, '10');
 
   // Tesco 45.20 (+22.60), Pret 18 (+9.00), the duplicate (+22.60), Sam paid Jae £10 (−10.00): £44.20.
@@ -84,7 +86,7 @@ test('OFF-1 OFF-2 OFF-3 OFF-5 OFF-6 BAL-5 ADD-6: a full offline session with a b
   await expectSentence(jae.page, 'Sam owes Jae £44.20');
   await expect(waitingToSync(jae.page)).toBeVisible();
   await expect(todayList(jae.page).getByText('Pret')).toBeVisible();
-  await expect(todayList(jae.page).getByText('coffee')).toBeHidden();
+  await expect(todayList(jae.page).getByText('Coffee')).toBeHidden(); // Q-U6: saved tidy
   // Nothing has reached the server or the other phone.
   await sam.page.waitForTimeout(2_000);
   await expectSentence(sam.page, 'Sam owes Jae £21.25');
@@ -117,7 +119,7 @@ test('OFF-1 OFF-2 OFF-3 OFF-5 OFF-6 BAL-5 ADD-6: a full offline session with a b
   ]);
   expect(tescos[0]?.id).toBe(tesco.id);
   await rowNamed(household.id, 'Pret');
-  const coffee = (await expensesOf(household.id)).filter((r) => r.description === 'coffee');
+  const coffee = (await expensesOf(household.id)).filter((r) => r.description === 'Coffee'); // Q-U6 (was 'coffee')
   expect(coffee.every((r) => r.deleted_at !== null)).toBe(true);
   expect((await settlementsOf(household.id)).map((s) => s.amount_pence)).toEqual([1000]);
   // In order: the edit of Tesco reached the database after Tesco existed and before nothing else overwrote it.

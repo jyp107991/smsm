@@ -49,18 +49,19 @@ test.describe('the S2 screens', () => {
         await check(page, 'Home');
 
         await page.getByRole('textbox', { name: 'Quick add' }).fill('42.50 tesco yesterday #weekly');
-        await expect(page.getByRole('button', { name: /^£42\.50 · tesco · Groceries · Jae paid · / })).toBeVisible();
+        // S2 polish Q-U6: the reading shows the description as it will be saved ("tesco" → "Tesco").
+        await expect(page.getByRole('button', { name: /^£42\.50 · Tesco · Groceries · Jae paid · / })).toBeVisible();
         await check(page, 'Home with a reading');
         await page.getByRole('textbox', { name: 'Quick add' }).fill('');
-        // Done with quick add.
-        await page.getByRole('heading', { name: 'Today' }).click();
+        // Done with quick add. (S2 polish Q-U7: Home's section is "Recent"; "Today" only heads a day that has rows.)
+        await page.getByRole('heading', { name: 'Recent' }).click();
 
         await page.getByRole('button', { name: 'Add expense', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Add expense' });
         await expect(sheet).toBeVisible();
         await sheet.getByRole('textbox', { name: 'Amount' }).fill('18.50+4+12');
         await check(page, 'Add expense');
-        await sheet.getByRole('radiogroup', { name: 'Split' }).getByRole('radio', { name: 'Exact' }).check();
+        await sheet.getByRole('radiogroup', { name: 'How it’s shared' }).getByRole('radio', { name: 'Exact' }).check(); // Q-U5 (was "Split")
         await check(page, 'Add expense, exact');
         await sheet.getByRole('button', { name: 'Close' }).click();
         await page.getByRole('button', { name: 'Discard' }).click();
@@ -137,7 +138,7 @@ test.describe('the daily loop in the demo', () => {
     await sheet.getByRole('textbox', { name: 'Amount' }).fill('18.50+4+12');
     await expect(sheet).toContainText('£34.50');
     await sheet.getByRole('textbox', { name: 'Description' }).fill('Lamp');
-    await sheet.getByRole('radiogroup', { name: 'Split' }).getByRole('radio', { name: 'Exact' }).check();
+    await sheet.getByRole('radiogroup', { name: 'How it’s shared' }).getByRole('radio', { name: 'Exact' }).check(); // Q-U5 (was "Split")
     await sheet.getByRole('textbox', { name: "Jae's share" }).fill('10');
     await sheet.getByRole('textbox', { name: "Sam's share" }).fill('15');
     await expect(sheet).toContainText('£9.50 left to share');
@@ -156,12 +157,13 @@ test.describe('the daily loop in the demo', () => {
     await page.getByRole('list', { name: 'Today' }).getByText('Bakery').click();
     await expect(page.getByRole('heading', { name: 'Bakery' })).toBeVisible();
     await expect(page.getByText('Jae paid. Jae £10.00, Sam £10.00')).toBeVisible();
-    await expect(page.getByRole('region', { name: 'History' })).toContainText('Jae added it');
+    await expect(page.getByRole('region', { name: 'History' })).toContainText('Jae added this'); // Q-U9 (was "Jae added it")
     await page.getByRole('button', { name: 'Delete' }).click();
     await expect(page.getByRole('button', { name: 'Restore' })).toBeVisible();
     await page.getByRole('button', { name: 'Restore' }).click();
     await page.getByRole('button', { name: 'Duplicate' }).click();
-    await expect(page.getByRole('status').filter({ hasText: /^Saved/ })).toBeVisible();
+    // Q-U8: the toast says what happened (was "Saved").
+    await expect(page.getByRole('status').filter({ hasText: /^Copied to today/ })).toBeVisible();
     await page.getByRole('button', { name: 'Refund this' }).click();
     const refund = page.getByRole('dialog', { name: 'Money back' });
     await refund.getByRole('textbox', { name: 'Amount' }).fill('5');
@@ -214,7 +216,8 @@ test.describe('the daily loop in the demo', () => {
       await expect(asked).toBeVisible();
       await asked.getByRole('button', { name: 'Yes' }).click();
     } else {
-      await dialog.getByRole('button', { name: 'Record it' }).click();
+      // Q-U11: for the person owed (the demo's Jae) the button names whose payment it records.
+      await dialog.getByRole('button', { name: /^Record (it|\S+’s payment)$/ }).click();
     }
     await expect(balance(page).getByText('All square', { exact: true })).toBeVisible();
     await expect(balance(page).getByRole('button', { name: 'Settle up' })).toBeHidden();
@@ -293,7 +296,7 @@ test.describe('the screens review: focus, the add button, chips', () => {
     await home(page);
     const box = page.getByRole('textbox', { name: 'Quick add' });
     await box.fill('12 coffee');
-    await page.getByRole('button', { name: /^£12\.00 · coffee/ }).click();
+    await page.getByRole('button', { name: /^£12\.00 · Coffee/ }).click(); // Q-U6 (was "coffee")
     const sheet = page.getByRole('dialog', { name: 'Add expense' });
     await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
