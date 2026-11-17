@@ -66,7 +66,11 @@ describe('change requests (PPL-4, PPL-5)', () => {
     expect(requestWords(ask({ user_id: S, display_name: 'Sammy', animal: 'dog' }), people, J)).toBe('Sam asked to change their name to Sammy');
     expect(requestWords(ask({ user_id: S, display_name: 'Sam', animal: 'cat' }), people, J)).toBe('Sam asked to be the cat');
     expect(requestWords(ask({ user_id: S, display_name: 'Sammy', animal: 'cat' }), people, J)).toBe('Sam asked to change their name to Sammy and be the cat');
-    expect(requestWords({ requested_by: J, kind: 'default_ratio', payload: { ratio: { [J]: 60, [S]: 40 } } }, people, S)).toBe('Jae asked to make the usual split Jae 60%, Sam 40%');
+  });
+  it('Q-L9 PPL-5: a split request names the split as the banner says it ("Jae would like new entries split Jae 60 · Sam 40")', () => {
+    // Was 'Jae asked to make the usual split Jae 60%, Sam 40%' (S2); the polish brief (Q-L9) changes the copy.
+    expect(requestWords({ requested_by: J, kind: 'default_ratio', payload: { ratio: { [J]: 60, [S]: 40 } } }, people, S)).toBe('Jae would like new entries split Jae 60 · Sam 40');
+    expect(requestWords({ requested_by: S, kind: 'default_ratio', payload: { ratio: { [J]: 60, [S]: 40 } } }, people, J)).toBe('Sam would like new entries split Jae 60 · Sam 40');
   });
   it('PPL-5: the requester reads it as theirs', () => {
     expect(requestWords(ask({ user_id: S, display_name: 'Sammy', animal: 'dog' }), people, S)).toBe('You asked to change your name to Sammy.');
