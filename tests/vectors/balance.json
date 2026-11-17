@@ -2,35 +2,35 @@
   "about": "Golden vectors for src/core/balance.ts. net(P) = Σ expenses (paid[P] − shares[P]) − Σ money_back (paid[P] − shares[P]) + Σ settle-ups P paid − Σ settle-ups P received, over live rows. Positive = owed. A key missing from paid or shares counts as 0.",
   "members": ["jae", "sam"],
   "workedExample": {
-    "about": "DATA_MODEL §3 worked example, one row at a time (the same rows as tests/sql/schema_test.sql).",
+    "about": "DATA_MODEL §3 worked example, one row at a time (the same rows as tests/sql/schema_test.sql). mode is the split_mode the row is stored with; the balance ignores it.",
     "steps": [
       {
         "say": "Jae pays Tesco £44.00 at 50/50 (+2200)",
-        "entry": { "kind": "expense", "paid": { "jae": 4400 }, "shares": { "jae": 2200, "sam": 2200 }, "deleted": false },
+        "entry": { "kind": "expense", "mode": "ratio", "paid": { "jae": 4400 }, "shares": { "jae": 2200, "sam": 2200 }, "deleted": false },
         "expected": { "jae": 2200, "sam": -2200 },
         "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2200 }
       },
       {
         "say": "Jae pays Sam's haircut £30.00, paid for Sam (+3000)",
-        "entry": { "kind": "expense", "paid": { "jae": 3000 }, "shares": { "jae": 0, "sam": 3000 }, "deleted": false },
+        "entry": { "kind": "expense", "mode": "for_other", "paid": { "jae": 3000 }, "shares": { "jae": 0, "sam": 3000 }, "deleted": false },
         "expected": { "jae": 5200, "sam": -5200 },
         "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 5200 }
       },
       {
         "say": "Sam treats dinner £60.00 (0)",
-        "entry": { "kind": "expense", "paid": { "sam": 6000 }, "shares": { "sam": 6000 }, "deleted": false },
+        "entry": { "kind": "expense", "mode": "treat", "paid": { "sam": 6000 }, "shares": { "sam": 6000 }, "deleted": false },
         "expected": { "jae": 5200, "sam": -5200 },
         "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 5200 }
       },
       {
         "say": "A £100 sofa from the joint account, split 70/30: Jae paid 5000 and owes 7000 (−2000)",
-        "entry": { "kind": "expense", "paid": { "jae": 5000, "sam": 5000 }, "shares": { "jae": 7000, "sam": 3000 }, "deleted": false },
+        "entry": { "kind": "expense", "mode": "ratio", "paid": { "jae": 5000, "sam": 5000 }, "shares": { "jae": 7000, "sam": 3000 }, "deleted": false },
         "expected": { "jae": 3200, "sam": -3200 },
         "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 3200 }
       },
       {
         "say": "Jae receives a £20 refund that belongs to both: −(2000 − 1000)",
-        "entry": { "kind": "money_back", "paid": { "jae": 2000 }, "shares": { "jae": 1000, "sam": 1000 }, "deleted": false },
+        "entry": { "kind": "money_back", "mode": "ratio", "paid": { "jae": 2000 }, "shares": { "jae": 1000, "sam": 1000 }, "deleted": false },
         "expected": { "jae": 2200, "sam": -2200 },
         "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2200 }
       },
