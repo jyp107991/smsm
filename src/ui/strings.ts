@@ -620,6 +620,21 @@ export const strings = {
     standingOrder: (debtor: string, creditor: string, amount: string) =>
       `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${amount} on average. A standing order of ${amount} a month would keep you about square.`,
   },
+  /** S5b: comments on an entry (ACT-4). */
+  comments: {
+    title: 'Comments',
+    none: 'No comments yet.',
+    add: 'Add a comment',
+    send: 'Send',
+    comment: 'Comment',
+    edit: 'Edit',
+    delete: 'Delete',
+    editLabel: 'Edit comment',
+    deleteLabel: 'Delete comment',
+    editTitle: 'Edit comment',
+    deleted: (who: string) => `${who} deleted a comment.`,
+    count: (n: number) => (n === 1 ? '1 comment' : `${String(n)} comments`),
+  },
   settings: {
     title: 'Settings',
     back: 'Home',

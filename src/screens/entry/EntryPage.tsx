@@ -17,6 +17,7 @@ import { go, pathOf } from '../../ui/router';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { CategoryMark } from '../shared/CategoryMark';
+import { Comments } from './Comments';
 import { countryName } from '../chapters/model';
 import { formatForeign } from '../../core/fx';
 import { Head } from '../shared/Head';
@@ -47,6 +48,7 @@ export function EntryPage({ id }: { id: string }) {
       {expense ? <ExpenseView row={expense} /> : settlement ? <SettlementView row={settlement} /> : loading ? null : (
         <p className="text-note m-0">{strings.entry.notFound}</p>
       )}
+      {expense ? <Comments expenseId={expense.id} /> : null}
       {expense || settlement ? <History id={id} /> : null}
     </div>
   );
