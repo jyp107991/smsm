@@ -13,12 +13,7 @@ import { strings } from '../../ui/strings';
 import { NO_ENTRIES } from '../shared/empty';
 import { useRecapInput } from './recapData';
 
-function read(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
-}
-function write(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* shown again next time */ }
-}
+import { read, recapSeen, settleSeen, write, yearSeen } from './seen';
 
 function Linked({ to, children }: { to: Parameters<typeof go>[0]; children: string }) {
   const href = to.name === 'recap' ? `/recap/${to.month}` : to.name === 'year' ? `/year/${to.year}` : '/';
@@ -29,21 +24,27 @@ function Linked({ to, children }: { to: Parameters<typeof go>[0]; children: stri
   );
 }
 
-/** Insights: "Recaps" (the last 12 finished months, newest first) and "Years". */
+/** Insights: "Recaps" (the last 12 finished months, newest first; the month so far from settle day on) and "Years". */
 export function RecapLists() {
   const layer = useDataLayer();
   const today = layer.today();
   const rows = useEntries().data ?? NO_ENTRIES;
   const recapsId = useId();
   const yearsId = useId();
+  const settleDay = useHousehold().data?.settle_day ?? null;
   const { months, years } = useMemo(() => {
-    const had = new Set(rows.filter((e) => e.deleted_at === null).map((e) => e.date.slice(0, 7)));
-    const first = startOfMonth(today);
-    // Every one of the last 12 finished months once the household has any spending: a quiet month has a recap too.
-    const ms = had.size === 0 ? [] : Array.from({ length: 12 }, (_, i) => addMonths(first, -(i + 1)).slice(0, 7));
+    const live = rows.filter((e) => e.deleted_at === null);
+    const had = new Set(live.map((e) => e.date.slice(0, 7)));
+    const thisMonth = startOfMonth(today);
+    // The last 12 finished months once the household has any spending: a quiet month has a recap too (the brief and
+    // its tests; DECISIONS 17 Nov).
+    const ms: { month: string; soFar: boolean }[] = live.length === 0 ? []
+      : Array.from({ length: 12 }, (_, i) => ({ month: addMonths(thisMonth, -(i + 1)).slice(0, 7), soFar: false }));
+    // From settle day on, the month so far has its recap too (SET-4), first.
+    if (settleDay !== null && Number(today.slice(8, 10)) >= settleDay) ms.unshift({ month: today.slice(0, 7), soFar: true });
     const ys = [...new Set([...had].map((m) => m.slice(0, 4)))].sort().reverse();
     return { months: ms, years: ys };
-  }, [rows, today]);
+  }, [rows, today, settleDay]);
   if (months.length === 0 && years.length === 0) return null;
   return (
     <>
@@ -51,7 +52,11 @@ export function RecapLists() {
         <section aria-labelledby={recapsId} className="flex flex-col gap-2">
           <h2 id={recapsId} className="text-heading rule-ledger m-0">{strings.recap.recaps}</h2>
           <ul aria-labelledby={recapsId} className="m-0 flex list-none flex-wrap gap-x-4 p-0">
-            {months.map((m) => <li key={m}><Linked to={{ name: 'recap', month: m }}>{strings.recap.monthName(m)}</Linked></li>)}
+            {months.map((m) => (
+              <li key={m.month}>
+                <Linked to={{ name: 'recap', month: m.month }}>{m.soFar ? strings.recap.soFarName(m.month) : strings.recap.monthName(m.month)}</Linked>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}
@@ -85,11 +90,11 @@ export function RecapBanners() {
   const settleDay = household?.settle_day ?? null;
 
   let offer: { to: Parameters<typeof go>[0]; text: string } | null = null;
-  if (settleDay !== null && day === settleDay && read('smsm-recap-seen') !== thisMonth) {
+  if (settleDay !== null && day === settleDay && !settleSeen(thisMonth)) {
     offer = { to: { name: 'recap', month: thisMonth }, text: strings.recap.settleDay(strings.recap.shortName(thisMonth)) };
-  } else if (hadLast && read('smsm-recap-seen') !== lastMonth && (settleDay === null || read('smsm-recap-seen') !== thisMonth)) {
+  } else if (hadLast && !recapSeen(lastMonth)) {
     offer = { to: { name: 'recap', month: lastMonth }, text: strings.recap.ready(strings.recap.shortName(lastMonth)) };
-  } else if (today.slice(5, 7) === '01' && hadLastYear && read('smsm-year-seen') !== lastYear) {
+  } else if (today.slice(5, 7) === '01' && hadLastYear && !yearSeen(lastYear)) {
     offer = { to: { name: 'year', year: lastYear }, text: strings.recap.yearOffer(lastYear) };
   }
 
@@ -111,7 +116,7 @@ export function RecapBanners() {
           <a
             href={`/entry/${memory.id}`}
             onClick={(e) => { e.preventDefault(); go({ name: 'entry', id: memory.id }); }}
-            className="text-body text-ink m-0 break-words"
+            className="text-body text-ink inline-flex min-h-11 items-center break-words"
           >
             {strings.recap.aYearAgo(memory.description, formatPence(memory.amount), where)}
           </a>

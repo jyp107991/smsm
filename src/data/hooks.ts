@@ -130,6 +130,16 @@ export function useAllComments(): DataResult<CommentRow[]> {
   return result(q, data);
 }
 
+/** ACT-4: live comments per entry, worked out once per list (rows take their count from it, not a hook each). */
+export function useCommentCounts(): ReadonlyMap<string, number> {
+  const all = useAllComments().data;
+  return useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of all ?? []) if (c.deleted_at === null) counts.set(c.expense_id, (counts.get(c.expense_id) ?? 0) + 1);
+    return counts;
+  }, [all]);
+}
+
 /** ACT-4: one entry's thread, oldest first (deleted ones kept, shown as deleted). */
 export function useComments(expenseId: string): DataResult<CommentRow[]> {
   const all = useAllComments();

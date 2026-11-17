@@ -17,7 +17,9 @@ export function SettleDay() {
   const id = useId();
   const household = useHousehold().data ?? null;
   const [error, setError] = useState<string | null>(null);
-  const value = household?.settle_day ?? null;
+  // The choice holds while it saves (review: a controlled select snapped back until the refresh landed).
+  const [choosing, setChoosing] = useState<number | null | undefined>(undefined);
+  const value = choosing === undefined ? (household?.settle_day ?? null) : choosing;
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-secondary text-ink-2 font-medium">{strings.settleDay.label}</label>
@@ -27,7 +29,11 @@ export function SettleDay() {
         aria-describedby={`${id}-line`}
         onChange={(e) => {
           setError(null);
-          setSettleDay(e.target.value === '' ? null : Number(e.target.value)).catch((err: unknown) => { setError(plainError(err)); });
+          const day = e.target.value === '' ? null : Number(e.target.value);
+          setChoosing(day);
+          setSettleDay(day)
+            .catch((err: unknown) => { setError(plainError(err)); })
+            .finally(() => { setChoosing(undefined); });
         }}
         className="bg-sunk text-ink text-body min-h-12 w-full rounded-[12px] px-4 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
       >

@@ -790,6 +790,11 @@ export function deleteComment(id: string, layer = activeDataLayer()): boolean {
   return changeComment(id, { deleted_at: layer.now().toISOString() }, layer);
 }
 
+/** ACT-4: Undo after deleting: the author brings their comment back. True when something changed. */
+export function restoreComment(id: string, layer = activeDataLayer()): boolean {
+  return changeComment(id, { deleted_at: null }, layer);
+}
+
 /** SET-4: the household's settle day (1–28) or null for off. Needs a connection. */
 export async function setSettleDay(day: number | null, layer = activeDataLayer()): Promise<void> {
   if (day !== null && (!Number.isInteger(day) || day < 1 || day > 28)) throw new EntryInvalidError(['settleDay']);

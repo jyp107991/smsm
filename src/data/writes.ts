@@ -497,7 +497,6 @@ export function recurringWrite(row: RecurringRow): RecurringWrite {
   return Object.fromEntries(RECURRING_WRITE_COLUMNS.map((k) => [k, row[k]])) as RecurringWrite;
 }
 
-/** The columns of a category the phone sends. */
 /** The columns of a comment the phone sends. */
 export function commentWrite(row: CommentRow): CommentWrite {
   const { id, household_id, expense_id, author, body, deleted_at } = row;
@@ -510,6 +509,7 @@ export function chapterWrite(row: ChapterRow): ChapterWrite {
   return { id, household_id, name, emoji, kind, country, start_date, end_date, closed };
 }
 
+/** The columns of a category the phone sends. */
 export function categoryWrite(row: CategoryRow): CategoryWrite {
   const { id, household_id, name, emoji, colour, archived, sort, default_ratio } = row;
   return { id, household_id, name, emoji, colour, archived, sort, default_ratio };

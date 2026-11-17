@@ -11,7 +11,7 @@
 import { MessageCircle } from 'lucide-react';
 import type { MouseEvent, ReactNode } from 'react';
 import { formatPence, pence } from '../../core/money';
-import { useAllComments, type CategoryRow, type CommentRow, type ExpenseRow, type SettlementRow } from '../../data';
+import type { CategoryRow, ExpenseRow, SettlementRow } from '../../data';
 import { cx } from '../../ui/primitives/util';
 import { go, pathOf } from '../../ui/router';
 import { strings } from '../../ui/strings';
@@ -28,26 +28,14 @@ function open(e: MouseEvent<HTMLAnchorElement>, id: string) {
 /** The grid every row shares (Q-L15): mark, description, head, amount. */
 const ROW = 'press grid min-h-14 min-w-0 grid-cols-[24px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 py-2 no-underline';
 
-/** S5b (ACT-4): live comments per entry, counted once per copy of the thread list, shared by every row. */
-const COUNTS = new WeakMap<readonly CommentRow[], Map<string, number>>();
-function useCommentCount(expenseId: string): number {
-  const all = useAllComments().data;
-  if (!all) return 0;
-  let counts = COUNTS.get(all);
-  if (!counts) {
-    counts = new Map();
-    for (const c of all) if (c.deleted_at === null) counts.set(c.expense_id, (counts.get(c.expense_id) ?? 0) + 1);
-    COUNTS.set(all, counts);
-  }
-  return counts.get(expenseId) ?? 0;
-}
-
 function Tag({ children }: { children: ReactNode }) {
   return <span className="text-caption text-ink-2 bg-sunk shrink-0 rounded-[8px] px-1.5 py-px">{children}</span>;
 }
 
-export function EntryRowView({ row, categories, people, pending = false }: {
+export function EntryRowView({ row, categories, people, pending = false, comments = 0 }: {
   row: ExpenseRow;
+  /** S5b (ACT-4): live comments on it, from the list's `useCommentCounts()`. */
+  comments?: number;
   categories: readonly CategoryRow[];
   people: readonly Person[];
   pending?: boolean;
@@ -61,7 +49,6 @@ export function EntryRowView({ row, categories, people, pending = false }: {
     : row.split_mode === 'for_other' && beneficiary ? strings.entry.forTag(beneficiary.name)
     : row.split_mode === 'treat' ? strings.entry.treatTag : null;
   const who = payer ? (back ? strings.reading.gotBack(payer.name) : strings.reading.paid(payer.name)) : null;
-  const comments = useCommentCount(row.id);
   const name = strings.activity.row([
     row.description, amount, ...(tag ? [tag] : []), ...(who ? [who] : []), ...(comments > 0 ? [strings.comments.count(comments)] : []),
   ]);

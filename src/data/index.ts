@@ -11,7 +11,7 @@ export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
   useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {
@@ -23,7 +23,7 @@ export {
   CATEGORY_COLOURS, type CategoryColour, type CategoryDraft, type RecurringDraft,
   saveChapter, closeChapter, setCurrentChapter, currentChapterId, currentOpenChapter, type ChapterDraft,
   currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor, askLocation,
-  addComment, editComment, deleteComment, setSettleDay,
+  addComment, editComment, deleteComment, restoreComment, setSettleDay,
 } from './mutations';
 export type { WindowRole } from './windows';
 export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type InvalidReason, type SettlementDraft } from './writes';

@@ -62,7 +62,8 @@ export function recapOf(entries: readonly InsightEntry[], settlements: readonly 
     + (comparison === null ? '.' : comparison.direction === 'same' ? ', about the same as usual.'
       : `, about ${pounds(comparison.amount)} ${comparison.direction} than usual.`);
 
-  const cats = byCategory(entries, period);
+  // The bar shows spending: a category that money back took to nothing or below has no slice (review: no negative bar).
+  const cats = byCategory(entries, period).filter((c) => c.total > 0);
   const catName = (id: string | null) => opts.categories.find((c) => c.id === id)?.name ?? '';
   const bar: Recap['bar'] = cats.length > 4
     ? [...cats.slice(0, 4).map((c) => ({ categoryId: c.categoryId, name: catName(c.categoryId), total: c.total })),

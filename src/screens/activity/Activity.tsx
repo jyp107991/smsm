@@ -11,7 +11,7 @@ import { formatDate, formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
 import {
   addExpense, deleteExpense, newId, restoreExpense, useCategories, useChapters, useDataLayer, useEntries, useSettlements, useSyncStatus,
-  type ExpenseRow, type SettlementRow,
+  type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -44,6 +44,7 @@ export function Activity() {
   const categories = useCategories().data ?? [];
   const people = usePeople();
   const { pendingIds, otherWindow } = useSyncStatus();
+  const commentCounts = useCommentCounts();
   const today = layer.today();
   // Filters live with the screen: opening Activity again starts afresh.
   const [text, setText] = useState('');
@@ -233,10 +234,10 @@ export function Activity() {
                   <li key={i.row.id} className="border-line border-b last:border-b-0">
                     {/* A read-only window, or a deleted entry (Restore is on its page), has nothing to swipe. */}
                     {i.kind === 'expense' && (otherWindow || i.row.deleted_at !== null) ? (
-                      <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} />
+                      <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} />
                     ) : i.kind === 'expense' ? (
                       <Swipeable row={i.row} people={people.list} today={today}>
-                        <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} />
+                        <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} />
                       </Swipeable>
                     ) : (
                       <SettlementRowView row={i.row} people={people.list} />

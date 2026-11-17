@@ -4,9 +4,9 @@
  * the partner sees it within seconds. Nobody can change the other person's comments.
  */
 import { useId, useState, type SyntheticEvent } from 'react';
-import { addComment, deleteComment, editComment, useComments, useDataLayer, useSyncStatus, type CommentRow } from '../../data';
+import { addComment, deleteComment, editComment, restoreComment, useComments, useDataLayer, useSyncStatus, type CommentRow } from '../../data';
 import { enterSavesOnce } from '../../ui/keys';
-import { Button, Field } from '../../ui/primitives';
+import { Button, Field, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
@@ -22,6 +22,17 @@ export function Comments({ expenseId }: { expenseId: string }) {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<CommentRow | null>(null);
+  const toast = useToast();
+  // DESIGN §5: a delete is one tap with Undo, never a confirm dialog.
+  const remove = (c: CommentRow) => {
+    try {
+      if (deleteComment(c.id)) {
+        toast.show({ message: strings.comments.removed, action: { label: strings.entry.undo, onAction: () => { restoreComment(c.id); } } });
+      }
+    } catch (err) {
+      setError(plainError(err));
+    }
+  };
   const me = people.me?.id;
   const name = (uid: string) => people.list.find((p) => p.id === uid)?.name ?? strings.history.someone;
 
@@ -55,10 +66,10 @@ export function Comments({ expenseId }: { expenseId: string }) {
                 <span className="text-caption text-ink-2">{whenWords(c.created_at, today)}</span>
                 {c.author === me && c.deleted_at === null && !otherWindow && editing?.id !== c.id ? (
                   <>
-                    <button type="button" aria-label={strings.comments.editLabel} onClick={() => { setEditing(c); }} className="text-forest text-secondary press inline-flex min-h-11 items-center rounded-full px-2">
+                    <button type="button" aria-label={strings.comments.editLabel} onClick={() => { setEditing(c); }} className="text-forest text-secondary press inline-flex min-h-11 min-w-11 items-center justify-center rounded-full px-2">
                       {strings.comments.edit}
                     </button>
-                    <button type="button" aria-label={strings.comments.deleteLabel} onClick={() => { deleteComment(c.id); }} className="text-forest text-secondary press inline-flex min-h-11 items-center rounded-full px-2">
+                    <button type="button" aria-label={strings.comments.deleteLabel} onClick={() => { remove(c); }} className="text-forest text-secondary press inline-flex min-h-11 min-w-11 items-center justify-center rounded-full px-2">
                       {strings.comments.delete}
                     </button>
                   </>

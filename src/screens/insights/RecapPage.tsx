@@ -4,11 +4,11 @@
  * figures are the core's (core/recap). From settle day on, the current month's recap is "so far".
  */
 import { ArrowLeft } from 'lucide-react';
-import { useId, useMemo, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, type ReactNode } from 'react';
 import { formatShortDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import { recapOf } from '../../core/recap';
-import { useBalance, useCategories, useDataLayer } from '../../data';
+import { useBalance, useCategories, useDataLayer, useHousehold } from '../../data';
 import { Button, ICON } from '../../ui/primitives';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
@@ -17,12 +17,7 @@ import { usePeople } from '../shared/people';
 import { balanceWords } from '../shared/words';
 import { useSheets } from '../sheets';
 import { useRecapInput } from './recapData';
-
-function seenKey(): string { return 'smsm-recap-seen'; }
-
-export function markRecapSeen(month: string): void {
-  try { localStorage.setItem(seenKey(), month); } catch { /* the banner shows again next time */ }
-}
+import { markRecapSeen } from './seen';
 
 export function RecapPage({ month }: { month: string }) {
   const layer = useDataLayer();
@@ -32,10 +27,17 @@ export function RecapPage({ month }: { month: string }) {
   const people = usePeople();
   const balance = useBalance();
   const sheets = useSheets();
-  const recap = useMemo(() => (input ? recapOf(input.entries, input.settlements, input.people, month, {
+  const settleDay = useHousehold().data?.settle_day ?? null;
+  const thisMonth = today.slice(0, 7);
+  // A month has its recap once it is over, or from settle day on for the month so far (brief); never a future or
+  // malformed month.
+  const valid = /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+    && (month < thisMonth || (month === thisMonth && settleDay !== null && Number(today.slice(8, 10)) >= settleDay));
+  const recap = useMemo(() => (input && valid ? recapOf(input.entries, input.settlements, input.people, month, {
     today, names: input.names, categories: input.categories, templates: input.templates, commentCounts: input.commentCounts,
-  }) : null), [input, month, today]);
-  if (recap) markRecapSeen(month);
+  }) : null), [input, valid, month, today]);
+  const seen = recap === null ? null : recap.soFar;
+  useEffect(() => { if (seen !== null) markRecapSeen(month, seen); }, [seen, month]);
   const name = strings.recap.monthName(month);
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
 
@@ -54,7 +56,16 @@ export function RecapPage({ month }: { month: string }) {
       <h1 className="text-title m-0">{name}</h1>
     </header>
   );
-  if (!recap) return <div className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">{header}</div>;
+  if (!recap) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
+        {header}
+        {input && !valid ? <p className="text-body text-ink-2 m-0">{strings.recap.noRecap}</p> : null}
+      </div>
+    );
+  }
+  // A month with only money back (or more back than spent) is a month with nothing spent together (review).
+  const spent = recap.total > 0;
 
   const owes = balance.status === 'ready' && balance.state.kind === 'owes';
 
@@ -63,7 +74,7 @@ export function RecapPage({ month }: { month: string }) {
       {header}
       <article className="bg-surface flex flex-col gap-8 rounded-[20px] px-5 py-6">
         <Part title={strings.recap.headline} hidden>
-          <p className="text-sentence nums-list m-0">{recap.total === 0 ? strings.recap.nothing : recap.headline}</p>
+          <p className="text-sentence nums-list m-0">{spent ? recap.headline : strings.recap.nothing}</p>
         </Part>
 
         {recap.bar.length > 0 ? (
@@ -90,7 +101,7 @@ export function RecapPage({ month }: { month: string }) {
 
         <Part title={strings.recap.betweenYou}>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
-            {people.list.map((p) => <li key={p.id} className="text-body nums-list">{strings.recap.paidLine(p.name, formatPence(recap.paid[p.id] ?? pence(0)))}</li>)}
+            {spent ? people.list.map((p) => <li key={p.id} className="text-body nums-list">{strings.recap.paidLine(p.name, formatPence(recap.paid[p.id] ?? pence(0)))}</li>) : null}
           </ul>
           {balance.status === 'ready' ? (
             <p className="text-body m-0">{(() => { const w = balanceWords(balance.state, people.name); return `${w.words}${w.amount ?? ''}`; })()}</p>

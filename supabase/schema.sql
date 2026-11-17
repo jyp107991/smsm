@@ -290,7 +290,9 @@ begin
       end loop;
       if diff = '{}' then return new; end if;
     end if;
-    if act <> 'edited' then
+    if act <> 'edited' and ent = 'comment' then
+      diff := jsonb_build_object('body', n -> 'body', 'expense_id', n -> 'expense_id');   -- a comment says what it was
+    elsif act <> 'edited' then
       diff := jsonb_build_object('description', n -> 'description', 'amount_pence', n -> 'amount_pence');
     end if;
   end if;

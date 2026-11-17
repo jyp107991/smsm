@@ -3,7 +3,7 @@
  * month by month; the biggest expense; the year's chapters; who paid. Figures from core/recap.
  */
 import { ArrowLeft } from 'lucide-react';
-import { useId, useMemo, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, type ReactNode } from 'react';
 import { formatShortDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import { yearOf } from '../../core/recap';
@@ -15,12 +15,10 @@ import { NO_CATEGORIES } from '../shared/empty';
 import { usePeople } from '../shared/people';
 import { Columns } from './Charts';
 import { useRecapInput } from './recapData';
+import { markYearSeen } from './seen';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-export function markYearSeen(year: number): void {
-  try { localStorage.setItem('smsm-year-seen', String(year)); } catch { /* offered again next time */ }
-}
 
 export function YearPage({ year }: { year: number }) {
   const layer = useDataLayer();
@@ -30,7 +28,8 @@ export function YearPage({ year }: { year: number }) {
   const categories = useCategories().data ?? NO_CATEGORIES;
   const people = usePeople();
   const review = useMemo(() => (input ? yearOf(input.entries, (chapterRows ?? []).map((c) => ({ id: c.id, name: c.name })), input.people, year) : null), [input, chapterRows, year]);
-  if (review) markYearSeen(year);
+  const ready = review !== null;
+  useEffect(() => { if (ready) markYearSeen(year); }, [ready, year]);
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
   const y = String(year);
   return (
