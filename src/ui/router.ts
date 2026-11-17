@@ -15,6 +15,7 @@ export type Route =
   | { name: 'inbox' }
   | { name: 'categories' }
   | { name: 'chapters' }
+  | { name: 'insights' }
   | { name: 'chapter'; id: string };
 
 export function parseRoute(path: string): Route {
@@ -22,6 +23,7 @@ export function parseRoute(path: string): Route {
   if (clean === '/activity') return { name: 'activity' };
   if (clean === '/settings') return { name: 'settings' };
   if (clean === '/bills') return { name: 'bills' };
+  if (clean === '/insights') return { name: 'insights' };
   if (clean === '/inbox') return { name: 'inbox' };
   if (clean === '/settings/categories') return { name: 'categories' };
   if (clean === '/settings/chapters') return { name: 'chapters' };
@@ -42,6 +44,8 @@ export function pathOf(route: Route): string {
       return '/settings';
     case 'bills':
       return '/bills';
+    case 'insights':
+      return '/insights';
     case 'inbox':
       return '/inbox';
     case 'categories':

@@ -11,6 +11,7 @@ import { go, useRoute, type Route } from '../ui/router';
 import { strings } from '../ui/strings';
 import { Activity } from './activity/Activity';
 import { Bills } from './bills/Bills';
+import { Insights } from './insights/Insights';
 import { Inbox } from './bills/Inbox';
 import { Categories } from './settings/Categories';
 import { ChapterPage } from './chapters/ChapterPage';
@@ -73,6 +74,7 @@ const TABS = MAIN_TABS.filter((t) => t.value === 'home' || t.value === 'activity
 function tabOf(route: Route, last: MainTab): MainTab {
   if (route.name === 'activity') return 'activity';
   if (route.name === 'bills') return 'bills';
+  if (route.name === 'insights') return 'insights';
   if (route.name === 'entry') return last;
   return 'home';
 }
@@ -89,6 +91,8 @@ function Page({ route }: { route: Route }) {
       return <EntryPage key={route.id} id={route.id} />;
     case 'bills':
       return <Bills />;
+    case 'insights':
+      return <Insights />;
     case 'inbox':
       return <Inbox />;
     case 'categories':
@@ -136,7 +140,7 @@ function MainApp() {
             items={TABS}
             value={tab}
             onValueChange={(t) => {
-              const target: Route = t === 'activity' ? { name: 'activity' } : t === 'bills' ? { name: 'bills' } : { name: 'home' };
+              const target: Route = t === 'activity' ? { name: 'activity' } : t === 'bills' ? { name: 'bills' } : t === 'insights' ? { name: 'insights' } : { name: 'home' };
               if (route.name !== target.name) go(target);
             }}
           >

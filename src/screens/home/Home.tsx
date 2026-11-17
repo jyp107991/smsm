@@ -25,6 +25,7 @@ import { BalanceRegion } from './Balance';
 import { InboxButton, SuggestRecurring } from './BillsBanners';
 import { CurrentChapterChip } from './CurrentChapter';
 import { TripBanner } from '../places/TripBanner';
+import { ThisMonth } from '../insights/ThisMonth';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
@@ -48,6 +49,7 @@ export function Home() {
       <InboxButton />
       <TripBanner />
       <BalanceRegion />
+      <ThisMonth />
       <CurrentChapterChip />
       <QuickAdd />
       <SuggestRecurring />
