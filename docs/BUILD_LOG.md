@@ -2,6 +2,11 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~18:00 UTC: S3 builder had died at 15:48 — restarted as two builders with a stall watch
+- The S3 builder stopped at 15:48 (its task vanished, likely a container restart) with only two draft migrations written; the idle check-ins didn't catch it. Owner was (rightly) frustrated at the wait.
+- Salvaged its drafts as commit 09a913e on its worktree branch. Restarted as two builders in parallel: data (migrations, core, data layer, demo seed) and screens (Bills tab, regular payment sheet, Inbox, looks-monthly, categories), each committing every 15 min; a Monitor alerts on 25 min without a commit.
+- Live meanwhile: "Check for updates" (PR #9). Plan change: no Splitwise import (owner).
+
 ## 2026-11-17 ~17:20 UTC: the app updates itself — LIVE
 - Owner: the phone stayed on an old build (c9b1d3e): the old worker waited for every window to close and its Refresh prompt was hidden. Owner asked for an update check on launch with a progress bar.
 - PR #8 merged (CI 44131224387 green, two-user 21/21); deploy 44133039790 green; live version.json e9bfdcf; live sw.js has skipWaiting.
