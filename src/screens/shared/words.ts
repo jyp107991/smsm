@@ -3,6 +3,7 @@
  * Pure functions over rows and people, so the wording is tested once and every screen says it the same way.
  * Figures come from the core (formatPence and the split maths); nothing here adds money up.
  */
+import { balanceState, netPositions } from '../../core/balance';
 import { formatDay, todayIn, type IsoDate } from '../../core/dates';
 import { formatPence, pence, type Pence } from '../../core/money';
 import type { SplitParams, UserId } from '../../core/split';
@@ -58,13 +59,19 @@ export function entrySentence(row: EntryLike, people: readonly Person[]): string
   return strings.entry.paidSentence(name, shareWords(row.shares, people));
 }
 
-/** The split in the live reading and on lists, from the payer's side: "60/40", "Jae's treat", "for Sam". */
+/**
+ * The split in the live reading, from the payer's side and with names (Q-U5): "Jae 60 · Sam 40" (an even split
+ * stays "50/50"), "Jae's treat", "for Sam".
+ */
 export function splitWords(split: SplitParams, payer: UserId, people: readonly Person[]): string {
   const other = people.find((p) => p.id !== payer);
   switch (split.mode) {
     case 'ratio': {
       const mine = split.ratio[payer] ?? (other ? 100 - (split.ratio[other.id] ?? 50) : 50);
-      return strings.reading.ratio(mine, 100 - mine);
+      const name = people.find((p) => p.id === payer)?.name;
+      if (mine === 50) return strings.reading.even;
+      if (!other || name === undefined) return strings.reading.ratio(mine, 100 - mine);
+      return strings.reading.shares(name, mine, other.name, 100 - mine);
     }
     case 'treat':
       return strings.reading.treat(people.find((p) => p.id === payer)?.name ?? '');
@@ -73,6 +80,36 @@ export function splitWords(split: SplitParams, payer: UserId, people: readonly P
     case 'exact':
       return strings.reading.exact;
   }
+}
+
+/**
+ * Q-U9: what an entry alone leaves owing, "Sam owes Jae £21.25 for this", from the core's balance over this one
+ * entry; null when it leaves nobody owing (a treat) or no longer counts.
+ */
+export function owesForThis(row: EntryLike & { deleted_at: string | null }, people: readonly Person[]): string | null {
+  const [a, b] = people;
+  if (!a || !b || row.deleted_at !== null) return null;
+  const map = (m: unknown) => ({ [a.id]: penceOf(m, a.id), [b.id]: penceOf(m, b.id) });
+  const kind = row.kind === 'money_back' ? 'money_back' : 'expense';
+  const members = [a.id, b.id] as const;
+  const state = balanceState(netPositions(members, [{ kind, paid: map(row.paid), shares: map(row.shares), deleted: false }], []), members);
+  if (state.kind === 'square') return null;
+  const name = (id: UserId) => people.find((p) => p.id === id)?.name ?? strings.history.someone;
+  return strings.entry.owesForThis(name(state.debtor), name(state.creditor), formatPence(state.amount));
+}
+
+/** Q-L15: the plank described with people (BAL-3): "Jae, the cat, is owed; Sam, the dog, owes". */
+export function plankWords(
+  state: { kind: 'square' } | { kind: 'owes'; debtor: UserId; creditor: UserId },
+  people: readonly Person[],
+): string | null {
+  const [a, b] = people;
+  if (!a || !b) return null;
+  const who = (p: Person) => strings.rig.person(p.name, strings.rig.kind[p.animal]);
+  if (state.kind === 'square') return strings.rig.plankLevel(who(a), who(b));
+  const owed = people.find((p) => p.id === state.creditor);
+  const owes = people.find((p) => p.id === state.debtor);
+  return owed && owes ? strings.rig.plankOwed(who(owed), who(owes)) : null;
 }
 
 /** The balance sentence's two parts (BAL-2): the words, and the amount drawn one step larger. */

@@ -99,7 +99,8 @@ describe('settling up', () => {
     fireEvent.click(await within(await balanceText()).findByRole('button', { name: 'Settle up' }));
     const jaeSheet = await screen.findByRole('dialog', { name: 'Settle up' });
     expect(within(jaeSheet).queryByRole('button', { name: 'Pay with Monzo' })).toBeNull();
-    expect(within(jaeSheet).getByRole('button', { name: 'Record it' })).toBeTruthy();
+    // S2 polish Q-U11: for the person owed the button names whose payment it records (was "Record it").
+    expect(within(jaeSheet).getByRole('button', { name: 'Record Sam’s payment' })).toBeTruthy();
   });
 
   it('SET-2: the person who owes gets Pay with Monzo; SET-1: an amount over what is owed gets a quiet line', async () => {

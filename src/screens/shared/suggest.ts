@@ -10,12 +10,21 @@ import { formatDay, type IsoDate } from '../../core/dates';
 import { formatPence } from '../../core/money';
 import { parseQuickAdd, type QuickAddReading } from '../../core/quickadd';
 import { resolveDefaultSplit, type SplitParams, type UserId } from '../../core/split';
-import { normaliseKey } from '../../core/text';
+import { normaliseKey, tidyDescription } from '../../core/text';
 import type { CategoryRow, ExpenseRow } from '../../data';
 import { strings } from '../../ui/strings';
 import { splitWords, type Person } from './words';
 
 const SEED: Readonly<Record<string, string>> = seedList;
+/** Names the list writes in their own case ("IKEA", "easyJet"), by their lowercase form (Q-U6). */
+const SPELLINGS: ReadonlyMap<string, string> = new Map(
+  Object.keys(SEED).filter((k) => k !== k.toLowerCase()).map((k) => [k.toLowerCase(), k]),
+);
+
+/** Q-U6: a description as it is shown and saved: the list's spelling of a name, else a capital first letter. */
+export function tidy(description: string): string {
+  return tidyDescription(description, SPELLINGS);
+}
 
 export interface LearnContext {
   categories: readonly CategoryRow[];
@@ -108,21 +117,24 @@ export function readQuickAdd(
     today: ctx.today, me: ctx.me.id, partner: partnerId, names, animals, categories: live.map((c) => ({ id: c.id, name: c.name })),
   });
   if (!r) return null;
+  // Q-U6: read and saved tidy, so the reading, the form opened from it and the saved row all say the same.
+  const description = tidy(r.description);
   // Before the partner joins, only the person holding the phone can have paid, and the split is the default.
   const payer = ctx.partner ? r.payer : ctx.me.id;
-  const guess = r.description === '' ? { categoryId: null, split: null, source: 'none' as const } : guessFor(r.description, ctx);
+  const guess = description === '' ? { categoryId: null, split: null, source: 'none' as const } : guessFor(description, ctx);
   const categoryId = r.categoryId ?? guess.categoryId ?? otherCategoryId(live);
   const category = live.find((c) => c.id === categoryId);
   const typedSplit = r.split !== null && ctx.partner !== null;
   const split = typedSplit && r.split ? r.split : defaultSplit({ remembered: guess.split, category, householdRatio: ctx.householdRatio, people, me: ctx.me.id });
   return {
     ...r,
+    description,
     payer,
     categoryId,
     split,
     typedCategory: r.categoryId !== null,
     typedSplit,
-    saveAs: r.description !== '' ? r.description : (category?.name ?? ''),
+    saveAs: description !== '' ? description : (category?.name ?? ''),
   };
 }
 
@@ -139,9 +151,13 @@ export function readingWords(r: Reading, ctx: { categories: readonly CategoryRow
   return parts.join(strings.reading.sep);
 }
 
-/** Earlier descriptions that start like this one (ADD-4 "autocomplete from history"), most used first. */
+/**
+ * Earlier descriptions that start like this one (ADD-4 "autocomplete from history"), most used first. Before
+ * anything is typed (Q-L12), the most recent ones, so the row is never an empty gap.
+ */
 export function descriptionSuggestions(typed: string, entries: readonly ExpenseRow[], limit = 3): string[] {
   const key = normaliseKey(typed);
+  if (key === '') return recentDescriptions(entries, limit);
   if (key.length < 2) return [];
   const counts = new Map<string, { text: string; n: number }>();
   for (const e of entries) {
@@ -153,4 +169,20 @@ export function descriptionSuggestions(typed: string, entries: readonly ExpenseR
     else counts.set(k, { text: e.description, n: 1 });
   }
   return [...counts.values()].sort((x, y) => y.n - x.n || x.text.localeCompare(y.text)).slice(0, limit).map((c) => c.text);
+}
+
+/** The last few different descriptions, newest first (entries are newest first by date; ties by when added). */
+export function recentDescriptions(entries: readonly ExpenseRow[], limit = 3): string[] {
+  const live = entries.filter((e) => e.deleted_at === null && e.kind === 'expense' && e.description.trim() !== '');
+  const newest = [...live].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of newest) {
+    const k = normaliseKey(e.description);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(e.description);
+    if (out.length === limit) break;
+  }
+  return out;
 }

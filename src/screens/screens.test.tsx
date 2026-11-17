@@ -80,7 +80,7 @@ describe('Home', () => {
     const box = screen.getByRole('textbox', { name: 'Quick add' });
     fireEvent.change(box, { target: { value: '9 bread' } });
     fireEvent.submit(box.closest('form') as HTMLFormElement);
-    await waitFor(() => { expect(within(screen.getByRole('list', { name: 'Today' })).getByText('bread')).toBeTruthy(); });
+    await waitFor(() => { expect(within(screen.getByRole('list', { name: 'Today' })).getByText('Bread')).toBeTruthy(); }); // Q-U6: saved with a capital first letter (was 'bread')
   });
 });
 

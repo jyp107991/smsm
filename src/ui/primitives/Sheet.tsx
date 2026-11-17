@@ -43,6 +43,13 @@ export interface SheetProps {
  * shrinks when the keyboard opens and the footer stays visible above it. vaul's own input repositioning
  * is turned off so the two don't fight.
  */
+/**
+ * The sheets that are open, innermost last. A sheet sliding away is still the top layer for Radix until it has
+ * gone, so it hands an Escape on to the open sheet under it (a quick second Escape after closing the date grid
+ * closes the Add sheet, as it would with no animation).
+ */
+const openSheets: { escape: () => void }[] = [];
+
 export function Sheet({ open, onOpenChange, title, description, dirty = false, full = false, footer, children }: SheetProps) {
   const id = useId();
   const [confirming, setConfirming] = useState(false);
@@ -50,6 +57,10 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
   const opener = useRef<HTMLElement | null>(null);
 
   // Before the content mounts (the portal renders a beat later), so this is still the opener.
+  // A sheet opened over another (the date grid over the Add sheet) stacks above it, scrim and all.
+  const [stacked, setStacked] = useState({ open: false, depth: 0 });
+  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth });
+  const depth = stacked.depth;
   useLayoutEffect(() => {
     if (open) opener.current = focusedElement();
   }, [open]);
@@ -80,10 +91,27 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
   };
 
   // What the history coordinator calls back with reads the latest props (it outlives renders).
-  const latest = useRef({ dirty, confirming, onOpenChange });
+  const latest = useRef({ dirty, confirming, onOpenChange, askOrClose });
   useEffect(() => {
-    latest.current = { dirty, confirming, onOpenChange };
+    latest.current = { dirty, confirming, onOpenChange, askOrClose };
   });
+
+  // Escape handed on from a sheet closing over this one: as Escape would do here.
+  useEffect(() => {
+    if (!open) return;
+    const entry = {
+      escape: () => {
+        const l = latest.current;
+        if (l.confirming) setConfirming(false);
+        else l.askOrClose();
+      },
+    };
+    openSheets.push(entry);
+    return () => {
+      const at = openSheets.indexOf(entry);
+      if (at !== -1) openSheets.splice(at, 1);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -129,11 +157,18 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     >
       <Drawer.Portal>
         {/* The scrim (Q-L3): warm ink by day, black by night, so the sheet reads as lifted off a dimmed page. */}
-        <Drawer.Overlay className="bg-scrim fixed inset-0 z-40" />
+        <Drawer.Overlay className="bg-scrim fixed inset-0" style={{ zIndex: 40 + 10 * depth }} />
         <Drawer.Content
           {...(description ? {} : { 'aria-describedby': undefined })}
+          // While it slides away it is no longer there to read or press (a sheet over a sheet closes on top of
+          // one that stays open: the date grid over the Add sheet, Q-L13).
+          aria-hidden={open ? undefined : true}
+          inert={!open}
           onEscapeKeyDown={(event) => {
-            if (confirming) {
+            if (!open) {
+              event.preventDefault();
+              openSheets[openSheets.length - 1]?.escape();
+            } else if (confirming) {
               event.preventDefault();
               setConfirming(false);
             } else if (dirty) {
@@ -152,8 +187,9 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
               setConfirming(true);
             }
           }}
+          style={{ zIndex: 50 + 10 * depth }}
           className={cx(
-            'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
+            'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
             'max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
             full && 'h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
           )}

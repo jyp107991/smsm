@@ -2,12 +2,30 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~14:30 UTC: polish wave 1b LIVE
+- PR #6 merged (CI run 44100028955 all green, two-user 21/21); deploy run 44101794646 green; live version.json commit c4c8601.
+- Live now: the owner-approved look (one toast layer with a visible update prompt; tonal selected states; warm scrim; Add button inside Quick add; centred tabs; sign-in with the plank and auto-submitting code; grounded plank; approval banner; offline pill), quick add cat/dog as ordinary words, the plain "sign-ups closed" message, the "Forget it" persistence fix, and the edit-mode discard question.
+- On the way: CI failed once because closing sign-ups also closed them on the CI test stack (fixed: the two-user job opens them in its own workspace).
+- Owner decision: lighter process for low-risk changes; small, frequent releases (DECISIONS).
+- Running: wave 2 builder.
+
 ## 2026-11-17 ~13:45 UTC: sign-ups closed; 1b release blocked on one CI test; wave 2 building
 - **Sign-ups closed** (owner yes): `enable_signup = false`, auth-config diff run 44095092073 (1 update), push run 44095233212; the live service now answers a new email with 422 signup_disabled. The app's message for it ("This email isn’t one of the two…") ships with the next release. Reopen = set true + auth-config push with the owner's approval.
 - Both people have joined and are already adding real entries (owner's partner hit the hidden "Updated. Tap to refresh" prompt — fixed in 1b, Q-L1; workaround: fully close and reopen the app).
 - A test account exists for the smsm Gmail address (from the email test this morning): no household, can't see data. Owner told how to delete it (Supabase → Authentication → Users).
 - 1b: fresh-review blocker (toast over the tab bar after Save) + 8 more fixed (6dd1ed6); CI run 44092991657 then failed one demo e2e twice (polish1a.spec.ts:277, the banner's "Forget it" question comes back after reopening; passes locally). The 1b builder is diagnosing.
 - Wave 2: tests written (worktree branch 3a62900); builder running.
+
+## 2026-11-17: S2 polish 2 built (the Add sheet, Home and Activity); waiting for the owner's look
+- **Add sheet:** the amount is the big written figure on a thin line, with "0.00" until you type and a sum's answer at the end of the same line; earlier descriptions are offered before you type; the split is one row that says who: "50/50 · Jae 60 · Sam 40 · Jae 40 · Sam 60 · Other · Exact · For Sam · My treat" (Other has − and + in 5 % steps), and its meaning never flips when you change who paid; money back reads "All Jae’s" / "All Sam’s"; the date is our own calendar in a small sheet (no days after today), and the chip then reads "Tue 10 Nov"; "More details" opens with a turning arrow.
+- **Quick add:** a small Save appears in the box when the line is clear; the line under it keeps two lines' room so nothing jumps; with the keyboard up the box moves near the top; descriptions are tidied ("tesco" → "Tesco", "ikea" → "IKEA", Korean untouched).
+- **Home:** "Recent" shows the last five entries and settle-ups by day (never a blank "nothing today"); square after a settle-up says "Settled up today" without changing height. **Toasts** say what happened ("Saved Tesco £42.50", "Removed Tesco", "Copied to today" with Open, "Money back saved") and never cover the new row.
+- **Entry page:** "Sam owes Jae £21.25 for this"; "£20.00 came back · Today" links to the money back; history starts with "Jae added this".
+- **Activity:** our own clear button in search; "Clear all" and "Clear filters"; "Last 7 days" and "Pick dates"; rows give the description the room, with the payer's head by the amount, and screen readers hear who paid; emoji on a small quiet disc.
+- **Settings / Settle up:** "@jaepark" works and the line says "Sam will pay you at monzo.me/jaepark"; "Usual split" has its own section; opened by the person owed, Settle up reads "Sam paid Jae" / "Record Sam’s payment"; editing one says "Edit settle-up".
+- **Tested:** all wave 2 tests-first tests pass; `npm run verify` green; both builds; demo browser tests all pass, the new file three times over. Two older tests now expect the tidied "Milk"/"Tesco", and three older browser tests had their locators or a pause updated for the new names and layout (DECISIONS); no check was loosened.
+- **Not checked here:** the two-user suite (CI only); the locators it needs were updated by the tests-first commit.
+- **Next:** fresh review, then the owner's yes on the before/after screenshots before wave 2 merges.
 
 ## 2026-11-17 ~13:00 UTC: wave 1b built and merged on the branch; owner reviewing screenshots
 - Quick add: cat/dog never decide who paid (owner) — live after the next merge.

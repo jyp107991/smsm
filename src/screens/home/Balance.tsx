@@ -10,7 +10,7 @@
  */
 import { CloudOff, CloudUpload, RefreshCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useBalance, useHousehold, useOnline, useSettlements, useSyncStatus, type BalanceView } from '../../data';
+import { useBalance, useDataLayer, useHousehold, useOnline, useSettlements, useSyncStatus, type BalanceView } from '../../data';
 import { registerFocusFallback } from '../../ui/focus';
 import { tickSettled } from '../../ui/haptics';
 import { plankTilt } from '../../ui/plank';
@@ -20,7 +20,7 @@ import { Plank, type PlankSeat } from '../../ui/rig/Plank';
 import { usePrefersReducedMotion } from '../../ui/rig/motion';
 import { strings } from '../../ui/strings';
 import { usePeople } from '../shared/people';
-import { balanceWords } from '../shared/words';
+import { balanceWords, plankWords } from '../shared/words';
 import { useSheets } from '../sheets';
 import { shareInvite } from '../shared/invite';
 import './moment.css';
@@ -143,6 +143,10 @@ export function BalanceRegion() {
   const toast = useToast();
   const reduced = usePrefersReducedMotion();
   const { otherWindow } = useSyncStatus();
+  const today = useDataLayer().today();
+  const settlements = useSettlements().data;
+  // Q-U7: square after a settle-up today, the turn line's place says so quietly.
+  const settledToday = settlements?.some((s) => s.deleted_at === null && s.date === today) ?? false;
   const [a, b] = people.list;
   const me = people.me;
 
@@ -154,7 +158,8 @@ export function BalanceRegion() {
   if (balance.status === 'ready') {
     leftNet = balance.nets[balance.members[0]] ?? 0;
     said.sentence = balanceWords(balance.state, people.name);
-    said.turn = balance.nextOneOn ? strings.home.nextOneOn(people.name(balance.nextOneOn)) : null;
+    said.turn = balance.nextOneOn ? strings.home.nextOneOn(people.name(balance.nextOneOn))
+      : balance.state.kind === 'square' && settledToday ? strings.home.settledToday : null;
     said.owes = balance.state.kind === 'owes';
     said.square = balance.state.kind === 'square';
     if (balance.state.kind === 'owes') {
@@ -191,7 +196,15 @@ export function BalanceRegion() {
 
   return (
     <section aria-label={strings.home.balance} className="relative flex flex-col items-center gap-1 text-center">
-      <Plank left={left} right={right} leftNetPence={leftNet} together={said.square} hop={moment} onRest={(t) => { if (t === 0) landed(); }} />
+      <Plank
+        left={left}
+        right={right}
+        leftNetPence={leftNet}
+        together={said.square}
+        hop={moment}
+        onRest={(t) => { if (t === 0) landed(); }}
+        label={balance.status === 'ready' ? plankWords(balance.state, people.list) : null}
+      />
       {moment && !reduced ? <Leaves /> : null}
       <SyncPill />
       {balance.status === 'waiting-for-partner' ? (
@@ -230,7 +243,7 @@ export function BalanceRegion() {
           </p>
           {/* The turn line and Settle up keep their place when hidden, so nothing below jumps (DESIGN §6). */}
           <p className="text-note text-ink-2 m-0 min-h-[1.6rem]">{shown.turn}</p>
-          <div className="mt-2 flex min-h-11 items-center">
+          <div className="mt-2 flex min-h-[max(2.75rem,calc(var(--size-body)*var(--leading-body)+1.25rem))] items-center">
             {shown.owes ? (
               <Button
                 ref={settleRef}

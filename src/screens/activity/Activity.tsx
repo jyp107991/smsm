@@ -5,9 +5,9 @@
  * delete (with Undo) or right to duplicate.
  */
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { formatDay, type IsoDate } from '../../core/dates';
+import { formatDate, formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
 import {
   addExpense, deleteExpense, newId, restoreExpense, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus,
@@ -15,16 +15,17 @@ import {
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
-import { Sheet, useToast } from '../../ui/primitives';
+import { Button, ICON, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { Animal } from '../../ui/rig/Animal';
 import { strings } from '../../ui/strings';
 import { duplicateDraft } from '../entry/form';
 import { usePeople } from '../shared/people';
 import { CategoryMark } from '../shared/CategoryMark';
+import { MonthGrid } from '../shared/MonthGrid';
 import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { payerOf, type Person } from '../shared/words';
-import { datesRange, type DatesChoice } from './dates';
+import { datesRange, type DatesChoice, type DayRange } from './dates';
 
 type Item =
   | { kind: 'expense'; row: ExpenseRow; entry: FilterEntry }
@@ -45,6 +46,9 @@ export function Activity() {
   const [payer, setPayer] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
   const [dates, setDates] = useState<DatesChoice>('any');
+  // Q-U10: the days picked under "Pick dates".
+  const [range, setRange] = useState<DayRange | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [type, setType] = useState<TypeChoice>('any');
   const [picker, setPicker] = useState<'payer' | 'category' | 'dates' | 'type' | null>(null);
 
@@ -79,7 +83,7 @@ export function Activity() {
     ...(text.trim() !== '' ? { text } : {}),
     ...(payer ? { payer } : {}),
     ...(category ? { categories: [category] } : {}),
-    ...datesRange(dates, today),
+    ...datesRange(dates, today, range),
     ...(type === 'expense' || type === 'money_back' || type === 'settlement' ? { kinds: [type] } : {}),
   };
   const shown = useMemo(() => {
@@ -89,7 +93,7 @@ export function Activity() {
       .sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : -1));
     // `filter` is rebuilt each render from these values.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, text, payer, category, dates, type, today]);
+  }, [items, text, payer, category, dates, range, type, today]);
 
   const days = useMemo(() => {
     const groups: { date: IsoDate; items: Item[] }[] = [];
@@ -101,16 +105,29 @@ export function Activity() {
     return groups;
   }, [shown]);
 
-  const filtered = text.trim() !== '' || payer !== null || category !== null || dates !== 'any' || type !== 'any';
+  // Q-U10: a filter is on (search has its own clear button); "Clear all" and "Clear filters" undo everything.
+  const filtering = payer !== null || category !== null || dates !== 'any' || type !== 'any';
+  const filtered = text.trim() !== '' || filtering;
+  const clearAll = () => {
+    setText('');
+    setPayer(null);
+    setCategory(null);
+    setDates('any');
+    setRange(null);
+    setType('any');
+  };
   const loading = entries === undefined || settlements === undefined;
   const live = categories.filter((c) => !c.archived);
 
   const payerLabel = payer ? people.name(payer) : null;
   const categoryLabel = category ? (categories.find((c) => c.id === category)?.name ?? null) : null;
   const datesLabels: Record<DatesChoice, string> = {
-    any: strings.activity.anyTime, thisMonth: strings.activity.thisMonth, lastMonth: strings.activity.lastMonth,
-    last3: strings.activity.last3, thisYear: strings.activity.thisYear,
+    any: strings.activity.anyTime, last7: strings.activity.last7, thisMonth: strings.activity.thisMonth, lastMonth: strings.activity.lastMonth,
+    last3: strings.activity.last3, thisYear: strings.activity.thisYear, custom: strings.activity.pickDates,
   };
+  const rangeLabel = range
+    ? (range.from === range.to ? formatDay(range.from, today) : strings.activity.range(formatDate(range.from, today), formatDate(range.to, today)))
+    : null;
   const typeLabels: Record<TypeChoice, string> = {
     any: strings.activity.everything, expense: strings.activity.expenses, money_back: strings.activity.moneyBack,
     settlement: strings.activity.settleUps, deleted: strings.activity.deleted,
@@ -119,9 +136,13 @@ export function Activity() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
       <h1 className="text-title m-0 flex min-h-12 items-center">{strings.activity.title}</h1>
-      <div className="bg-sunk focus-within:outline-forest flex min-h-12 items-center rounded-[12px] px-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-solid">
+      <div className="bg-sunk focus-within:outline-forest flex min-h-12 items-center rounded-[12px] pr-0.5 pl-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-solid">
         <input
-          type="search"
+          ref={searchRef}
+          // Q-L13: a text box in the search role, so no browser draws its own clear button over the app's.
+          type="text"
+          role="searchbox"
+          inputMode="search"
           aria-label={strings.activity.search}
           placeholder={strings.activity.searchPlaceholder}
           value={text}
@@ -131,17 +152,43 @@ export function Activity() {
           autoComplete="off"
           className="text-body text-ink placeholder:text-ink-2 w-full min-w-0 bg-transparent py-2.5 outline-none"
         />
+        {/* Q-L13: the app's own clear button (the browser's is hidden), a 44 px target; focus stays in the search. */}
+        {text !== '' ? (
+          <button
+            type="button"
+            aria-label={strings.activity.clearSearch}
+            onClick={() => {
+              setText('');
+              searchRef.current?.focus();
+            }}
+            className="text-ink-2 press hover:text-ink inline-flex size-11 shrink-0 items-center justify-center rounded-full"
+          >
+            <X size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       <div role="group" aria-label={strings.activity.filters} className="flex flex-wrap gap-2">
         <FilterButton label={strings.activity.whoPaid} value={payerLabel} onClick={() => { setPicker('payer'); }} />
         <FilterButton label={strings.activity.category} value={categoryLabel} onClick={() => { setPicker('category'); }} />
-        <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : datesLabels[dates]} onClick={() => { setPicker('dates'); }} />
+        <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : (dates === 'custom' ? rangeLabel : datesLabels[dates])} onClick={() => { setPicker('dates'); }} />
         <FilterButton label={strings.activity.type} value={type === 'any' ? null : typeLabels[type]} onClick={() => { setPicker('type'); }} />
+        {filtering ? (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-secondary text-forest press inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] px-3 font-medium whitespace-nowrap"
+          >
+            <X size={16} strokeWidth={2.25} aria-hidden="true" className="-ml-0.5 shrink-0" />
+            {strings.activity.clearAll}
+          </button>
+        ) : null}
       </div>
 
       {loading ? null : days.length === 0 ? (
         filtered ? (
-          <Empty animal="dog" mood="curious" pose="head" text={strings.activity.noMatch} />
+          <Empty animal="dog" mood="curious" pose="head" text={strings.activity.noMatch}>
+            <Button variant="plain" onClick={clearAll}>{strings.activity.clearFilters}</Button>
+          </Empty>
         ) : (
           <Empty animal="cat" mood="sleepy" pose="curled" text={strings.activity.empty} />
         )
@@ -190,13 +237,17 @@ export function Activity() {
         ]}
         onPick={(v) => { setCategory(v === '' ? null : v); }}
       />
-      <Picker
+      <DatesPicker
         open={picker === 'dates'}
-        title={strings.activity.dates}
         onClose={() => { setPicker(null); }}
         value={dates}
-        options={(Object.keys(datesLabels) as DatesChoice[]).map((k) => ({ value: k, label: datesLabels[k] }))}
-        onPick={(v) => { setDates(v as DatesChoice); }}
+        range={range}
+        today={today}
+        labels={datesLabels}
+        onPick={(choice, picked) => {
+          setDates(choice);
+          setRange(choice === 'custom' ? picked : null);
+        }}
       />
       <Picker
         open={picker === 'type'}
@@ -233,45 +284,143 @@ function Picker({ open, title, onClose, value, options, onPick }: {
   title: string;
   onClose: () => void;
   value: string;
-  options: readonly { value: string; label: string; icon?: ReactNode }[];
+  options: readonly PickerOption[];
   onPick: (value: string) => void;
 }) {
   return (
     <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title={title}>
-      <div role="radiogroup" aria-label={title} className="flex flex-col">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={o.value === value}
-            onClick={() => {
-              onPick(o.value);
-              onClose();
-            }}
-            className={cx(
-              'border-line text-body press flex min-h-12 items-center gap-3 border-b px-1 text-left last:border-b-0',
-              o.value === value ? 'text-forest' : 'text-ink',
-            )}
-          >
-            {o.icon ? <span className="w-6 text-center">{o.icon}</span> : null}
-            <span className="min-w-0 flex-1 truncate">{o.label}</span>
-            {o.value === value ? <Check size={18} strokeWidth={2.25} aria-hidden="true" className="shrink-0" /> : null}
-          </button>
-        ))}
-      </div>
+      <Options label={title} value={value} options={options} onPick={(v) => { onPick(v); onClose(); }} />
     </Sheet>
   );
 }
 
-function Empty({ animal, mood, pose, text }: { animal: 'cat' | 'dog'; mood: 'sleepy' | 'curious'; pose: 'curled' | 'head'; text: string }) {
+type PickerOption = { value: string; label: string; icon?: ReactNode };
+
+function Options({ label, value, options, onPick }: { label: string; value: string; options: readonly PickerOption[]; onPick: (value: string) => void }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-col">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          onClick={() => { onPick(o.value); }}
+          className={cx(
+            'border-line text-body press flex min-h-12 items-center gap-3 border-b px-1 text-left last:border-b-0',
+            o.value === value ? 'text-forest' : 'text-ink',
+          )}
+        >
+          {o.icon ? <span className="w-6 text-center">{o.icon}</span> : null}
+          <span className="min-w-0 flex-1 truncate">{o.label}</span>
+          {o.value === value ? <Check size={18} strokeWidth={2.25} aria-hidden="true" className="shrink-0" /> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Empty({ animal, mood, pose, text, children }: {
+  animal: 'cat' | 'dog';
+  mood: 'sleepy' | 'curious';
+  pose: 'curled' | 'head';
+  text: string;
+  children?: ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
       <span aria-hidden="true">
         <Animal kind={animal} mood={mood} pose={pose} size={96} motion={pose === 'curled'} />
       </span>
       <p className="text-note m-0 max-w-[30ch]">{text}</p>
+      {children}
     </div>
+  );
+}
+
+/**
+ * The Dates filter (ACT-1, Q-U10): ranges from today ("Last 7 days" first), or "Pick dates", which turns the
+ * same small sheet into a month grid: tap the first day, then the last, then "Show these days".
+ */
+function DatesPicker({ open, onClose, value, range, today, labels, onPick }: {
+  open: boolean;
+  onClose: () => void;
+  value: DatesChoice;
+  range: DayRange | null;
+  today: IsoDate;
+  labels: Record<DatesChoice, string>;
+  onPick: (choice: DatesChoice, range: DayRange | null) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [draft, setDraft] = useState<{ from: IsoDate; to: IsoDate | null } | null>(null);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setPicking(false);
+      setDraft(range);
+    }
+  }
+  const from = draft?.from ?? null;
+  const to = draft?.to ?? null;
+  // One sheet: the ranges, then (for "Pick dates") the month grid in the same place.
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title={picking ? strings.activity.pickDates : strings.activity.dates}
+      {...(picking ? { description: strings.activity.pickDatesLine } : {})}
+      {...(picking ? {
+        footer: (
+          <Button
+            block
+            disabled={from === null}
+            onClick={() => {
+              if (from === null) return;
+              onPick('custom', { from, to: to ?? from });
+              onClose();
+            }}
+          >
+            {strings.activity.showDates}
+          </Button>
+        ),
+      } : {})}
+    >
+      {!picking ? (
+        <Options
+          label={strings.activity.dates}
+          value={value}
+          options={(Object.keys(labels) as DatesChoice[]).map((k) => ({ value: k, label: labels[k] }))}
+          onPick={(v) => {
+            if (v === 'custom') {
+              setPicking(true);
+              return;
+            }
+            onPick(v as DatesChoice, null);
+            onClose();
+          }}
+        />
+      ) : (
+        <MonthGrid
+          today={today}
+          focus={to ?? from ?? today}
+          autoFocus
+          mark={(d) => {
+            if (from === null) return null;
+            const end = to ?? from;
+            if (d === from && d === end) return 'chosen';
+            if (d === from) return 'start';
+            if (d === end) return 'end';
+            return d > from && d < end ? 'inside' : null;
+          }}
+          onPick={(d) => {
+            // The first tap is the first day; the second, the last (either way round); a third starts again.
+            if (from === null || to !== null) setDraft({ from: d, to: null });
+            else setDraft(d < from ? { from: d, to: from } : { from, to: d });
+          }}
+        />
+      )}
+    </Sheet>
   );
 }
 
@@ -305,7 +454,13 @@ function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: 
       // Q-F1: each swipe is its own action, with its own row id made here.
       const id = addExpense({ ...draft, id: newId() });
       tickSaved();
-      toast.show({ message: strings.entry.saved, action: { label: strings.entry.undo, onAction: () => { deleteExpense(id); } }, duration: 5000 });
+      // Q-U8: says what happened; a swipe is easy to make by mistake, so its toast offers Undo.
+      toast.show({
+        message: strings.entry.copied,
+        action: { label: strings.entry.undo, onAction: () => { if (deleteExpense(id)) toast.show({ message: strings.entry.removed(row.description) }); } },
+        duration: 5000,
+        about: id,
+      });
     }
   };
 
