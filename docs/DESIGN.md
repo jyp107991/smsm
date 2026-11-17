@@ -62,7 +62,7 @@ No image files, no animation library files, no sprite sheets. Each animal is a f
 ## 3. Visual system
 
 ### 3.1 Colour
-Built on the owner's chosen palette, "Forest Green and Walnut": Copper Pyrite Green `#3E4938`, Ancient Bark `#57664A`, Dachshund `#6F5138`, Spun Wool Yarn `#AA9071`, and a fifth, pale sage `#D6D9C7` (labelled "Wine Bottle"; its code was partly hidden in the owner's screenshot and its swatch looked dark, so confirm it in the gallery; a dark bottle green is used for the night theme either way). The five are used as given; the lighter and darker steps around them are derived. Defined once as tokens in `src/styles/tokens.css`, written in OKLCH with these sRGB values as the reference, switched with `light-dark()`.
+Built on the owner's chosen palette, "Forest Green and Walnut": Copper Pyrite Green `#3E4938`, Ancient Bark `#57664A`, Dachshund `#6F5138`, Spun Wool Yarn `#AA9071`, and a fifth, bottle green `#2F3D2E` (labelled "Wine Bottle"; confirmed by the owner as the green shade, 17 Nov). The five are used as given; the lighter and darker steps around them are derived. Defined once as tokens in `src/styles/tokens.css`, written in OKLCH with these sRGB values as the reference, switched with `light-dark()`.
 
 | Token | Light | Dark ("the wood at night") | Use |
 |---|---|---|---|
