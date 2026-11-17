@@ -5,6 +5,8 @@ const executablePath = process.env.PW_CHROMIUM_PATH;
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  // The two-user suite runs against the Supabase local stack with its own config (tests/e2e/two-users).
+  testIgnore: ['two-users/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
