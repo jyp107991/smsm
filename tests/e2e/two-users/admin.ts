@@ -98,3 +98,17 @@ export async function asPerson(accessToken: string, path: string, init: { method
   });
   return { status: res.status, body: await res.text() };
 }
+
+/** Category name → id for a household. */
+export function categoriesOf(householdId: string): Record<string, string> {
+  return sqlJson<Record<string, string> | null>(
+    `select json_object_agg(name, id) from categories where household_id = ${lit(householdId)}`,
+  ) ?? {};
+}
+
+/** A pence map without its zero sides (the database accepts both forms). */
+export function nonZero(map: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries((map ?? {}) as Record<string, number>)) if (v !== 0) out[k] = v;
+  return out;
+}
