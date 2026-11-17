@@ -8,13 +8,14 @@ import { useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
 import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from './api';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
 import { activeDataLayer, DataContext } from './context';
 import type { Memory } from '../core/categorise';
 import { MEMORY_KEY, MONEY_KEY } from './keys';
 import type { WriteProblem } from './problems';
 import {
-  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, memoryQuery, settlementsQuery,
+  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
+  settlementsQuery,
 } from './queries';
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
@@ -98,7 +99,32 @@ export function useCategories(): DataResult<CategoryRow[]> {
   const { api } = useDataLayer();
   const { uid, hid } = useHid();
   const q = useQuery(categoriesQuery(api, uid, hid));
-  const data = useMemo(() => q.data && [...q.data].sort((a, b) => a.sort - b.sort), [q.data]);
+  const ops = useWaitingOps();
+  // CAT-1: a category added, edited, archived or moved on this phone shows at once, offline too.
+  const data = useMemo(() => q.data && overlay(q.data, ops, 'categories').sort((a, b) => a.sort - b.sort), [q.data, ops]);
+  return result(q, data);
+}
+
+/** S3: every regular payment (paused and ended ones too), with the waiting changes applied (REC-1). */
+export function useRecurring(): DataResult<RecurringRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(recurringQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(() => q.data && overlay(q.data, ops, 'recurring'), [q.data, ops]);
+  return result(q, data);
+}
+
+/** S3: the Inbox's open items, oldest first; a decision made on this phone takes its item out at once (INB-1). */
+export function useInbox(): DataResult<InboxItemRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(inboxQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(
+    () => q.data && overlay(q.data, ops, 'inbox_items').filter((i) => i.status === 'open').sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0)),
+    [q.data, ops],
+  );
   return result(q, data);
 }
 

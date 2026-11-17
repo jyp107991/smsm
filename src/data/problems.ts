@@ -5,9 +5,8 @@
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { z } from 'zod';
-import type { ExpenseRow, SettlementRow } from './api';
 import { strings } from '../ui/strings';
-import { opLabel, opRowId, type MoneyOp } from './writes';
+import { opLabel, opRowId, type MoneyOp, type QueuedRow } from './writes';
 
 /** Why the server said no, in categories the interface can explain (strings.sync.reasons). */
 export type RefusalReason = 'money' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'other';
@@ -18,7 +17,7 @@ export const REFUSAL_MESSAGES: Record<RefusalReason, string> = strings.sync.reas
 export interface WriteProblem {
   /** The id of the refused write (one per write, not per entry). */
   id: string;
-  table: 'expenses' | 'settlements';
+  table: MoneyOp['table'];
   op: 'upsert' | 'patch';
   /** The entry it was for. */
   rowId: string;
@@ -33,7 +32,7 @@ export interface WriteProblem {
   input: unknown;
   at: string;
   /** What the person had entered, so the form can open with it to fix (upserts only). */
-  row: ExpenseRow | SettlementRow | null;
+  row: QueuedRow | null;
   /** Who made the write (absent in problems kept before this field existed). */
   by?: string;
 }
@@ -73,7 +72,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
   };
 }
 
-const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements']), rowId: z.string(), label: z.string() }));
+const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories']), rowId: z.string(), label: z.string() }));
 
 export interface ProblemStore {
   load: () => Promise<void>;

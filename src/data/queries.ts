@@ -8,7 +8,7 @@ import { z } from 'zod';
 import {
   ApiError,
   type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
-  type SettlementRow,
+  type InboxItemRow, type RecurringRow, type SettlementRow,
 } from './api';
 import { keys } from './keys';
 
@@ -35,6 +35,15 @@ const changeSchema = z.looseObject({ id, household_id: id, requested_by: id, kin
 const memorySchema = z.looseObject({
   household_id: id, key: z.string(), category_id: id.nullable(), split_mode: z.string().nullable(), split_params: z.unknown(),
   uses: z.number(), source: z.string(),
+});
+const recurringSchema = z.looseObject({
+  id, household_id: id, description: z.string(), amount_pence: z.number().int(), amount_varies: z.boolean(), category_id: id.nullable(),
+  paid: z.unknown(), shares: z.unknown(), split_mode: z.string(), is_subscription: z.boolean(), frequency: z.enum(['weekly', 'monthly', 'yearly']),
+  every: z.number().int(), start_date: z.string(), end_date: z.string().nullable(), posted_count: z.number().int(), active: z.boolean(),
+});
+const inboxSchema = z.looseObject({
+  id, household_id: id, source: z.string(), status: z.enum(['open', 'kept', 'dismissed']), payload: z.unknown(),
+  recurring_id: id.nullable(), occurrence_date: z.string().nullable(), expense_id: id.nullable(), created_at: stamp,
 });
 const activitySchema = z.looseObject({ id: z.number(), entity: z.string(), action: z.string(), at: stamp, summary: z.unknown() });
 
@@ -107,5 +116,21 @@ export function memoryQuery(api: Api, uid: string | null, hid: Hid) {
   return queryOptions({
     queryKey: keys.memory(uid ?? ''),
     queryFn: uid && hid ? async () => check(z.array(memorySchema), 'category memory', await api.categoryMemory(hid)) as CategoryMemoryRow[] : skipToken,
+  });
+}
+
+/** S3: the regular payments (REC-1). */
+export function recurringQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.recurring(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(recurringSchema), 'regular payments', await api.recurring(hid)) as RecurringRow[] : skipToken,
+  });
+}
+
+/** S3: everything in the Inbox, decided ones included (the hook shows the open ones). */
+export function inboxQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.inbox(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(inboxSchema), 'inbox', await api.inboxItems(hid)) as InboxItemRow[] : skipToken,
   });
 }

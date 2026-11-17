@@ -92,6 +92,8 @@ export const strings = {
     name: 'Write a name of 1 to 24 characters.',
     monzoName: 'That doesn’t look like a monzo.me name.',
     ratio100: 'The split must add up to 100%.',
+    schedule: 'Check how often it repeats, and that it ends after it starts.',
+    colour: 'Pick one of the colours shown.',
   },
 
   // ───────────── S2: the daily loop ─────────────
