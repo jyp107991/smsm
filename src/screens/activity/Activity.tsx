@@ -5,6 +5,7 @@
  * delete (with Undo) or right to duplicate.
  */
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
+import { Check } from 'lucide-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
@@ -20,6 +21,7 @@ import { Animal } from '../../ui/rig/Animal';
 import { strings } from '../../ui/strings';
 import { duplicateDraft } from '../entry/form';
 import { usePeople } from '../shared/people';
+import { CategoryMark } from '../shared/CategoryMark';
 import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { payerOf, type Person } from '../shared/words';
 import { datesRange, type DatesChoice } from './dates';
@@ -184,7 +186,7 @@ export function Activity() {
         value={category ?? ''}
         options={[
           { value: '', label: strings.activity.anyCategory },
-          ...live.map((c) => ({ value: c.id, label: c.name, icon: <span aria-hidden="true">{c.emoji}</span> })),
+          ...live.map((c) => ({ value: c.id, label: c.name, icon: <CategoryMark emoji={c.emoji} colour={c.colour} /> })),
         ]}
         onPick={(v) => { setCategory(v === '' ? null : v); }}
       />
@@ -215,10 +217,11 @@ function FilterButton({ label, value, onClick }: { label: string; value: string 
       onClick={onClick}
       aria-haspopup="dialog"
       className={cx(
-        'text-secondary inline-flex h-11 shrink-0 items-center rounded-[12px] border-2 px-3 font-medium whitespace-nowrap',
-        value ? 'border-forest bg-surface text-forest' : 'bg-sunk text-ink border-transparent',
+        'text-secondary press inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] px-3 font-medium whitespace-nowrap',
+        value ? 'bg-forest-tint text-forest' : 'bg-sunk text-ink',
       )}
     >
+      {value ? <Check size={16} strokeWidth={2.25} aria-hidden="true" className="-ml-0.5 shrink-0" /> : null}
       {value ? strings.activity.chosen(label, value) : label}
     </button>
   );
@@ -247,13 +250,13 @@ function Picker({ open, title, onClose, value, options, onPick }: {
               onClose();
             }}
             className={cx(
-              'border-line text-body flex min-h-12 items-center gap-3 border-b px-1 text-left last:border-b-0',
+              'border-line text-body press flex min-h-12 items-center gap-3 border-b px-1 text-left last:border-b-0',
               o.value === value ? 'text-forest' : 'text-ink',
             )}
           >
             {o.icon ? <span className="w-6 text-center">{o.icon}</span> : null}
             <span className="min-w-0 flex-1 truncate">{o.label}</span>
-            {o.value === value ? <span aria-hidden="true" className="bg-forest size-2 rounded-full" /> : null}
+            {o.value === value ? <Check size={18} strokeWidth={2.25} aria-hidden="true" className="shrink-0" /> : null}
           </button>
         ))}
       </div>

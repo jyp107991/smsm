@@ -52,7 +52,8 @@ export async function enterCode(page: Page, code: string, how: 'type' | 'paste' 
   } else {
     await box.fill(code);
   }
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  // S2 polish Q-L5: the sixth digit signs in by itself (typed or pasted), so there is no Sign in to tap: a tap
+  // after it could land on the next screen once the sign-in has gone through.
 }
 
 export async function signIn(phone: Phone): Promise<void> {

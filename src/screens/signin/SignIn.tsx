@@ -1,11 +1,17 @@
 /**
- * Sign in (PPL-1, OFF-4; DESIGN §4.10): the mark and "smsm", one line, then email → a 6-digit emailed code.
- * Errors say what happened and what to do in plain words; offline it says the first sign-in needs a connection.
+ * Sign in (PPL-1, OFF-4; DESIGN §4.10): the plank with both animals, the mark and "smsm", one line, then
+ * email → a 6-digit emailed code. Errors say what happened and what to do in plain words; offline it says the
+ * first sign-in needs a connection.
+ *
+ * S2 polish Q-L5: the screen carries the brand (the level plank above the name; on the code step the dog is
+ * curious), the field and button sit on the 20 px margin, and there is no example address. The code field
+ * has focus as soon as the code is sent and signs in by itself when the sixth digit arrives, typed or pasted.
  */
 import { useState, type SyntheticEvent } from 'react';
 import { ApiError, sendCode, verifyCode } from '../../data';
 import { Logo } from '../../ui/Logo';
 import { Button, Field } from '../../ui/primitives';
+import { Plank } from '../../ui/rig/Plank';
 import { strings } from '../../ui/strings';
 import { plainError } from '../shared/plain';
 import { CODE_LENGTH, CodeField } from './CodeField';
@@ -29,6 +35,10 @@ export function SignIn() {
   const send = async (e?: SyntheticEvent) => {
     e?.preventDefault();
     const address = email.trim();
+    if (address === '') {
+      setError(strings.signIn.emailFirst);
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
       setError(strings.signIn.badEmail);
       return;
@@ -47,17 +57,16 @@ export function SignIn() {
     }
   };
 
-  const verify = async (e: SyntheticEvent) => {
-    e.preventDefault();
-    if (sentTo === null) return;
-    if (code.length !== CODE_LENGTH) {
+  const verify = async (digits: string) => {
+    if (sentTo === null || busy) return;
+    if (digits.length !== CODE_LENGTH) {
       setError(strings.signIn.wrongCode);
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await verifyCode(sentTo, code);
+      await verifyCode(sentTo, digits);
       // Signed in: the session keeper moves the app on to setup or Home.
     } catch (err) {
       setError(plain(err, 'verify'));
@@ -65,45 +74,56 @@ export function SignIn() {
     }
   };
 
+  /** Typed or pasted: the sixth digit signs in by itself. */
+  const typed = (digits: string) => {
+    setCode(digits);
+    setError(null);
+    if (digits.length === CODE_LENGTH && digits !== code) void verify(digits);
+  };
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-8 px-5 py-10">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <Logo size={72} />
-        <h1 className="text-wordmark m-0 text-[2.5rem] leading-none">{strings.app.name}</h1>
-        <p className="text-note m-0">{strings.app.tagline}</p>
-      </div>
-      {sentTo === null ? (
-        <form onSubmit={(e) => void send(e)} noValidate className="flex flex-col gap-4">
-          <Field
-            label={strings.signIn.email}
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            enterKeyHint="send"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder={strings.signIn.emailPlaceholder}
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); setError(null); }}
-          />
-          {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
-          <Button type="submit" block loading={busy}>{strings.signIn.sendCode}</Button>
-        </form>
-      ) : (
-        <form onSubmit={(e) => void verify(e)} noValidate className="flex flex-col gap-4">
-          <p className="m-0 break-words">{strings.signIn.sentTo(sentTo)}</p>
-          <CodeField value={code} onChange={(c) => { setCode(c); setError(null); }} invalid={error !== null} />
-          {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
-          {note && !error ? <p role="status" className="text-secondary text-ink-2 m-0">{note}</p> : null}
-          <Button type="submit" block loading={busy}>{strings.signIn.signIn}</Button>
-          <div className="flex flex-wrap justify-center gap-x-4">
-            <Button variant="quiet" onClick={() => void send()}>{strings.signIn.sendAgain}</Button>
-            <Button variant="quiet" onClick={() => { setSentTo(null); setCode(''); setError(null); setNote(null); }}>
-              {strings.signIn.otherEmail}
-            </Button>
+    <main className="flex min-h-dvh flex-col justify-center px-5 py-6 [@media(min-height:720px)]:py-10">
+      <div className="mx-auto flex w-full max-w-sm flex-col gap-6 [@media(min-height:720px)]:gap-8">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Plank left={{ kind: 'cat', mood: 'happy' }} right={{ kind: 'dog', mood: sentTo === null ? 'happy' : 'curious' }} leftNetPence={0} together />
+          <div className="flex items-center gap-2.5">
+            <Logo size={34} />
+            <h1 className="text-wordmark m-0 text-[2.5rem] leading-none">{strings.app.name}</h1>
           </div>
-        </form>
-      )}
+          <p className="text-note text-ink-2 m-0">{strings.app.tagline}</p>
+        </div>
+        {sentTo === null ? (
+          <form onSubmit={(e) => void send(e)} noValidate className="flex flex-col gap-4">
+            <Field
+              label={strings.signIn.email}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              enterKeyHint="send"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(null); }}
+            />
+            {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
+            <Button type="submit" block loading={busy}>{strings.signIn.sendCode}</Button>
+          </form>
+        ) : (
+          <form onSubmit={(e) => { e.preventDefault(); void verify(code); }} noValidate className="flex flex-col gap-4">
+            <p className="m-0 break-words">{strings.signIn.sentTo(sentTo)}</p>
+            <CodeField value={code} onChange={typed} invalid={error !== null} autoFocus />
+            {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
+            {note && !error ? <p role="status" className="text-secondary text-ink-2 m-0">{note}</p> : null}
+            <Button type="submit" block loading={busy}>{strings.signIn.signIn}</Button>
+            <div className="flex flex-wrap justify-center gap-x-2">
+              <Button variant="quiet" onClick={() => void send()}>{strings.signIn.sendAgain}</Button>
+              <Button variant="quiet" onClick={() => { setSentTo(null); setCode(''); setError(null); setNote(null); }}>
+                {strings.signIn.otherEmail}
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
     </main>
   );
 }

@@ -18,6 +18,8 @@
   --color-oak: var(--oak);
   --color-honey: var(--honey);
   --color-berry: var(--berry);
+  --color-forest-tint: var(--forest-tint);
+  --color-scrim: var(--scrim);
   /* Category colours: dots and chart fills only. */
   --color-cat-moss: var(--cat-moss);
   --color-cat-amber: var(--cat-amber);
@@ -65,5 +67,24 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Hover and press (S2 polish): a thin film of ink laid over the control's own fill (--wash), so a forest
+ * button, a sunk chip and a bare icon all answer the same way, in both themes. Hover only where there is a
+ * pointer that hovers; the film deepens while pressed. Nothing changes size, so nothing moves.
+ */
+@utility press {
+  transition-property: background-color, color, border-color, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.3, 0.7, 0.4, 1);
+  @media (hover: hover) {
+    &:hover:not(:disabled, [aria-disabled='true']) {
+      background-image: linear-gradient(var(--wash), var(--wash));
+    }
+  }
+  &:active:not(:disabled, [aria-disabled='true']) {
+    background-image: linear-gradient(var(--wash-strong), var(--wash-strong));
   }
 }

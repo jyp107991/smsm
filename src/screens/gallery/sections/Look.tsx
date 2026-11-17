@@ -1,40 +1,9 @@
-/** Gallery: the mark, the plank at five balances, and the cat and dog in every mood and pose (DESIGN §7). */
+/** Gallery: the plank at five balances, and the cat and dog in every mood and pose (DESIGN §7). */
 import { useState } from 'react';
 import { formatPence, pence } from '../../../core/money';
-import { Logo, type LogoVariant } from '../../../ui/Logo';
 import { Animal, MOODS, POSES, type Mood } from '../../../ui/rig/Animal';
 import { Plank } from '../../../ui/rig/Plank';
-import { OptionMark, Section } from './Section';
-
-const LOGOS: readonly { variant: LogoVariant; name: string; note: string }[] = [
-  { variant: 'a', name: 'Plain letters', note: 'ㅅ and ㅁ as you would type them.' },
-  { variant: 'b', name: 'With a door', note: 'The same, with a gap in the foot of ㅁ.' },
-  { variant: 'c', name: 'Under the eaves', note: 'ㅅ with feet that sweep out, like a roof.' },
-];
-
-export function LogoSection() {
-  return (
-    <Section id="g-logo" title="The mark" ask="ㅅ on ㅁ, a roof on a house. Which one is ours?">
-      <ul className="m-0 flex list-none flex-col gap-3 p-0">
-        {LOGOS.map((l) => (
-          <li key={l.variant} className="bg-surface flex gap-3 rounded-[16px] p-4">
-            <OptionMark letter={l.variant.toUpperCase()} />
-            <div className="flex min-w-0 flex-col gap-3">
-              <div>
-                <p className="text-subtitle m-0">{l.name}</p>
-                <p className="text-secondary text-ink-2 m-0">{l.note}</p>
-              </div>
-              <div className="flex items-end gap-4">
-                <Logo size={48} variant={l.variant} title={`Mark ${l.variant.toUpperCase()} at 48 pixels`} />
-                <Logo size={96} variant={l.variant} title={`Mark ${l.variant.toUpperCase()} at 96 pixels`} />
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </Section>
-  );
-}
+import { Section } from './Section';
 
 const BALANCES = [-25000, -4000, 0, 1200, 20000] as const;
 

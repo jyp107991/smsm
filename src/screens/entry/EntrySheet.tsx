@@ -18,6 +18,7 @@ import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
 import { categoryColour } from '../../ui/tokens';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
+import { isPlaceholderEmoji } from '../shared/CategoryMark';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
@@ -78,7 +79,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     setS(next);
     setErrors([]);
   };
-  const dirty = JSON.stringify(s) !== JSON.stringify(initial);
+  // Closing asks first only when something was typed (Q-U11): a tapped chip or toggle is one tap to redo.
+  const typed = (f: FormState) => JSON.stringify([f.amountText, f.description, f.notes, f.splitMode === 'exact' ? f.exactText : null]);
+  const dirty = typed(s) !== typed(initial);
 
   /** A new description: the category and split follow the household's guess until the person picks them. */
   const describe = (description: string) => {
@@ -371,14 +374,6 @@ function changedFields(from: ExpenseDraft, to: ExpenseDraft, splitTouched: boole
   return out;
 }
 
-/**
- * The database's default emoji (a plain dot) for a category nobody gave one: its colour dot shows instead,
- * so "Other" is never a tick beside a dot.
- */
-function isPlaceholderEmoji(emoji: string): boolean {
-  return emoji.trim() === '' || emoji.trim() === '•';
-}
-
 /** A field group with a small visible label (the controls name themselves for screen readers). */
 function Group({ label, id, children }: { label: string; id?: string; children: ReactNode }) {
   return (
@@ -389,7 +384,10 @@ function Group({ label, id, children }: { label: string; id?: string; children: 
   );
 }
 
-/** Who paid: the two heads as a two-way choice (DESIGN §2.3: the chosen one perks its ears). */
+/**
+ * Who paid: the two heads as a two-way choice (DESIGN §2.3: the chosen one perks its ears). A choice card
+ * (Q-L2): chosen is surface with a 1.5 px forest border; outlines only for keyboard focus.
+ */
 function PayerToggle({ label, people, value, onChange }: { label: string; people: readonly Person[]; value: string; onChange: (id: string) => void }) {
   return (
     <ToggleGroup.Root
@@ -404,7 +402,7 @@ function PayerToggle({ label, people, value, onChange }: { label: string; people
           key={p.id}
           value={p.id}
           className={cx(
-            'text-body text-ink flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-[12px] border-2 border-transparent bg-sunk px-3 py-2',
+            'text-body text-ink press flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-[12px] border-[1.5px] border-transparent bg-sunk px-3 py-2',
             'data-[state=on]:border-forest data-[state=on]:bg-surface data-[state=on]:text-forest',
           )}
         >

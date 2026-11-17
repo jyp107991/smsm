@@ -25,14 +25,17 @@ function message(err: unknown): string {
   return plainError(err, strings.errors.cantLoad);
 }
 
+/** The setup page: the mark and the name, then the step, on the 20 px margin at any width (Q-L6). */
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-8 px-5 py-10">
-      <div className="flex items-center gap-3">
-        <Logo size={40} />
-        <span className="text-wordmark text-[1.75rem] leading-none">{strings.app.name}</span>
+    <main className="flex min-h-dvh flex-col justify-center px-5 py-10">
+      <div className="mx-auto flex w-full max-w-sm flex-col gap-8">
+        <div className="flex items-center gap-2.5">
+          <Logo size={34} />
+          <span className="text-wordmark text-[1.75rem] leading-none">{strings.app.name}</span>
+        </div>
+        {children}
       </div>
-      {children}
     </main>
   );
 }

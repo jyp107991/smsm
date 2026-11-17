@@ -28,6 +28,21 @@ const VIEW_BOX: Record<Pose, string> = {
 /** Where the head sits when curled up (lying on its front paws, at the front of the body). */
 const CURLED_HEAD = 'translate(-15 33)';
 
+/**
+ * For `peeking` over a card: `behind` draws only the head, sunk a little so the card's top edge hides its
+ * chin; `front` draws only the paws, to lie over the edge. Stacked at the same place they make one animal
+ * peeking over the card (Q-L9). `whole` (the default) draws both, as in the gallery.
+ */
+export type PeekLayer = 'whole' | 'behind' | 'front';
+
+/** How far the head sinks behind the edge when peeking over a card, in rig units. */
+const PEEK_SINK = 4;
+/**
+ * How far the paws reach over a card's edge onto its face, in rig units, so they grip it rather than stand
+ * on it: the card's top edge goes this far above the paws' base (PEEK_EDGE).
+ */
+export const PEEK_GRIP = 3;
+
 export interface AnimalProps {
   kind: AnimalKind;
   mood?: Mood;
@@ -35,6 +50,7 @@ export interface AnimalProps {
   size?: number;
   motion?: boolean;
   title?: string;
+  layer?: PeekLayer;
 }
 
 function pieces(list: Piece[]): ReactNode {
@@ -53,7 +69,7 @@ function Part({ name, motion, children }: { name: PartName; motion?: string | fa
   );
 }
 
-export function Animal({ kind, mood = 'calm', pose = 'sitting', size = 120, motion = true, title }: AnimalProps) {
+export function Animal({ kind, mood = 'calm', pose = 'sitting', size = 120, motion = true, title, layer = 'whole' }: AnimalProps) {
   const reduced = usePrefersReducedMotion();
   const moving = motion && !reduced;
   const a = anatomyOf(kind);
@@ -101,8 +117,8 @@ export function Animal({ kind, mood = 'calm', pose = 'sitting', size = 120, moti
     case 'peeking':
       drawing = (
         <>
-          {headUnit}
-          <Part name="paws">{pieces(a.peekPaws)}</Part>
+          {layer === 'front' ? null : layer === 'behind' ? <g transform={`translate(0 ${String(PEEK_SINK)})`}>{headUnit}</g> : headUnit}
+          {layer === 'behind' ? null : <Part name="paws">{pieces(a.peekPaws)}</Part>}
         </>
       );
       break;

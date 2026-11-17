@@ -15,6 +15,7 @@ import { tickSaved } from '../../ui/haptics';
 import { goBackOrTo } from '../../ui/history';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
+import { CategoryMark } from '../shared/CategoryMark';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
 import { entrySentence, historyLine, payerOf } from '../shared/words';
@@ -33,7 +34,7 @@ export function EntryPage({ id }: { id: string }) {
         <button
           type="button"
           onClick={() => { goBackOrTo('/activity'); }}
-          className="text-ink -ml-2.5 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5"
+          className="text-ink press -ml-2.5 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5"
         >
           <ArrowLeft size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
           {strings.entry.back}
@@ -102,7 +103,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         <Detail label={strings.entry.category}>
           {category ? (
             <>
-              <span aria-hidden="true" className="mr-1.5">{category.emoji}</span>
+              <CategoryMark emoji={category.emoji} colour={category.colour} className="mr-1.5" />
               {category.name}
             </>
           ) : strings.entry.categoryNone}
@@ -125,8 +126,11 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
             <Button variant="plain" onClick={() => { sheets.openEntry({ mode: 'edit', id: row.id }); }}>{strings.entry.editButton}</Button>
             <Button variant="plain" onClick={duplicate}>{strings.entry.duplicate}</Button>
             {!back ? <Button variant="plain" onClick={() => { sheets.openEntry({ mode: 'refund', of: row }); }}>{strings.entry.refund}</Button> : null}
+            {/* Delete on its own line, a text button on the margin, apart from the everyday actions (Q-L11). */}
+            <div className="basis-full">
             <Button
               variant="destructive"
+              leading
               onClick={() => {
                 deleteExpense(row.id);
                 toast.show({
@@ -138,6 +142,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
             >
               {strings.entry.delete}
             </Button>
+            </div>
           </>
         )}
       </fieldset>
@@ -179,8 +184,10 @@ function SettlementView({ row }: { row: SettlementRow }) {
         ) : (
           <>
             <Button variant="plain" onClick={() => { sheets.openSettle({ mode: 'edit', row }); }}>{strings.entry.editButton}</Button>
+            <div className="basis-full">
             <Button
               variant="destructive"
+              leading
               onClick={() => {
                 deleteSettlement(row.id);
                 toast.show({
@@ -192,6 +199,7 @@ function SettlementView({ row }: { row: SettlementRow }) {
             >
               {strings.entry.delete}
             </Button>
+            </div>
           </>
         )}
       </fieldset>

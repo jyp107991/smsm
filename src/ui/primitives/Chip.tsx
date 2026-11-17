@@ -5,7 +5,7 @@ import { strings } from '../strings';
 import { cx } from './util';
 
 export interface ChipProps extends Omit<ComponentPropsWithRef<'button'>, 'onChange'> {
-  /** Pressed state, announced as aria-pressed and shown with a forest outline and a tick. */
+  /** Pressed state, announced as aria-pressed and shown with a tonal forest fill, forest text and a tick. */
   selected?: boolean;
   /** Called with the new state when pressed. */
   onSelectedChange?: (selected: boolean) => void;
@@ -30,7 +30,8 @@ export interface ChipProps extends Omit<ComponentPropsWithRef<'button'>, 'onChan
 /**
  * A selectable chip (DESIGN §3.3: 12 px radius). The visible chip is 36 px tall; its hit area
  * extends to 44 px, so rows of chips need at least 8 px between them.
- * Selected is never colour alone: the outline and a tick appear together.
+ * Selected is never colour alone: the tonal fill and a tick appear together. Outlines are for keyboard
+ * focus only (S2 polish Q-L2: one "selected" language).
  */
 export function Chip({
   selected = false, onSelectedChange, colour, icon, suggested = false, suggestible = false, className, children, onClick, type = 'button', ...rest
@@ -45,12 +46,12 @@ export function Chip({
         if (!event.defaultPrevented) onSelectedChange?.(!selected);
       }}
       className={cx(
-        'relative inline-flex h-9 max-w-full min-w-11 items-center justify-center gap-1.5 rounded-[12px] border-2 px-3',
-        'text-secondary select-none',
+        'relative inline-flex h-9 max-w-full min-w-11 items-center justify-center gap-1.5 rounded-[12px] border-2 border-transparent px-3',
+        'text-secondary press select-none active:scale-[0.97]',
         // The hit area: 4 px above and below the visible chip.
         'before:absolute before:inset-x-0 before:-inset-y-1 before:content-[""]',
         'font-medium',
-        selected ? 'border-forest bg-surface text-forest' : 'bg-sunk text-ink border-transparent',
+        selected ? 'bg-forest-tint text-forest' : 'bg-sunk text-ink',
         className,
       )}
     >
