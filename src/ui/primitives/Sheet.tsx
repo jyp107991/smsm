@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from 'react';
 import { Drawer } from 'vaul';
 import { X } from 'lucide-react';
+import { closeLayer, openLayer } from '../history';
 import { strings } from '../strings';
 import { Button } from './Button';
 import { cx, ICON } from './util';
@@ -24,26 +25,13 @@ export interface SheetProps {
   children: ReactNode;
 }
 
-const HISTORY_KEY = 'smsmSheet';
-
-function stateObject(state: unknown): Record<string, unknown> {
-  return typeof state === 'object' && state !== null ? (state as Record<string, unknown>) : {};
-}
-
-function isOwnEntry(state: unknown, id: string): boolean {
-  return stateObject(state)[HISTORY_KEY] === id;
-}
-
-function pushOwnEntry(id: string) {
-  history.pushState({ ...stateObject(history.state), [HISTORY_KEY]: id }, '');
-}
-
 /**
  * A bottom sheet (vaul): 28 px top corners, the one soft shadow, drag down to close.
  *
  * Android's back gesture closes it, as people expect (DESIGN §6): while open the sheet owns one
- * history entry, so "back" pops that entry instead of leaving the page. Closing any other way removes
- * the entry again. The page underneath keeps its own history untouched.
+ * history entry (through the one history coordinator, src/ui/history.ts), so "back" pops that entry
+ * instead of leaving the page. Closing any other way removes the entry again, and navigating away while
+ * it is open removes it before the new page is pushed, so it is never left behind.
  *
  * The keyboard: index.html sets `interactive-widget=resizes-content`, so the viewport (and `dvh`)
  * shrinks when the keyboard opens and the footer stays visible above it. vaul's own input repositioning
@@ -66,32 +54,32 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     // The gesture has already popped this sheet's entry.
     if (confirming) {
       // Back while asking means "keep editing".
-      pushOwnEntry(id);
+      reopen();
       setConfirming(false);
     } else if (dirty) {
-      pushOwnEntry(id);
+      reopen();
       setConfirming(true);
     } else {
       onOpenChange(false);
     }
   });
+  // Leaving the page (a navigation) closes the sheet without asking: the person chose to go.
+  const onLeave = useEffectEvent(() => {
+    onOpenChange(false);
+  });
+  const reopen = () => {
+    openLayer(id, { onBack: () => { onBack(); }, onLeave: () => { onLeave(); } });
+  };
 
   useEffect(() => {
     if (!open) return;
     active.current = true;
-    if (!isOwnEntry(history.state, id)) pushOwnEntry(id);
-    const onPop = () => {
-      // Our own entry still current means the back was for a sheet above this one.
-      if (isOwnEntry(history.state, id)) return;
-      onBack();
-    };
-    window.addEventListener('popstate', onPop);
+    openLayer(id, { onBack: () => { onBack(); }, onLeave: () => { onLeave(); } });
     return () => {
       active.current = false;
-      window.removeEventListener('popstate', onPop);
       // Deferred, so a re-run of this effect (StrictMode, a re-render) keeps the entry it already has.
       setTimeout(() => {
-        if (!active.current && isOwnEntry(history.state, id)) history.back();
+        if (!active.current) closeLayer(id);
       }, 0);
     };
   }, [open, id]);

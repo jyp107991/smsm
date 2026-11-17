@@ -8,7 +8,7 @@ import { pence, type Pence } from '../core/money';
 import { validateEntry, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
-  type ActivityRow, type Api, type AuthUser, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
+  type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
   type ExpenseWrite, type HouseholdRow, type MemberRow, type SettlementRow, type SettlementWrite, type WatchedTable,
 } from './api';
 import type { Json } from './database.types';
@@ -21,6 +21,7 @@ export interface MemoryTables {
   settlements: SettlementRow[];
   changeRequests: ChangeRequestRow[];
   activity: ActivityRow[];
+  categoryMemory: CategoryMemoryRow[];
   minClientVersion: string | null;
 }
 
@@ -79,6 +80,7 @@ export function createMemoryApi(
     settlements: clone(seed.settlements ?? []),
     changeRequests: clone(seed.changeRequests ?? []),
     activity: clone(seed.activity ?? []),
+    categoryMemory: clone(seed.categoryMemory ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
   let user: AuthUser | null = opts.user ?? null;
@@ -137,6 +139,18 @@ export function createMemoryApi(
     tables.activity.push({ id: activityId++, household_id: householdId, actor: user?.userId ?? null, entity, entity_id: id, action, summary: summary ?? {}, at: now().toISOString() });
   }
 
+  /** What changed, as the database's log_activity trigger records it: { field: { before, after } }. */
+  function diff(before: object, after: object): Json {
+    const out: Record<string, Json> = {};
+    const o = before as Record<string, Json>;
+    const n = after as Record<string, Json>;
+    for (const k of Object.keys(n)) {
+      if (k === 'updated_at' || k === 'updated_by') continue;
+      if (JSON.stringify(o[k] ?? null) !== JSON.stringify(n[k] ?? null)) out[k] = { before: o[k] ?? null, after: n[k] ?? null };
+    }
+    return out;
+  }
+
   function checkMoney(row: ExpenseRow) {
     const ids = tables.members.filter((m) => m.household_id === row.household_id).map((m) => m.user_id);
     const [a, b] = ids;
@@ -166,7 +180,7 @@ export function createMemoryApi(
     check?.(next);
     if (existing) list[i] = next;
     else list.push(next);
-    log(entity, next.id, existing ? 'edited' : 'created', {}, next.household_id);
+    log(entity, next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
     return next;
   }
 
@@ -179,7 +193,8 @@ export function createMemoryApi(
     const next: R = { ...existing, ...patch, updated_at: now().toISOString() };
     list[i] = next;
     const action = existing.deleted_at === null && patch.deleted_at !== null ? 'deleted' : existing.deleted_at !== null && patch.deleted_at === null ? 'restored' : 'edited';
-    log(entity, id, action, {}, next.household_id);
+    const named = next as unknown as Record<string, Json>;
+    log(entity, id, action, action === 'edited' ? diff(existing, next) : { description: named['description'] ?? null, amount_pence: named['amount_pence'] ?? null }, next.household_id);
     return next;
   }
 
@@ -204,6 +219,19 @@ export function createMemoryApi(
     changeRequests: (hid) => call('changeRequests', hid, () => mine(tables.changeRequests)),
     activity: (_hid, entityId) =>
       call('activity', entityId, () => mine(tables.activity).filter((a) => a.entity_id === entityId).reverse()),
+    categoryMemory: (hid) => call('categoryMemory', hid, () => mine(tables.categoryMemory)),
+    upsertCategoryMemory: (row) =>
+      call('upsertCategoryMemory', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        if (row.category_id !== null && !mine(tables.categories).some((c) => c.id === row.category_id)) {
+          refuse('insert or update on table "category_memory" violates foreign key constraint', '23503');
+        }
+        const next: CategoryMemoryRow = { ...row, updated_at: now().toISOString() };
+        const i = tables.categoryMemory.findIndex((m) => m.household_id === row.household_id && m.key === row.key);
+        if (i === -1) tables.categoryMemory.push(next);
+        else tables.categoryMemory[i] = next;
+        return next;
+      }),
     upsertExpense: (row: ExpenseWrite) =>
       call('upsertExpense', row, () =>
         writeRow(tables.expenses, row, 'expense', (w) => ({

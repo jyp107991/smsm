@@ -120,3 +120,11 @@ export function resolveDefaultSplit(c: {
   const [a, b] = c.members;
   return { mode: 'ratio', ratio: { [a]: 50, [b]: 50 } };
 }
+
+/**
+ * SPL-1 Exact amounts: what is still to be shared out (positive) or shared out too much (negative), shown
+ * live under the two fields. Zero means the parts add up to the amount.
+ */
+export function exactRemainder(amount: Pence, parts: readonly Pence[]): number {
+  return parts.reduce((left: number, p) => left - p, amount);
+}

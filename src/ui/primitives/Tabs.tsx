@@ -89,6 +89,8 @@ export function BottomTabs<T extends string>({ items, value, onValueChange, chil
           <RadixTabs.Trigger
             key={v}
             value={v}
+            // Tapping the tab you are on still goes to its top page (from Settings back to Home).
+            onClick={() => { onValueChange(v); }}
             className={cx(
               'group text-ink-2 flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 pt-2 pb-1.5',
               'data-[state=active]:text-forest',

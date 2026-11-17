@@ -11,7 +11,7 @@ import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
   EXPENSE_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
-  type ExpenseRow, type ExpenseWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch,
+  type CategoryMemoryRow, type CategoryMemoryWrite, type ExpenseRow, type ExpenseWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch,
 } from './api';
 import type { Json } from './database.types';
 
@@ -328,4 +328,19 @@ export function overlay<R extends { id: string }>(
     }
   }
   return [...byId.values()];
+}
+
+/**
+ * CAT-3, CAT-4: a person's choice of category or split for a description, queued like money (it works
+ * offline and survives a restart) but not counted as a waiting change, and dropped quietly if refused:
+ * it is the app's memory, not the person's entry.
+ */
+export interface MemoryOp { opId: string; by: string; row: CategoryMemoryWrite }
+
+/** The household's memory with the waiting choices applied on top, in the order they were made. */
+export function overlayMemory(rows: readonly CategoryMemoryRow[], ops: readonly MemoryOp[]): CategoryMemoryRow[] {
+  if (ops.length === 0) return [...rows];
+  const byKey = new Map<string, CategoryMemoryRow>(rows.map((r) => [r.key, r]));
+  for (const op of ops) byKey.set(op.row.key, { ...op.row, updated_at: byKey.get(op.row.key)?.updated_at ?? '' });
+  return [...byKey.values()];
 }

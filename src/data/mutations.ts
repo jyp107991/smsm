@@ -8,7 +8,8 @@
  * The other writes (setup, identity, approvals, monzo.me name) need the server's answer, so they need a
  * connection and say so in plain words when there is none (OFF-4).
  */
-import type { UserId } from '../core/split';
+import type { SplitParams, UserId } from '../core/split';
+import { normaliseKey } from '../core/text';
 import type { AuthUser, ExpenseRow, SettlementRow } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
@@ -18,6 +19,7 @@ import {
   buildExpense, buildProvisionalExpense, buildSettlement, completeSplit, EntryInvalidError, expenseLabel, inputFromRow, newId,
   PartnerNotJoinedError, settlementLabel, type ExpenseDraft, type MoneyOp, type SettlementDraft,
 } from './writes';
+import type { Json as JsonValue } from './database.types';
 
 export { EntryInvalidError, PartnerNotJoinedError };
 export type { ExpenseDraft, SettlementDraft };
@@ -200,6 +202,39 @@ export function restoreSettlement(id: string, layer = activeDataLayer()): void {
   const ctx = context(layer);
   const { row } = currentSettlement(layer, id);
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'settlements', op: 'patch', id, patch: { deleted_at: null }, label: settlementLabel(row) });
+}
+
+// ───────── learning: what a person's choices teach the app (CAT-3, CAT-4) ─────────
+
+function splitForMemory(split: SplitParams): { split_mode: string; split_params: JsonValue } | null {
+  if (split.mode === 'treat' || split.mode === 'for_other') return { split_mode: split.mode, split_params: null };
+  // A ratio is remembered as each person's percentage; exact amounts belong to one entry, not a description.
+  if (split.mode === 'ratio' && Object.keys(split.ratio).length === 2) return { split_mode: 'ratio', split_params: { ...split.ratio } };
+  return null;
+}
+
+/**
+ * CAT-3, CAT-4: the person picked a category or a split for this description, so next time the app
+ * offers their choice. Only what was chosen is changed; a person's choice always overwrites a guess.
+ * Queued like a money write (works offline), so it never delays a save.
+ */
+export function rememberChoice(description: string, choice: { categoryId?: string | null; split?: SplitParams }, layer = activeDataLayer()): void {
+  const key = normaliseKey(description);
+  if (key === '' || (choice.categoryId === undefined && choice.split === undefined)) return;
+  const ctx = context(layer);
+  const before = layer.memory().find((m) => m.key === key);
+  const split = choice.split && ctx.pair ? splitForMemory(choice.split) : null;
+  const row = {
+    household_id: ctx.hid,
+    key,
+    category_id: choice.categoryId !== undefined ? choice.categoryId : (before?.category_id ?? null),
+    split_mode: split ? split.split_mode : (before?.split_mode ?? null),
+    split_params: split ? split.split_params : (before?.split_params ?? null),
+    uses: (before?.uses ?? 0) + 1,
+    source: 'user',
+  };
+  if (row.category_id === null && row.split_mode === null) return;
+  layer.remember({ opId: newId(), by: ctx.uid, row });
 }
 
 /** The person has seen a refused write and doesn't want to fix it. `id` is the entry's id. */

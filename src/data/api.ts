@@ -15,6 +15,9 @@ export type ExpenseRow = Tables['expenses']['Row'];
 export type SettlementRow = Tables['settlements']['Row'];
 export type ChangeRequestRow = Tables['change_requests']['Row'];
 export type ActivityRow = Tables['activity']['Row'];
+export type CategoryMemoryRow = Tables['category_memory']['Row'];
+/** What the phone writes to `category_memory` (CAT-3, CAT-4); the server stamps `updated_at`. */
+export type CategoryMemoryWrite = Pick<CategoryMemoryRow, 'household_id' | 'key' | 'category_id' | 'split_mode' | 'split_params' | 'uses' | 'source'>;
 
 /** The columns the phone owns on an expense; an upsert sends only these, so a replay can't clobber server stamps. */
 export const EXPENSE_WRITE_COLUMNS = [
@@ -55,6 +58,10 @@ export interface Api {
   settlements(householdId: string): Promise<SettlementRow[]>;
   changeRequests(householdId: string): Promise<ChangeRequestRow[]>;
   activity(householdId: string, entityId: string): Promise<ActivityRow[]>;
+  /** What the household has taught the app: description → category and usual split (CAT-3, CAT-4). */
+  categoryMemory(householdId: string): Promise<CategoryMemoryRow[]>;
+  /** Insert or update by (household, key). Returns the stored row. */
+  upsertCategoryMemory(row: CategoryMemoryWrite): Promise<CategoryMemoryRow>;
   /** Insert or update by id (OFF-7: a replay can't duplicate). Returns the stored row. */
   upsertExpense(row: ExpenseWrite): Promise<ExpenseRow>;
   patchExpense(id: string, patch: SoftDeletePatch): Promise<ExpenseRow>;
@@ -167,6 +174,10 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     changeRequests: async (hid) => unwrap(await db.from('change_requests').select('*').eq('household_id', hid).order('created_at')) ?? [],
     activity: async (hid, entityId) =>
       unwrap(await db.from('activity').select('*').eq('household_id', hid).eq('entity_id', entityId).order('at', { ascending: false })) ?? [],
+    categoryMemory: (hid) =>
+      allRows((from, to) => db.from('category_memory').select('*').eq('household_id', hid).order('key').range(from, to)),
+    upsertCategoryMemory: async (row) =>
+      must(await db.from('category_memory').upsert(row, { onConflict: 'household_id,key' }).select().single(), 'category memory'),
     upsertExpense: async (row) => must(await db.from('expenses').upsert(row, { onConflict: 'id' }).select().single(), 'expense'),
     patchExpense: async (id, patch) => must(await db.from('expenses').update(patch).eq('id', id).select().single(), 'expense'),
     upsertSettlement: async (row) => must(await db.from('settlements').upsert(row, { onConflict: 'id' }).select().single(), 'settle-up'),

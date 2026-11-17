@@ -28,18 +28,22 @@ import { netPositions } from '../core/balance';
 import type { IsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import { ApiError, isTransient, type Api, type AuthUser, type ExpenseRow, type HouseholdRow, type MemberRow, type SettlementRow } from './api';
-import { keys, MONEY_KEY, MONEY_SCOPE } from './keys';
+import {
+  ApiError, isTransient, type Api, type AuthUser, type CategoryMemoryRow, type ExpenseRow, type HouseholdRow, type MemberRow, type SettlementRow,
+} from './api';
+import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE } from './keys';
 import type { Network } from './network';
 import { createProblemStore, problemFrom, type ProblemStore } from './problems';
 import {
-  categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, settlementsQuery,
+  categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, memoryQuery, settlementsQuery,
 } from './queries';
 import { createRealtime, type Realtime } from './realtime';
 import { expenseToLedger, settlementToLedger } from './rows';
 import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
-import { buildExpense, completeSplit, expenseWrite, opRowId, overlay, settlementWrite, type MoneyOp } from './writes';
+import {
+  buildExpense, completeSplit, expenseWrite, opRowId, overlay, overlayMemory, settlementWrite, type MemoryOp, type MoneyOp,
+} from './writes';
 
 export const CACHE_KEY = 'smsm-cache';
 /** Bump only with a migration of the stored queue: a different buster discards the persisted cache. */
@@ -104,6 +108,10 @@ export interface DataLayer {
   subscribeStale(cb: () => void): () => void;
   /** Queue a money write; returns at once (the write is shown immediately and sent when possible). */
   enqueue(op: MoneyOp): void;
+  /** Queue what a person's choice taught the app (CAT-3, CAT-4); not counted as a waiting change. */
+  remember(op: MemoryOp): void;
+  /** The household's category memory with waiting choices applied. */
+  memory(): CategoryMemoryRow[];
   /** Write the cache and queue to storage now. */
   flush(): Promise<void>;
   /** Sign out and clear everything stored for the person on this phone. Needs a connection. */
@@ -114,10 +122,19 @@ function isMoneyMutation(m: { options: { mutationKey?: readonly unknown[] } }): 
   return m.options.mutationKey?.[0] === MONEY_KEY[0];
 }
 
+function isMemoryMutation(m: { options: { mutationKey?: readonly unknown[] } }): boolean {
+  return m.options.mutationKey?.[0] === MEMORY_KEY[0];
+}
+
+/** Writes that are persisted with the queue: money, and what the app learned (CAT-3). */
+function isQueuedMutation(m: { options: { mutationKey?: readonly unknown[] } }): boolean {
+  return isMoneyMutation(m) || isMemoryMutation(m);
+}
+
 const dehydrateOptions: DehydrateOptions = {
   shouldDehydrateQuery: (q) => q.state.status === 'success' && q.queryKey[0] === 'smsm',
   // Every waiting write, including one that was mid-request when the app closed: replaying it is safe.
-  shouldDehydrateMutation: (m) => m.state.status === 'pending' && isMoneyMutation(m),
+  shouldDehydrateMutation: (m) => m.state.status === 'pending' && isQueuedMutation(m),
 };
 
 /** Restored writes are marked paused, so resuming picks up every one of them. */
@@ -254,6 +271,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       client.query({ ...expensesQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...settlementsQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...changesQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      client.query({ ...memoryQuery(api, id, hid), staleTime: 0 }).catch(noop),
     ]);
     followHousehold();
     wake();
@@ -299,7 +317,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row, op.isNew)) : api.patchSettlement(op.id, op.patch);
   }
 
-  async function send(op: MoneyOp): Promise<ExpenseRow | SettlementRow> {
+  /** Sends one queued write, waiting out anything transient; what is thrown is a refusal. */
+  async function send<T>(op: { opId: string; by: string }, once: () => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt += 1) {
       try {
         if (!network.online) throw new ApiError('network', 'offline');
@@ -309,7 +328,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
         // Nothing is sent until the check passes; offline ('unknown') it simply waits.
         if (v === 'stale') throw new ApiError('stale', 'this version of the app is too old to save; it is updating');
         if (v === 'unknown') throw new ApiError('network', 'could not check the app version');
-        return await sendOnce(op);
+        return await once();
       } catch (err) {
         if (!isTransient(err)) throw err;
         await wait(op.opId, retryDelay(attempt));
@@ -336,7 +355,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     scope: MONEY_SCOPE,
     networkMode: 'always',
     retry: 0, // transient failures are retried inside `send`; what reaches TanStack as an error is a refusal
-    mutationFn: (op: MoneyOp) => send(op),
+    mutationFn: (op: MoneyOp) => send(op, () => sendOnce(op)),
     onSuccess: async (row: ExpenseRow | SettlementRow, op: MoneyOp) => {
       problems.resolveRow(opRowId(op));
       await applyServerRow(op, row);
@@ -347,6 +366,45 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       report(err, { what: 'write refused', table: op.table, op: op.op, id: opRowId(op) });
     },
   });
+
+  client.setMutationDefaults(MEMORY_KEY, {
+    scope: MEMORY_SCOPE,
+    networkMode: 'always',
+    retry: 0,
+    mutationFn: (op: MemoryOp) => send(op, () => api.upsertCategoryMemory(op.row)),
+    onSuccess: (row: CategoryMemoryRow) => {
+      const id = uid();
+      if (!id || client.getQueryData(keys.memory(id)) === undefined) return;
+      client.setQueryData<CategoryMemoryRow[]>(keys.memory(id), (old) => [...(old ?? []).filter((r) => r.key !== row.key), row]);
+    },
+    // The app's memory, not the person's entry: a refusal (the category was removed meanwhile) is dropped
+    // quietly and reported, and the next choice for that description teaches it again.
+    onError: (err: Error, op: MemoryOp) => {
+      report(err, { what: 'category memory refused', key: op.row.key });
+    },
+  });
+
+  function memoryWaiting(): MemoryOp[] {
+    return client
+      .getMutationCache()
+      .findAll({ mutationKey: MEMORY_KEY, status: 'pending' })
+      .map((m) => m.state.variables as MemoryOp | undefined)
+      .filter((v): v is MemoryOp => v !== undefined);
+  }
+
+  function remember(op: MemoryOp): void {
+    if (disposed) throw new Error('This store has been closed.');
+    const observer = new MutationObserver<CategoryMemoryRow, Error, MemoryOp>(client, { mutationKey: MEMORY_KEY });
+    observer
+      .mutate(op)
+      .catch(() => undefined)
+      .finally(() => { observer.reset(); });
+  }
+
+  function memory(): CategoryMemoryRow[] {
+    const id = uid();
+    return id ? overlayMemory(rows<CategoryMemoryRow>(keys.memory(id)), memoryWaiting()) : [];
+  }
 
   function waiting(): MoneyOp[] {
     return client
@@ -399,8 +457,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       await tick();
       const busy =
         client.isFetching() > 0 ||
-        client.getMutationCache().findAll({ mutationKey: MONEY_KEY, status: 'pending' }).some((m) => {
-          const op = m.state.variables as MoneyOp | undefined;
+        client.getMutationCache().findAll({ status: 'pending', predicate: isQueuedMutation }).some((m) => {
+          const op = m.state.variables as { opId: string } | undefined;
           return !m.state.isPaused && !(op && waitingOps.has(op.opId));
         });
       quiet = busy ? 0 : quiet + 1;
@@ -431,7 +489,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     // A newly queued write goes to storage at once, not on the throttle.
     cleanups.push(
       client.getMutationCache().subscribe((event) => {
-        if (event.type === 'updated' && event.action.type === 'pending' && isMoneyMutation(event.mutation)) void flush();
+        if (event.type === 'updated' && event.action.type === 'pending' && isQueuedMutation(event.mutation)) void flush();
       }),
     );
     cleanups.push(
@@ -541,6 +599,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       return () => { staleListeners.delete(cb); };
     },
     enqueue,
+    remember,
+    memory,
     flush,
     async signOut() {
       await api.auth.signOut();

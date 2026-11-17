@@ -10,15 +10,16 @@ import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
 import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from './api';
 import { activeDataLayer, DataContext } from './context';
-import { MONEY_KEY } from './keys';
+import type { Memory } from '../core/categorise';
+import { MEMORY_KEY, MONEY_KEY } from './keys';
 import type { WriteProblem } from './problems';
 import {
-  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, settlementsQuery,
+  activityQuery, categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, memoryQuery, settlementsQuery,
 } from './queries';
 import type { DataLayer } from './queryClient';
-import { expenseToLedger, settlementToLedger } from './rows';
+import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
-import { overlay, type MoneyOp } from './writes';
+import { overlay, overlayMemory, type MemoryOp, type MoneyOp } from './writes';
 
 export interface DataResult<T> {
   /** Undefined until the first copy is on the phone. */
@@ -123,6 +124,21 @@ export function useSettlements(): DataResult<SettlementRow[]> {
   const ops = useWaitingOps();
   const data = useMemo(() => q.data && overlay(q.data, ops, 'settlements').sort(newestFirst), [q.data, ops]);
   return result(q, data);
+}
+
+/**
+ * What the household has taught the app (CAT-2 step 1, CAT-3, CAT-4): normalised description → category and
+ * usual split, with choices still waiting to be sent already applied. Empty until known.
+ */
+export function useCategoryMemory(): ReadonlyMap<string, Memory> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(memoryQuery(api, uid, hid));
+  const ops = useMutationState({
+    filters: { mutationKey: MEMORY_KEY, status: 'pending' },
+    select: (m) => m.state.variables as MemoryOp | undefined,
+  });
+  return useMemo(() => memoryMap(overlayMemory(q.data ?? [], ops.filter((o): o is MemoryOp => o !== undefined))), [q.data, ops]);
 }
 
 /** Identity and default-split requests (PPL-4, PPL-5), oldest first. */

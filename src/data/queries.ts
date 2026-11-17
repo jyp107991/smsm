@@ -7,7 +7,7 @@ import { queryOptions, skipToken } from '@tanstack/react-query';
 import { z } from 'zod';
 import {
   ApiError,
-  type ActivityRow, type Api, type CategoryRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
+  type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
   type SettlementRow,
 } from './api';
 import { keys } from './keys';
@@ -32,6 +32,10 @@ const settlementSchema = z.looseObject({
   created_at: stamp, updated_at: stamp, deleted_at: stamp.nullable(),
 });
 const changeSchema = z.looseObject({ id, household_id: id, requested_by: id, kind: z.string(), payload: z.unknown(), status: z.string() });
+const memorySchema = z.looseObject({
+  household_id: id, key: z.string(), category_id: id.nullable(), split_mode: z.string().nullable(), split_params: z.unknown(),
+  uses: z.number(), source: z.string(),
+});
 const activitySchema = z.looseObject({ id: z.number(), entity: z.string(), action: z.string(), at: stamp, summary: z.unknown() });
 
 /** Validated for the fields the app reads; the rest of the row is passed through as the database sent it. */
@@ -96,5 +100,12 @@ export function activityQuery(api: Api, uid: string | null, hid: Hid, entityId: 
   return queryOptions({
     queryKey: keys.activity(uid ?? '', entityId),
     queryFn: uid && hid ? async () => check(z.array(activitySchema), 'history', await api.activity(hid, entityId)) as ActivityRow[] : skipToken,
+  });
+}
+
+export function memoryQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.memory(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(memorySchema), 'category memory', await api.categoryMemory(hid)) as CategoryMemoryRow[] : skipToken,
   });
 }
