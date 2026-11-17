@@ -399,7 +399,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'categories':
         return api.upsertCategory(categoryWrite(op.row));
       case 'chapters':
-        return api.upsertChapter(chapterWrite(op.row));
+        return api.upsertChapter(chapterWrite(op.row), op.isNew ? undefined : op.columns);
     }
   }
 

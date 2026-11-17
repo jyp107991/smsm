@@ -498,3 +498,26 @@ describe('Activity’s Chapter filter and the entry page (ACT-1, CHP-2)', () => 
   });
 });
 
+
+// ───────── fresh review: CHP-1 "create from the add form" ─────────
+describe('a chapter started from the Add sheet (CHP-1, CHP-2)', () => {
+  it('"New chapter" in the Chapter group opens the chapter sheet; saving chooses it for this entry', async () => {
+    const c = chaptersHousehold();
+    show(c.layer);
+    const sheet = await openAddSheet();
+    fireEvent.click(chip(sheet, 'New chapter'));
+    const form = await screen.findByRole('dialog', { name: 'New chapter' });
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Name' }), { target: { value: 'Garden' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'New chapter' })).toBeNull(); });
+    await waitFor(() => { expect(isPressed(chip(sheet, 'Garden'))).toBe(true); });
+  });
+
+  it('with no chapter open yet, More details offers "Start a chapter"', async () => {
+    const c = couple();
+    show(c.layer);
+    const sheet = await openAddSheet();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'More details' }));
+    expect(await within(sheet).findByRole('button', { name: 'Start a chapter' })).toBeTruthy();
+  });
+});

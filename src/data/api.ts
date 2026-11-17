@@ -50,6 +50,7 @@ export interface InboxPatch { status: 'kept' | 'dismissed'; expense_id: string |
 /** The columns the phone owns on a category (CAT-1). */
 /** The columns the phone owns on a chapter (CHP-1; S4a). */
 export type ChapterWrite = Pick<ChapterRow, 'id' | 'household_id' | 'name' | 'emoji' | 'kind' | 'country' | 'start_date' | 'end_date' | 'closed'>;
+export type ChapterColumn = Exclude<keyof ChapterWrite, 'id' | 'household_id'>;
 
 export type CategoryWrite = Pick<CategoryRow, 'id' | 'household_id' | 'name' | 'emoji' | 'colour' | 'archived' | 'sort' | 'default_ratio'>;
 
@@ -104,7 +105,8 @@ export interface Api {
   upsertCategory(row: CategoryWrite): Promise<CategoryRow>;
   /** S4a: the household's chapters (open and closed). */
   chapters(householdId: string): Promise<ChapterRow[]>;
-  upsertChapter(row: ChapterWrite): Promise<ChapterRow>;
+  /** With `columns`, an existing chapter's other columns stay as the server has them (a partner's edit stays). */
+  upsertChapter(row: ChapterWrite, columns?: readonly ChapterColumn[]): Promise<ChapterRow>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
   watchHousehold(householdId: string, onChange: (table: WatchedTable) => void, onStatus: (s: ChannelStatus) => void): () => void;
 }
@@ -235,7 +237,14 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     patchInboxItem: async (id, patch) => must(await db.from('inbox_items').update(patch).eq('id', id).select().single(), 'inbox item'),
     upsertCategory: async (row) => must(await db.from('categories').upsert(row, { onConflict: 'id' }).select().single(), 'category'),
     chapters: async (hid) => unwrap(await db.from('chapters').select('*').eq('household_id', hid).order('created_at')) ?? [],
-    upsertChapter: async (row) => must(await db.from('chapters').upsert(row, { onConflict: 'id' }).select().single(), 'chapter'),
+    upsertChapter: async (row, columns) => {
+      if (columns) {
+        const patch = Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<ChapterWrite>;
+        const updated = await db.from('chapters').update(patch).eq('id', row.id).select().maybeSingle();
+        if (updated.error || updated.data) return must(updated, 'chapter');
+      }
+      return must(await db.from('chapters').upsert(row, { onConflict: 'id' }).select().single(), 'chapter');
+    },
     watchHousehold(householdId, onChange, onStatus) {
       // A topic of its own each time: supabase-js hands back an existing channel with the same topic, so a
       // follow right after a stop (whose removal is still in flight) would get the closing one.

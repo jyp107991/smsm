@@ -167,7 +167,8 @@ export function withExactText(s: FormState, id: UserId, text: string): FormState
  * back, refunding the same original (MB-1, MB-3): it moves the balance the way the one copied did.
  */
 export function copyForm(original: ExpenseRow, people: readonly Person[], today: IsoDate): FormState {
-  return { ...formFromRow(original, people), date: today };
+  // CHP-2: a copy is a new entry: it goes into this phone's current chapter (never a closed one it came from).
+  return { ...formFromRow(original, people), date: today, chapterId: undefined };
 }
 
 /** What Duplicate saves (the entry page's button and Activity's swipe), or null when it can't be read back. */

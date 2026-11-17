@@ -4,7 +4,7 @@
  * computed here by the core's one balance function over those rows; screens never do money maths.
  */
 import { useIsRestoring, useMutationState, useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
@@ -17,7 +17,7 @@ import {
   activityQuery, categoriesQuery, changesQuery, chaptersQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
   settlementsQuery,
 } from './queries';
-import { currentChapterId, subscribeCurrentChapter } from './mutations';
+import { currentChapterId, setCurrentChapter, subscribeCurrentChapter } from './mutations';
 import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
@@ -120,6 +120,9 @@ export function useChapters(): DataResult<ChapterRow[]> {
 export function useCurrentChapter(): string | null {
   const id = useSyncExternalStore(subscribeCurrentChapter, currentChapterId, () => null);
   const chapters = useChapters().data;
+  // Closed (here or on the other phone): forgotten, so reopening it later never sends entries back into it unseen.
+  const closed = id !== null && chapters?.some((c) => c.id === id && c.closed) === true;
+  useEffect(() => { if (closed) setCurrentChapter(null); }, [closed]);
   return useMemo(() => (chapters?.some((c) => c.id === id && !c.closed) ? id : null), [chapters, id]);
 }
 

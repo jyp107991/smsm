@@ -193,6 +193,7 @@ export const strings = {
       'not-allowed': 'This phone wasn’t allowed to save it. Sign in again and try once more.',
       missing: 'It was no longer there to change.',
       category: 'Its category has been removed. Pick another one and save again.',
+      chapter: 'Its chapter isn’t there any more. Pick another one (or Everyday) and save again.',
       other: 'It couldn’t be saved. Open it to check it and save again.',
     },
     fix: 'Fix it',
@@ -533,6 +534,7 @@ export const strings = {
     notFound: 'This chapter isn’t on this phone.',
     chapter: 'Chapter',
     everyday: 'Everyday',
+    newChip: 'New chapter',
     uncategorised: 'No category',
   },
   settings: {

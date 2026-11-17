@@ -13,7 +13,7 @@ import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
-import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
+import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
@@ -610,9 +610,15 @@ export interface ChapterDraft {
   name: string; emoji: string; kind: 'trip' | 'project'; country: string | null; startDate: IsoDate | null; endDate: IsoDate | null;
 }
 
+/** Queues a chapter write; for an existing chapter only the columns that changed are sent (a stale phone never undoes the partner's edit). */
 function enqueueChapter(layer: DataLayer, uid: string, current: ChapterRow | undefined, next: ChapterRow): boolean {
-  if (current && sameJson(chapterWrite(current), chapterWrite(next))) return false;
-  layer.enqueue({ opId: newId(), by: uid, table: 'chapters', op: 'upsert', isNew: current === undefined, row: next, input: null });
+  const before = current ? chapterWrite(current) : null;
+  const after = chapterWrite(next);
+  const columns = before
+    ? (Object.keys(after) as (keyof ChapterWrite)[]).filter((k): k is ChapterColumn => k !== 'id' && k !== 'household_id' && !sameJson(before[k], after[k]))
+    : [];
+  if (before && columns.length === 0) return false;
+  layer.enqueue({ opId: newId(), by: uid, table: 'chapters', op: 'upsert', isNew: current === undefined, row: next, input: null, ...(before ? { columns } : {}) });
   return true;
 }
 

@@ -35,6 +35,7 @@ import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
 import type { Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
+import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
 import { RecurringHistory, Toggle } from './RecurringParts';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
@@ -97,6 +98,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   });
   const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
+  // CHP-1: a chapter started from this form is chosen for this entry (one request object per opening).
+  const [newChapter, setNewChapter] = useState(false);
+  const chapterEditing = useMemo<ChapterEditing>(
+    () => (newChapter ? { mode: 'new', onSaved: (chapterId) => { setS((prev) => ({ ...prev, chapterId })); } } : null),
+    [newChapter],
+  );
   const [s, setS] = useState<FormState>(initial);
   const [errors, setErrors] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(initial.notes !== '');
@@ -469,11 +476,13 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         </>
       ) : null}
 
-      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) ? (
+      {/* REC-4: an Inbox bill or a posted regular payment is never in a chapter. */}
+      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) && !existing?.recurring_id ? (
         <ChapterChoice
           chapters={chapters ?? []}
           value={s.chapterId ?? null}
           onChange={(chapterId) => { update({ ...s, chapterId }); }}
+          onNew={() => { setNewChapter(true); }}
         />
       ) : null}
 
@@ -513,6 +522,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
+        {/* CHP-1: with no chapter open yet, one can be started from here (it is chosen for this entry). */}
+        {!rec && request.mode === 'add' && request.inboxItem === undefined && !(chapters ?? []).some((c) => !c.closed) ? (
+          <div className="mt-4">
+            <Button variant="plain" onClick={() => { setNewChapter(true); }}>{strings.chapters.start}</Button>
+          </div>
+        ) : null}
         {/* REC-1: an expense can become a regular payment, keeping what was typed. */}
         {request.mode === 'add' && request.inboxItem === undefined && !rec && !isBack ? (
           <div className="mt-4">
@@ -545,6 +560,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       today={today}
       onPick={(date) => { update({ ...s, date }); }}
     />
+    <ChapterSheet editing={chapterEditing} onClose={() => { setNewChapter(false); }} />
     {rec ? (
       <DateSheet
         open={picking !== null}
@@ -729,7 +745,9 @@ function EndsAndSwitches({ rec, today, onChange, onPick }: {
  * CHP-2: which chapter the entry is in: Everyday or an open chapter (and the entry's own, even if closed). Shown
  * only when there is a chapter to choose; the current one is chosen for a new entry.
  */
-function ChapterChoice({ chapters, value, onChange }: { chapters: readonly ChapterRow[]; value: string | null; onChange: (id: string | null) => void }) {
+function ChapterChoice({ chapters, value, onChange, onNew }: {
+  chapters: readonly ChapterRow[]; value: string | null; onChange: (id: string | null) => void; onNew: () => void;
+}) {
   const options = chapters.filter((c) => !c.closed || c.id === value);
   if (options.length === 0) return null;
   return (
@@ -746,6 +764,7 @@ function ChapterChoice({ chapters, value, onChange }: { chapters: readonly Chapt
             {c.name}
           </Chip>
         ))}
+        <Chip aria-haspopup="dialog" onSelectedChange={onNew}>{strings.chapters.newChip}</Chip>
       </div>
     </Group>
   );

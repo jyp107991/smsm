@@ -11,7 +11,7 @@ import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
-  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterRow, type ChapterWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
+  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterColumn, type ChapterRow, type ChapterWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
   type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
@@ -97,7 +97,8 @@ export type MoneyOp = OpBase & (
   /** S3: a category added, edited, archived or moved (CAT-1). */
   | { table: 'categories'; op: 'upsert'; isNew: boolean; row: CategoryRow; input: null }
   /** S4a: a chapter started, edited, closed or reopened (CHP-1, CHP-3); never deleted. */
-  | { table: 'chapters'; op: 'upsert'; isNew: boolean; row: ChapterRow; input: null }
+  /** `columns`: only these are written to an existing chapter (close, reopen, an edit), never the rest. */
+  | { table: 'chapters'; op: 'upsert'; isNew: boolean; row: ChapterRow; input: null; columns?: readonly ChapterColumn[] }
 );
 
 export function newId(): string {

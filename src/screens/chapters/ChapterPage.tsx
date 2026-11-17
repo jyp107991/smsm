@@ -27,7 +27,7 @@ export function ChapterPage({ id }: { id: string }) {
   const categories = useCategories().data ?? NO_CATEGORIES;
   const people = usePeople();
   const current = useCurrentChapter();
-  const { pendingIds } = useSyncStatus();
+  const { pendingIds, otherWindow } = useSyncStatus();
   const toast = useToast();
   const [editing, setEditing] = useState<ChapterEditing>(null);
   const ids = useMemo(() => people.list.map((p) => p.id), [people.list]);
@@ -85,7 +85,8 @@ export function ChapterPage({ id }: { id: string }) {
         {isCurrent ? <p className="text-secondary text-forest m-0">{strings.chapters.addingLine}</p> : null}
       </section>
 
-      <div className="flex flex-wrap gap-3">
+      {/* A read-only second window changes nothing (as the entry page). */}
+      <fieldset disabled={otherWindow} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {!chapter.closed ? (
           isCurrent
             ? <Button variant="plain" onClick={() => { setCurrentChapter(null); }}>{strings.chapters.stopAdding}</Button>
@@ -101,7 +102,7 @@ export function ChapterPage({ id }: { id: string }) {
         >
           {chapter.closed ? strings.chapters.reopen : strings.chapters.close}
         </Button>
-      </div>
+      </fieldset>
 
       {summary.byCategory.length > 0 ? (
         <Figures id={catId} title={strings.chapters.byCategory}>

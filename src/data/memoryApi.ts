@@ -470,7 +470,7 @@ export function createMemoryApi(
         return next;
       }),
     chapters: (hid) => call('chapters', hid, () => mine(tables.chapters).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))),
-    upsertChapter: (row) =>
+    upsertChapter: (row, columns) =>
       call('upsertChapter', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         const name = row.name.trim();
@@ -480,12 +480,16 @@ export function createMemoryApi(
         const existing = i === -1 ? undefined : tables.chapters[i];
         if (existing && existing.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         const stamp = now().toISOString();
+        const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<ChapterRow> : row;
         const next: ChapterRow = existing
-          ? { ...existing, ...row, updated_at: stamp }
+          ? { ...existing, ...sent, updated_at: stamp }
           : { created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
         if (existing) tables.chapters[i] = next;
         else tables.chapters.push(next);
-        log('chapter', next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
+        // As log_activity: an edit that changes nothing is not logged.
+        const changes = existing ? diff(existing, next) : null;
+        if (!existing) log('chapter', next.id, 'created', { after: next as unknown as Json }, next.household_id);
+        else if (changes && Object.keys(changes as object).length > 0) log('chapter', next.id, 'edited', changes, next.household_id);
         return next;
       }),
     upsertCategory: (row) =>
