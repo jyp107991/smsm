@@ -86,11 +86,12 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
       if (!draft) return;
       const copyId = addExpense({ ...draft, id: rowId });
       tickSaved();
-      // Q-U8: the copy is made for today; Open goes to it (to change what differs this time).
+      // Q-U8: the copy is made for today. Undo removes it in one tap (owner, 17 Nov: a copy made by mistake
+      // changes the balance, so taking it back should be one tap, as for a swipe in Activity).
       toast.show({
         message: strings.entry.copied,
         ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
-        action: { label: strings.entry.open, onAction: () => { go({ name: 'entry', id: copyId }); } },
+        action: { label: strings.entry.undo, onAction: () => { if (deleteExpense(copyId)) toast.show({ message: strings.entry.removed(label) }); } },
         duration: 5000,
       });
     });

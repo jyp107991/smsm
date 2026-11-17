@@ -481,7 +481,7 @@ describe('Q-U8 ADD-6 ADD-7 MB-2: toasts say what happened', () => {
     await waitFor(() => { expect(toasts().textContent).toMatch(/^Saved Milk £3\.00/); });
   });
 
-  it('Q-U8 ADD-7: Duplicate says "Copied to today" with Open, which opens the copy', async () => {
+  it('Q-U8 ADD-7 ADD-6 (owner, 17 Nov): Duplicate says "Copied to today" with Undo, which removes only the copy', async () => {
     const original = storedExpense({ date: '2026-11-10' });
     const { layer, controls } = couple({ expenses: [original] });
     at(`/entry/${original.id}`);
@@ -489,11 +489,15 @@ describe('Q-U8 ADD-6 ADD-7 MB-2: toasts say what happened', () => {
     await screen.findByRole('heading', { name: 'Lamp' });
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
     await waitFor(() => { expect(toasts().textContent).toMatch(/^Copied to today/); });
-    fireEvent.click(within(toasts()).getByRole('button', { name: 'Open' }));
+    expect(within(toasts()).queryByRole('button', { name: 'Open' })).toBeNull();
+    fireEvent.click(within(toasts()).getByRole('button', { name: 'Undo' }));
     await settle(layer);
     const copy = controls.tables.expenses.find((e) => e.id !== original.id);
     expect(copy?.date).toBe(TODAY);
-    await waitFor(() => { expect(location.pathname).toBe(`/entry/${copy?.id ?? '?'}`); });
+    expect(copy?.deleted_at, 'the copy is removed (soft delete)').not.toBeNull();
+    expect(controls.tables.expenses.find((e) => e.id === original.id)?.deleted_at ?? null, 'the original stays').toBeNull();
+    await waitFor(() => { expect(toasts().textContent).toMatch(/^Removed Lamp/); });
+    expect(location.pathname).toBe(`/entry/${original.id}`);
   });
 
   it('Q-U8 MB-2: Money back says "Money back saved"', async () => {

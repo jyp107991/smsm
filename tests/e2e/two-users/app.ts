@@ -111,7 +111,7 @@ export const quickAddBox = (page: Page) => page.getByRole('textbox', { name: 'Qu
 export const todayList = (page: Page) => page.getByRole('list', { name: 'Today' });
 /** The toast after a save (S2 polish Q-U8: "Saved Tesco £42.50", or "Money back saved"). */
 export const savedStatus = (page: Page) => page.getByRole('status').filter({ hasText: /^(Saved|Money back saved)/ });
-/** The toast after Duplicate (S2 polish Q-U8: "Copied to today", with Open). */
+/** The toast after Duplicate (S2 polish Q-U8: "Copied to today", with Undo — owner, 17 Nov). */
 export const copiedStatus = (page: Page) => page.getByRole('status').filter({ hasText: /^Copied to today/ });
 // S2 polish Q-L10: offline it reads "Offline · 1 waiting to sync" (one pill under the plank); online "3 changes waiting to sync".
 export const waitingToSync = (page: Page) => page.getByRole('status').filter({ hasText: /waiting to sync/ });
