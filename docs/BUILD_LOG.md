@@ -2,6 +2,11 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 (resumed): two-user failures being diagnosed; backup built
+- An agent is diagnosing and fixing the two-user suite's failures from CI run 44032201912 (branch `worktree-agent-aa04c1aaf3ed66e75`).
+- EXP-2 built: `.github/workflows/backup.yml` (nightly 02:23 UTC; data-only export of public + auth users, gzip, gpg AES-256 with the `BACKUP_PASSPHRASE` secret, 30-day Actions artifact) and `scripts/restore-backup.sh` (pauses triggers so history isn't duplicated); restore drill test `tests/unit/backup-restore.test.ts` passes (balances and history identical, wrong passphrase refused). Needs the owner to add `BACKUP_PASSPHRASE` (DEPLOY §1b).
+- Next: merge the two-user fixes → push → let the two-user job run undisturbed; then the remaining screens-review fixes (listed in the entry below); then PR to main.
+
 ## 2026-11-17 ~08:00 UTC: STOPPED BY THE ACCOUNT'S WEEKLY USAGE LIMIT (resets 22 Nov, 16:00 UTC) — exact handoff
 **Where things stand**
 - `main` (live): S0, S1, the gallery with owner feedback round 1 (deploy 3). Untouched since; safe.
