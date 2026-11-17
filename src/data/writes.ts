@@ -12,8 +12,7 @@ import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type Split
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
   type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
-  type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch,
-} from './api';
+  type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
 export interface ExpenseDraft {
@@ -89,7 +88,8 @@ export type MoneyOp = OpBase & (
   | { table: 'settlements'; op: 'upsert'; isNew: boolean; row: SettlementRow; input: SettlementDraft }
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   /** S3: a regular payment (added, edited, paused, resumed, ended: always the whole template, never deleted). */
-  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null }
+  /** `columns`: only these are written to an existing template (pause, resume, end, an edit), never the rest. */
+  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[] }
   /** S3: an Inbox decision (INB-2). */
   | { table: 'inbox_items'; op: 'patch'; id: string; patch: InboxPatch; label: string }
   /** S3: a category added, edited, archived or moved (CAT-1). */

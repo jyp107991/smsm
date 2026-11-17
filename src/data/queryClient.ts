@@ -392,7 +392,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'settlements':
         return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row)) : api.patchSettlement(op.id, op.patch);
       case 'recurring':
-        return api.upsertRecurring(recurringWrite(op.row));
+        return api.upsertRecurring(recurringWrite(op.row), op.isNew ? undefined : op.columns);
       case 'inbox_items':
         return api.patchInboxItem(op.id, op.patch);
       case 'categories':
@@ -455,7 +455,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     if (wasFetching || client.getQueryData(key) === undefined) void client.invalidateQueries({ queryKey: key, refetchType: 'all' });
     void client.invalidateQueries({ queryKey: keys.activity(id, row.id) });
     // REC-2: a regular payment that has reached the server posts what is due at once (not at the next open).
-    if (op.table === 'recurring') await postDueNow();
+    // Not awaited: a slow post never holds the rest of the queue (it refreshes the lists when it lands).
+    if (op.table === 'recurring') void postDueNow();
   }
 
   /** Post what is due now, then read back what it made (entries, Inbox bills, the templates' counts). */

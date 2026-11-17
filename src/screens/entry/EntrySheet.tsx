@@ -628,6 +628,19 @@ function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
   onPick: (which: 'start' | 'end') => void;
 }) {
   const n = everyOf(rec.everyText) ?? 1;
+  if (startLocked) {
+    // Once one has posted, its days are fixed (DECISIONS: posted days never move); a new rhythm is a new payment.
+    const often = rec.frequency === 'weekly' ? strings.recurring.weekly : rec.frequency === 'monthly' ? strings.recurring.monthly : strings.recurring.yearly;
+    return (
+      <>
+        <Group label={strings.recurring.howOften}>
+          <p className="text-body m-0">{strings.recurring.lockedRhythm(often, n, strings.recurring.unit(rec.frequency, n), formatDate(rec.startDate, today))}</p>
+          <p className="text-secondary text-ink-2 m-0">{strings.recurring.lockedHint}</p>
+        </Group>
+        <EndsAndSwitches rec={rec} today={today} onChange={onChange} onPick={onPick} />
+      </>
+    );
+  }
   return (
     <>
       <Group label={strings.recurring.howOften}>
@@ -656,16 +669,28 @@ function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
 
       <Group label={strings.recurring.starts}>
         <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.starts}>
-          <Chip selected={rec.startDate === today} disabled={startLocked} onSelectedChange={() => { onChange({ startDate: today }); }}>
+          <Chip selected={rec.startDate === today} onSelectedChange={() => { onChange({ startDate: today }); }}>
             {strings.entry.today}
           </Chip>
-          <Chip selected={rec.startDate !== today} disabled={startLocked} aria-haspopup="dialog" onSelectedChange={() => { onPick('start'); }}>
+          <Chip selected={rec.startDate !== today} aria-haspopup="dialog" onSelectedChange={() => { onPick('start'); }}>
             {rec.startDate !== today ? formatDate(rec.startDate, today) : strings.entry.pickDate}
           </Chip>
         </div>
         <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p>
       </Group>
+      <EndsAndSwitches rec={rec} today={today} onChange={onChange} onPick={onPick} />
+    </>
+  );
+}
 
+function EndsAndSwitches({ rec, today, onChange, onPick }: {
+  rec: ScheduleState;
+  today: string;
+  onChange: (next: Partial<ScheduleState>) => void;
+  onPick: (which: 'start' | 'end') => void;
+}) {
+  return (
+    <>
       <Group label={strings.recurring.ends}>
         <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.ends}>
           <Chip selected={rec.endDate === null} onSelectedChange={() => { onChange({ endDate: null }); }}>

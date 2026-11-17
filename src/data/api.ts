@@ -41,6 +41,7 @@ export const RECURRING_WRITE_COLUMNS = [
   'split_params', 'shares', 'is_subscription', 'frequency', 'every', 'start_date', 'end_date', 'active', 'notes',
 ] as const satisfies readonly (keyof RecurringRow)[];
 export type RecurringWrite = Pick<RecurringRow, (typeof RECURRING_WRITE_COLUMNS)[number]>;
+export type RecurringColumn = Exclude<(typeof RECURRING_WRITE_COLUMNS)[number], 'id' | 'household_id'>;
 
 /** An Inbox decision (INB-2): kept (with the entry it became) or dismissed. */
 export interface InboxPatch { status: 'kept' | 'dismissed'; expense_id: string | null }
@@ -93,7 +94,8 @@ export interface Api {
   /** S3: regular payments, the Inbox and categories. */
   recurring(householdId: string): Promise<RecurringRow[]>;
   inboxItems(householdId: string): Promise<InboxItemRow[]>;
-  upsertRecurring(row: RecurringWrite): Promise<RecurringRow>;
+  /** With `columns`, an existing template's other columns are left as the server has them (a partner's edit stays). */
+  upsertRecurring(row: RecurringWrite, columns?: readonly RecurringColumn[]): Promise<RecurringRow>;
   patchInboxItem(id: string, patch: InboxPatch): Promise<InboxItemRow>;
   upsertCategory(row: CategoryWrite): Promise<CategoryRow>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
@@ -214,7 +216,15 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     postDueRecurring: async () => unwrap(await db.rpc('post_due_recurring', {})) ?? 0,
     recurring: async (hid) => unwrap(await db.from('recurring').select('*').eq('household_id', hid).order('start_date')) ?? [],
     inboxItems: async (hid) => unwrap(await db.from('inbox_items').select('*').eq('household_id', hid).order('created_at')) ?? [],
-    upsertRecurring: async (row) => must(await db.from('recurring').upsert(row, { onConflict: 'id' }).select().single(), 'regular payment'),
+    upsertRecurring: async (row, columns) => {
+      if (columns) {
+        // Only these columns: a stale phone pausing or editing never writes back the partner's other changes.
+        const patch = Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<RecurringWrite>;
+        const updated = await db.from('recurring').update(patch).eq('id', row.id).select().maybeSingle();
+        if (updated.error || updated.data) return must(updated, 'regular payment');
+      }
+      return must(await db.from('recurring').upsert(row, { onConflict: 'id' }).select().single(), 'regular payment');
+    },
     patchInboxItem: async (id, patch) => must(await db.from('inbox_items').update(patch).eq('id', id).select().single(), 'inbox item'),
     upsertCategory: async (row) => must(await db.from('categories').upsert(row, { onConflict: 'id' }).select().single(), 'category'),
     watchHousehold(householdId, onChange, onStatus) {

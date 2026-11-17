@@ -413,6 +413,9 @@ export const strings = {
       `${frequency === 'weekly' ? 'week' : frequency === 'monthly' ? 'month' : 'year'}${n === 1 ? '' : 's'}`,
     starts: 'Starts',
     startsHint: 'It posts on this day, then on the same day each time.',
+    lockedRhythm: (often: string, n: number, unit: string, start: string) =>
+      n === 1 ? `${often}, from ${start}` : `Every ${String(n)} ${unit}, from ${start}`,
+    lockedHint: 'It has posted already, so its days stay as they are. To repeat on other days, end it and add a new one.',
     ends: 'Ends',
     never: 'Never',
     pickStart: 'When it starts',

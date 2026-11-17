@@ -13,7 +13,7 @@ import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
-import type { AuthUser, CategoryRow, ExpenseRow, InboxItemRow, RecurringRow, SettlementRow } from './api';
+import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
@@ -485,9 +485,17 @@ export function saveRecurring(input: RecurringDraft & { id?: string }, layer = a
   };
   // Q-F1: the same form saved twice (a double tap) changes nothing.
   if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
-  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null });
+  // An edit writes what the form owns, never `active` (a partner's pause stays paused).
+  layer.enqueue({
+    opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
+    ...(existing ? { columns: EDIT_COLUMNS } : {}),
+  });
   return row.id;
 }
+
+const EDIT_COLUMNS: readonly RecurringColumn[] = RECURRING_WRITE_COLUMNS.filter(
+  (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active',
+);
 
 function changeRecurring(id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date'>>, layer: DataLayer): boolean {
   const ctx = context(layer);
@@ -495,7 +503,10 @@ function changeRecurring(id: string, change: Partial<Pick<RecurringRow, 'active'
   if (!current) throw new EntryNotFoundError(id);
   const next: RecurringRow = { ...current, ...change, updated_at: layer.now().toISOString() };
   if (sameJson(recurringWrite(current), recurringWrite(next))) return false;
-  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: false, row: next, input: null });
+  layer.enqueue({
+    opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: false, row: next, input: null,
+    columns: Object.keys(change) as RecurringColumn[],
+  });
   return true;
 }
 

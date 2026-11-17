@@ -168,3 +168,38 @@ do $$ declare c text; begin
   if c is not null then execute c; end if;
 end $$;
 select count(*) = 1 as ok_rec2_nightly_job_posts_what_is_due from expenses where description = 'Left for the job';
+
+-- ───────── Fresh review (S3): edits, pauses and restarts never back-post or skip money ─────────
+reset role;
+set request.jwt.claim.sub = '';
+-- A monthly £30 template from 10 months ago, posted up to date.
+insert into recurring(household_id, description, amount_pence, paid, shares, frequency, start_date)
+values (:'hid', 'Review gym', 3000, jsonb_build_object(:'A', 3000), jsonb_build_object(:'A', 1500, :'B', 1500),
+        'monthly', (:'uk_today'::date - interval '10 months')::date)
+returning id as gym \gset
+select post_due_recurring(:'hid') >= 11 as ok_review_template_posted;
+select count(*) as gym_before from expenses where recurring_id = :'gym' \gset
+set role authenticated;
+set request.jwt.claim.sub = :'A';
+-- A new rhythm applies from the next occurrence: no weekly back-dated run.
+update recurring set frequency = 'weekly' where id = :'gym';
+select post_due_recurring() >= 0 as ok_review_post_after_rhythm_change;
+select count(*) = :gym_before as ok_review_new_rhythm_posts_nothing_back_dated from expenses where recurring_id = :'gym';
+select start_date > :'uk_today'::date and posted_count = 0 as ok_review_new_rhythm_starts_at_next_occurrence from recurring where id = :'gym';
+-- Paused for months, then resumed: the missed occurrences are skipped, not posted at once.
+reset role;
+set request.jwt.claim.sub = '';
+insert into recurring(household_id, description, amount_pence, paid, shares, frequency, start_date, active, posted_count)
+values (:'hid', 'Review paused', 2000, jsonb_build_object(:'A', 2000), jsonb_build_object(:'A', 1000, :'B', 1000),
+        'monthly', (:'uk_today'::date - interval '8 months' - interval '1 day')::date, false, 2)
+returning id as paused \gset
+set role authenticated;
+set request.jwt.claim.sub = :'A';
+update recurring set active = true where id = :'paused';
+select post_due_recurring() >= 0 as ok_review_post_after_resume;
+select count(*) = 0 as ok_review_resume_posts_no_backlog from expenses where recurring_id = :'paused';
+-- posted_count is the server's.
+update recurring set posted_count = 5 where id = :'gym';              -- expect error: a phone can't move what has posted
+-- One failing household never stops the nightly job for the rest.
+reset role;
+select post_due_recurring_all() >= 0 as ok_review_nightly_job_runs_household_by_household;

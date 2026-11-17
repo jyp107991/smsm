@@ -168,6 +168,26 @@ export function createMemoryApi(
     tables.activity.push({ id: activityId++, household_id: householdId, actor: user?.userId ?? null, entity, entity_id: id, action, summary: summary ?? {}, at: now().toISOString() });
   }
 
+  /**
+   * What the recurring_guard trigger does (migration 8): a new rhythm or start on a template that has posted
+   * applies from its next occurrence (posted days never move); a resumed template skips what fell due while it
+   * was paused.
+   */
+  function guardRecurring(old: RecurringRow, next: RecurringRow): RecurringRow {
+    const out = { ...next };
+    const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: null });
+    if (old.posted_count > 0 && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
+      const nxt = occurrence(sched(old), old.posted_count);
+      out.start_date = out.start_date > nxt ? out.start_date : nxt;
+      out.posted_count = 0;
+    }
+    if (!old.active && out.active) {
+      const t = today();
+      for (let n = 0; n < 10000 && occurrence(sched(out), out.posted_count) < t; n += 1) out.posted_count += 1;
+    }
+    return out;
+  }
+
   /** What changed, as the database's log_activity trigger records it: { field: { before, after } }. */
   function diff(before: object, after: object): Json {
     const out: Record<string, Json> = {};
@@ -313,7 +333,7 @@ export function createMemoryApi(
         }), (r) => {
           checkMoney(r);
           if (r.recurring_id !== null && tables.expenses.some((e) => e.id !== r.id && e.recurring_id === r.recurring_id && e.occurrence_date === r.occurrence_date)) {
-            refuse('duplicate key value violates unique constraint "expenses_one_per_occurrence"', '23505');
+            refuse('duplicate key value violates unique constraint "expenses_occurrence"', '23505');
           }
         })),
     patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => patchRow(tables.expenses, id, patch, 'expense')),
@@ -405,7 +425,7 @@ export function createMemoryApi(
     postDueRecurring: () => call('postDueRecurring', null, () => postDue()),
     recurring: (hid) => call('recurring', hid, () => mine(tables.recurring).sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0))),
     inboxItems: (hid) => call('inboxItems', hid, () => mine(tables.inboxItems).sort((a, b) => (a.created_at < b.created_at ? -1 : 1))),
-    upsertRecurring: (row) =>
+    upsertRecurring: (row, columns) =>
       call('upsertRecurring', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         const i = tables.recurring.findIndex((r) => r.id === row.id);
@@ -413,9 +433,12 @@ export function createMemoryApi(
         if (existing && existing.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         const stamp = now().toISOString();
         // The phone never sends posted_count: the server keeps counting where it was (REC-6).
-        const next: RecurringRow = existing
-          ? { ...existing, ...row, updated_at: stamp }
+        // A narrowed write (pause, resume, end, an edit) changes only its columns, as the Supabase update does.
+        const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<RecurringRow> : row;
+        let next: RecurringRow = existing
+          ? { ...existing, ...sent, updated_at: stamp }
           : { posted_count: 0, created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
+        if (existing) next = guardRecurring(existing, next);
         if (next.amount_pence <= 0 || next.every < 1 || (next.end_date !== null && next.end_date < next.start_date)) {
           refuse('new row violates check constraint "recurring_check"', '23514');
         }
@@ -430,6 +453,10 @@ export function createMemoryApi(
         const i = tables.inboxItems.findIndex((r) => r.id === id && r.household_id === myHousehold());
         const existing = tables.inboxItems[i];
         if (!existing) return refuse('JSON object requested, multiple (or no) rows returned', 'PGRST116');
+        // inbox_items.expense_id references expenses: a Keep whose entry was refused can't mark the item kept.
+        if (patch.expense_id !== null && !tables.expenses.some((e) => e.id === patch.expense_id)) {
+          return refuse('insert or update on table "inbox_items" violates foreign key constraint "inbox_items_expense_id_fkey"', '23503');
+        }
         const next: InboxItemRow = { ...existing, ...patch, updated_at: now().toISOString() };
         tables.inboxItems[i] = next;
         log('inbox_item', id, 'edited', diff(existing, next), next.household_id);
