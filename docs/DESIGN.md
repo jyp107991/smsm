@@ -66,21 +66,21 @@ Built on the owner's chosen palette, "Forest Green and Walnut": Copper Pyrite Gr
 
 | Token | Light | Dark ("the wood at night") | Use |
 |---|---|---|---|
-| `--paper` | `#EEF0E5` (a tint of the pale sage) | `#1D221A` bottle green | page |
-| `--surface` | `#FAFAF5` | `#272D23` | sheets, cards |
-| `--sunk` | `#D6D9C7` **pale sage** | `#161A14` | inputs, chips, wells, rules on surface |
+| `--paper` | `#DCDFCD` | `#1D221A` bottle green | page |
+| `--surface` | `#E8E3D5` | `#272D23` | sheets, cards |
+| `--sunk` | `#C8CCB6` | `#161A14` | inputs, chips, wells, rules on surface |
 | `--ink` | `#2B2118` (a deep shade of Dachshund) | `#E9EADC` | text |
-| `--ink-2` | `#5E5446` | `#AFB19F` | secondary text |
-| `--line` | `#D6D9C7` | `#3A4234` | rules |
+| `--ink-2` | `#4F463A` | `#AFB19F` | secondary text |
+| `--line` | `#BCC0A8` | `#3A4234` | rules |
 | `--forest` | `#3E4938` **Copper Pyrite Green** | `#C3CFAE` | primary actions, focus, selected, the app icon |
-| `--on-forest` | `#F4F5EC` | `#1D221A` | text on forest |
-| `--moss` | `#57664A` **Ancient Bark** | `#A3B58D` | "all square", positive, secondary fills |
+| `--on-forest` | `#ECE7DA` | `#1D221A` | text on forest |
+| `--moss` | `#4A5840` | `#A3B58D` | "all square", positive, secondary fills |
 | `--walnut` | `#6F5138` **Dachshund** | `#A8825F` | the plank, wood edges, chapter spines |
 | `--oak` | `#AA9071` **Spun Wool Yarn** | `#C9AE8C` | lighter wood, the dog's coat, highlights (shapes only in light, never text) |
-| `--honey` | `#85602A` (a deeper Spun Wool) | `#DDB978` | amounts owed (owing is normal, so never red) |
-| `--berry` | `#9C4338` | `#E79283` | destructive actions only |
+| `--honey` | `#74521F` | `#DDB978` | amounts owed (owing is normal, so never red) |
+| `--berry` | `#8A3A30` | `#E79283` | destructive actions only |
 
-Measured contrast on paper (WCAG), light: ink 13.7, ink-2 6.4, forest 8.2, moss 5.4, walnut 6.3, honey 4.9, berry 5.6, on-forest on forest 8.6. Dark: every text colour is above 6.8 on paper. In light, honey, moss and berry are not used as text on `--sunk` (below 4.5), and oak is never text. An automated test checks every pair that is used.
+**Light theme (owner, 17 Nov): no white.** Paper is a sage linen, sheets and cards a warm wool, wells a deeper sage, so both themes are variants of the same green-and-wood palette. Measured contrast (WCAG), light, on paper / on surface: ink 11.6 / 12.3, ink-2 6.8 / 7.2, forest 7.0 / 7.4, moss 5.6 / 5.9, walnut 5.3 / 5.6, honey 5.2 / 5.5, berry 5.7 / 6.0, on-forest on forest 7.7. Dark: every text colour is above 6.8 on paper. In light, honey, moss, walnut and berry are not used as text on `--sunk`, and oak is never text. An automated test checks every pair that is used.
 
 **Category colours** are twelve muted natural hues named as tokens (`moss, amber, walnut, honey, slate, plum, oak, berry, lake, clay, fern, stone`), each with a light and dark value chosen to be distinguishable from its neighbours (checked for colour-blind confusion in the gallery). They appear only as small dots and chart fills. Charts never rely on colour alone: bars carry labels.
 
