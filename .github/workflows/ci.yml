@@ -87,19 +87,14 @@ jobs:
       - name: Local sign-in settings for the suite (CI workspace only, never committed)
         run: |
           sed -i -E 's/^(sign_in_sign_ups|token_verifications) = .*/\1 = 1000/' supabase/config.toml
-          # The local auth server's own sign-in email (GoTrue 2.198) holds only a link, no code, so the suite
-          # could never read one (CI run 44032201912). Send the app's code email instead: the template that
-          # config.toml proposes for the live project, still commented there until the owner approves it.
-          cat >> supabase/config.toml <<'EOF'
-
-          [auth.email.template.magic_link]
-          subject = "Your smsm code"
-          content_path = "./supabase/templates/code.html"
-
-          [auth.email.template.confirmation]
-          subject = "Your smsm code"
-          content_path = "./supabase/templates/code.html"
-          EOF
+          # The code email templates come from config.toml (as on the live project). The live project sends
+          # through Gmail; the local stack must keep its own mail catcher (Mailpit) so the suite can read the
+          # codes and nothing is ever sent from the real account. So the SMTP block is removed here, in the
+          # CI workspace only.
+          awk '/^\[auth\.email\.smtp\]/{skip=1; next} skip && /^(\[|#)/{skip=0} !skip' supabase/config.toml > config.tmp
+          mv config.tmp supabase/config.toml
+          if grep -q 'auth.email.smtp' supabase/config.toml; then echo "SMTP block still present"; exit 1; fi
+          grep -q '^\[auth.email.template.magic_link\]' supabase/config.toml || { echo "code email template missing"; exit 1; }
           git diff --stat supabase/config.toml
       - name: Supabase local stack (applies supabase/migrations)
         run: npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta

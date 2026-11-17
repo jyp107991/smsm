@@ -33,25 +33,25 @@ max_frequency = "60s"
 otp_length = 6
 otp_expiry = 900
 
-# PROPOSED, waiting for the owner's choice of how sign-in codes are sent (see BUILD_LOG open questions).
-# Uncommented only after approval and once SUPABASE_SMTP_USER and SUPABASE_SMTP_PASS exist as GitHub secrets.
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.gmail.com"
-# port = 587
-# user = "env(SUPABASE_SMTP_USER)"
-# pass = "env(SUPABASE_SMTP_PASS)"
-# admin_email = "env(SUPABASE_SMTP_USER)"
-# sender_name = "smsm"
+# Sign-in codes are sent from smsm's own Gmail account (owner's choice, 17 Nov). The address and its app
+# password live only in the GitHub secrets SUPABASE_SMTP_USER and SUPABASE_SMTP_PASS.
+[auth.email.smtp]
+enabled = true
+host = "smtp.gmail.com"
+port = 587
+user = "env(SUPABASE_SMTP_USER)"
+pass = "env(SUPABASE_SMTP_PASS)"
+admin_email = "env(SUPABASE_SMTP_USER)"
+sender_name = "smsm"
 
-# # A new person's first code and a returning person's code use the same email: the 6-digit code.
-# [auth.email.template.magic_link]
-# subject = "Your smsm code"
-# content_path = "./supabase/templates/code.html"
+# A new person's first code and a returning person's code use the same email: the 6-digit code.
+[auth.email.template.magic_link]
+subject = "Your smsm code"
+content_path = "./supabase/templates/code.html"
 
-# [auth.email.template.confirmation]
-# subject = "Your smsm code"
-# content_path = "./supabase/templates/code.html"
+[auth.email.template.confirmation]
+subject = "Your smsm code"
+content_path = "./supabase/templates/code.html"
 
 [auth.sms]
 enabled = false
