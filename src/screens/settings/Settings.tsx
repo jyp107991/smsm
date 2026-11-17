@@ -218,7 +218,7 @@ function SignOut() {
     try {
       await signOut({ discardWaiting });
       // A "Did it go through?" question belongs to the person who asked it, not the next one to sign in.
-      savePending(null);
+      void savePending(null);
       go({ name: 'home' }, { replace: true });
     } catch (err) {
       if (err instanceof ChangesWaitingError) {

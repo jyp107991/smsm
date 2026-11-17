@@ -17,8 +17,14 @@ export function sumPence(xs: readonly Pence[]): Pence {
   return pence(total);
 }
 
-/** One term: "42", "42.5", "42.50", "1,200", "£1,200.99" (spaces allowed after £). Pence, or null. */
+/**
+ * One term: "42", "42.5", "42.50", "1,200", "£1,200.99", "42,50" (spaces allowed after £). Pence, or null.
+ * A comma followed by exactly two digits is a decimal comma ("42,50" is £42.50, as many keyboards type it);
+ * a comma followed by groups of three is thousands ("1,200" is twelve hundred). S2 polish Q-U3.
+ */
 function parseTerm(term: string): number | null {
+  const comma = /^\s*£?\s*(\d+),(\d{2})\s*$/.exec(term);
+  if (comma?.[1] && comma[2]) return Number(comma[1]) * 100 + Number(comma[2]);
   // Thousands separators only in proper groups of three.
   const m = /^\s*£?\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?\s*$/.exec(term);
   if (!m?.[1]) return null;
@@ -27,7 +33,7 @@ function parseTerm(term: string): number | null {
 }
 
 /**
- * What a person typed as an amount, in pence: "42.5", "£42.50", "1,200", sums like "12+8.50" (ADD-5).
+ * What a person typed as an amount, in pence: "42.5", "£42.50", "42,50", "1,200", sums like "12+8.50" (ADD-5).
  * NFKC turns full-width digits and signs (as typed on Japanese and Korean keyboards) into ordinary ones.
  * Zero, negatives, more than two decimals, junk and amounts above £1,000,000 give null.
  */

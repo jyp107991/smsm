@@ -6,6 +6,7 @@ import { closeLayer, openLayer } from '../history';
 import { strings } from '../strings';
 import { Button } from './Button';
 import { cx, ICON } from './util';
+import { swallowRepeatTap, watchTaps } from '../taps';
 
 export interface SheetProps {
   open: boolean;
@@ -89,8 +90,11 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
       onLeave: () => { latest.current.onOpenChange(false); },
     };
     openLayer(id, handlers);
+    watchTaps();
     return () => {
       active.current = false;
+      // Q-F1: the rest of a double tap on Save doesn't land on what the sheet uncovers.
+      swallowRepeatTap();
       // Deferred, so a re-run of this effect (StrictMode, a re-render) keeps the entry it already has.
       setTimeout(() => {
         if (!active.current) closeLayer(id);

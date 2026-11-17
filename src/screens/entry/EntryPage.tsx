@@ -16,6 +16,7 @@ import { goBackOrTo } from '../../ui/history';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { Head } from '../shared/Head';
+import { useTapAction } from '../shared/once';
 import { usePeople } from '../shared/people';
 import { entrySentence, historyLine, payerOf } from '../shared/words';
 import { useSheets } from '../sheets';
@@ -71,17 +72,21 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const deleted = row.deleted_at !== null;
   const back = row.kind === 'money_back';
   const label = row.description;
+  const tap = useTapAction();
 
+  // Q-F1 ADD-7: one copy per tap-action (a double tap makes one); a later tap makes another on purpose.
   const duplicate = () => {
-    const draft = duplicateDraft(row, people.list, today);
-    if (!draft) return;
-    const newId = addExpense(draft);
-    tickSaved();
-    toast.show({
-      message: strings.entry.saved,
-      ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
-      action: { label: strings.entry.undo, onAction: () => { deleteExpense(newId); } },
-      duration: 5000,
+    tap((rowId) => {
+      const draft = duplicateDraft(row, people.list, today);
+      if (!draft) return;
+      const copyId = addExpense({ ...draft, id: rowId });
+      tickSaved();
+      toast.show({
+        message: strings.entry.saved,
+        ...(payer ? { icon: <Head animal={payer.animal} size={24} nod /> } : {}),
+        action: { label: strings.entry.undo, onAction: () => { deleteExpense(copyId); } },
+        duration: 5000,
+      });
     });
   };
 
