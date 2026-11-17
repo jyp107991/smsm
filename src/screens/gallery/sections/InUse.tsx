@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { demoHousehold, JAE } from '../../../../tests/fixtures/household';
 import { formatDay, todayIn } from '../../../core/dates';
 import { formatPence, pence } from '../../../core/money';
+import { AddSheetExample } from './AddSheet';
 
 type Slot = (who: string) => ReactNode;
 
@@ -60,6 +61,8 @@ export function InUseSection({ head }: { head?: Slot }) {
           </div>
         ))}
       </div>
+
+      <AddSheetExample />
 
       <article aria-label={`${monthName} recap`} className="bg-surface shadow-float flex flex-col gap-3 rounded-[20px] p-5">
         <p className="text-ink-2 text-[0.9375rem]">The month</p>

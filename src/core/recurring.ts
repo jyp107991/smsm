@@ -8,6 +8,7 @@ import { addDays, addMonths, addYears, type IsoDate } from './dates';
 export interface Schedule { frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate; endDate: IsoDate | null }
 
 export function occurrence(s: Schedule, k: number): IsoDate {
+  if (!Number.isInteger(s.every) || s.every < 1) throw new RangeError('every must be a whole number of at least 1');
   switch (s.frequency) {
     case 'weekly':
       return addDays(s.startDate, 7 * s.every * k);

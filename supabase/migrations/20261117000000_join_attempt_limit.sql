@@ -17,6 +17,8 @@ declare hid uuid;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   if exists (select 1 from members where user_id = auth.uid()) then raise exception 'already in a household'; end if;
+  -- One join at a time per account, so parallel requests can't each see a count under the limit.
+  perform pg_advisory_xact_lock(hashtext('join:' || auth.uid()::text));
   if (select count(*) from join_attempts where user_id = auth.uid() and at > now() - interval '1 hour') >= 10 then
     raise exception 'too many wrong codes; try again in an hour';
   end if;

@@ -36,7 +36,8 @@ export function Button({ variant = 'primary', loading = false, icon: Icon, block
       aria-busy={loading || undefined}
       // Stays focusable while loading (so focus is not lost), but presses are ignored.
       aria-disabled={loading || undefined}
-      onClick={loading ? undefined : onClick}
+      // preventDefault also stops a submit button sending its form twice (a duplicate save).
+      onClick={loading ? (e) => { e.preventDefault(); } : onClick}
       className={cx(
         'relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-5 py-2.5',
         'text-body font-semibold select-none',

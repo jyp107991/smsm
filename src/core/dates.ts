@@ -25,7 +25,7 @@ export function isIsoDate(s: string): boolean {
   const m = ISO.exec(s);
   if (!m?.[1] || !m[2] || !m[3]) return false;
   const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
-  return mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth(y, mo);
+  return y >= 1000 && mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth(y, mo);
 }
 
 function dayNumber(d: IsoDate): number {

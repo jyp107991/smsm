@@ -25,7 +25,8 @@ export interface PlankProps {
 
 /** Each animal's size on the plank, in px. Fixed, so the plank never changes height. */
 const SEAT = 88;
-const SPRING = { type: 'spring', stiffness: 140, damping: 13, mass: 1 } as const;
+// Settles in about a quarter of a second with almost no overshoot (DESIGN §3.4: quiet, 180–260 ms).
+const SPRING = { type: 'spring', stiffness: 300, damping: 34, mass: 1 } as const;
 
 function Beam() {
   return (

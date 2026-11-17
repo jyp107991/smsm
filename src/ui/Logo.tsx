@@ -1,3 +1,4 @@
+import { strings } from './strings';
 /**
  * smsm's mark (DESIGN §2.2): ㅅ (the roof) stacked on ㅁ (the walls) so the pair reads as a house, while
  * each stays a recognisable Hangul letter. One constant stroke, round caps and joins; the ㅅ is about 120%
@@ -29,7 +30,7 @@ export const LOGO_MARKS: Record<LogoVariant, LogoMark> = {
   c: { roof: 'M51 14C50 28 44 41 28 49M46.5 30C52 37 59 42 70 45', walls: 'M35 58H65V84H35Z' },
 };
 
-export function Logo({ size = 48, variant = 'a', title = 'smsm' }: { size?: number; variant?: LogoVariant; title?: string }) {
+export function Logo({ size = 48, variant = 'a', title = strings.app.name }: { size?: number; variant?: LogoVariant; title?: string }) {
   const mark = LOGO_MARKS[variant];
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title} data-variant={variant}>

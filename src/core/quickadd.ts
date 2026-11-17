@@ -52,9 +52,11 @@ function parseDateWord(word: string, today: IsoDate): IsoDate | null {
   const ty = Number(today.slice(0, 4));
   const pad = (n: number) => String(n).padStart(2, '0');
   if (m[3] !== undefined) {
-    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    // A two-digit year is this century unless that would be in the future. A date after today is not a date.
+    let y = m[3].length === 2 ? Math.floor(ty / 100) * 100 + Number(m[3]) : Number(m[3]);
+    if (m[3].length === 2 && `${String(y)}-${pad(month)}-${pad(day)}` > today) y -= 100;
     const d = `${String(y)}-${pad(month)}-${pad(day)}`;
-    return isIsoDate(d) ? d : null;
+    return isIsoDate(d) && d <= today ? d : null;
   }
   const thisYear = `${String(ty)}-${pad(month)}-${pad(day)}`;
   const lastYear = `${String(ty - 1)}-${pad(month)}-${pad(day)}`;
@@ -78,6 +80,14 @@ function categoryFor(word: string, categories: readonly CategoryRef[]): string |
     return name === word || name.startsWith(word) || name.split(/[\s&]+/u).includes(word);
   });
   return hits.length === 1 ? (hits[0]?.id ?? null) : null;
+}
+
+/** True when a token is something the grammar reads (not an ordinary description word). */
+function isCommandWord(raw: string, ctx: QuickAddContext): boolean {
+  const w = normaliseKey(raw);
+  return parseAmount(raw) !== null || raw.startsWith('#') || parseDateWord(w, ctx.today) !== null || ratioWord(w) !== null
+    || ['treat', 'for', 'paid', 'me', 'i'].includes(w) || categoryFor(w, ctx.categories) !== null
+    || Object.values(ctx.names).some((n) => normaliseKey(n) === w);
 }
 
 export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddReading | null {
@@ -137,16 +147,31 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
         if (b !== null) { mode = 'for_other'; beneficiary = b; i += 1; continue; }
       }
     }
-    {
-      // Person words are commands: the first names the payer; a repeat of the same person is dropped; a
-      // different second person is something the grammar can't read.
-      const p = personFor(word);
+    if (word === 'paid' && next === 'by') {
+      const p = personFor(normaliseKey(tokens[i + 2] ?? ''));
       if (p !== null) {
+        if (payer === null) payer = p;
+        else if (payer !== p) unsure = true;
+        i += 2;
+        continue;
+      }
+    }
+    {
+      const p = personFor(word);
+      const prev = normaliseKey(tokens[i - 1] ?? '');
+      // "dinner with Sam", "cat food", "dog walker": a person word that is part of the words stays in the
+      // description, and the reading is marked unsure (the person can fix it; S6 may read it better).
+      const partOfWords = p !== null && (prev === 'with' || prev === 'and'
+        || ((word === 'cat' || word === 'dog') && next !== '' && next !== 'paid' && !isCommandWord(tokens[i + 1] ?? '', ctx)));
+      if (p !== null && !partOfWords) {
+        // Person words are commands: the first names the payer; a repeat of the same person is dropped; a
+        // different second person is something the grammar can't read.
         if (payer === null) payer = p;
         else if (payer !== p) unsure = true;
         if (next === 'paid') i += 1;
         continue;
       }
+      if (partOfWords) unsure = true;
     }
     if (categoryId === null) {
       const c = categoryFor(word, ctx.categories);

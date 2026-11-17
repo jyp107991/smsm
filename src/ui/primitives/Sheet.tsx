@@ -81,6 +81,8 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     active.current = true;
     if (!isOwnEntry(history.state, id)) pushOwnEntry(id);
     const onPop = () => {
+      // Our own entry still current means the back was for a sheet above this one.
+      if (isOwnEntry(history.state, id)) return;
       onBack();
     };
     window.addEventListener('popstate', onPop);

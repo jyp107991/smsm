@@ -34,6 +34,7 @@ function toPenceMap(id: string, value: unknown, amount: number, what: string): P
 
 export function expenseToLedger(row: ExpenseRow): LedgerEntry {
   if (row.kind !== 'expense' && row.kind !== 'money_back') throw new BadRowError(row.id, `unknown kind ${row.kind}`);
+  if (!Number.isSafeInteger(row.amount_pence) || row.amount_pence <= 0) throw new BadRowError(row.id, 'amount is not positive whole pence');
   return {
     kind: row.kind,
     paid: toPenceMap(row.id, row.paid, row.amount_pence, 'paid'),

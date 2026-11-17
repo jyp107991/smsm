@@ -28,6 +28,9 @@
 - **`service_role` grants.** When server-side code first writes money rows (S2 backup restore, S7 import), check it can run `check_money`'s helper and the tables it needs.
 - **`post_due_recurring` has no upper bound per call.** A template started years ago back-posts every occurrence. Decide in S3 (probably: confirm before back-posting more than a few).
 
+- **From the S0/S1 review, fixed in S2 when these components are first used (with tests):** a Sheet's history entry can be left behind if the app navigates in the same handler that closes it (one small history coordinator); toasts should announce through one persistent live region rather than each toast carrying `role="status"`; `errors.ts` loses a report whose reason can't be turned into JSON (circular or BigInt); demo household: trip descriptions get random categories and the monthly settle date drifts (cosmetic).
+- **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour for now; revisit with real use in S2 (the person always sees the reading before saving).
+
 ## Deferred criteria
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
 - BAL-3, TXT-6: the plank component and grapheme truncation are tested (S0); the plank on the live balance and the Hangul font fallback on real screens are tested in S2.
