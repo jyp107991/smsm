@@ -298,25 +298,25 @@ type PickerOption = { value: string; label: string; icon?: ReactNode };
 
 function Options({ label, value, options, onPick }: { label: string; value: string; options: readonly PickerOption[]; onPick: (value: string) => void }) {
   return (
-      <div role="radiogroup" aria-label={label} className="flex flex-col">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={o.value === value}
-            onClick={() => { onPick(o.value); }}
-            className={cx(
-              'border-line text-body press flex min-h-12 items-center gap-3 border-b px-1 text-left last:border-b-0',
-              o.value === value ? 'text-forest' : 'text-ink',
-            )}
-          >
-            {o.icon ? <span className="w-6 text-center">{o.icon}</span> : null}
-            <span className="min-w-0 flex-1 truncate">{o.label}</span>
-            {o.value === value ? <Check size={18} strokeWidth={2.25} aria-hidden="true" className="shrink-0" /> : null}
-          </button>
-        ))}
-      </div>
+    <div role="radiogroup" aria-label={label} className="flex flex-col">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          onClick={() => { onPick(o.value); }}
+          className={cx(
+            'border-line text-body press flex min-h-12 items-center gap-3 border-b px-1 text-left last:border-b-0',
+            o.value === value ? 'text-forest' : 'text-ink',
+          )}
+        >
+          {o.icon ? <span className="w-6 text-center">{o.icon}</span> : null}
+          <span className="min-w-0 flex-1 truncate">{o.label}</span>
+          {o.value === value ? <Check size={18} strokeWidth={2.25} aria-hidden="true" className="shrink-0" /> : null}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -401,24 +401,24 @@ function DatesPicker({ open, onClose, value, range, today, labels, onPick }: {
           }}
         />
       ) : (
-      <MonthGrid
-        today={today}
-        focus={to ?? from ?? today}
-        autoFocus
-        mark={(d) => {
-          if (from === null) return null;
-          const end = to ?? from;
-          if (d === from && d === end) return 'chosen';
-          if (d === from) return 'start';
-          if (d === end) return 'end';
-          return d > from && d < end ? 'inside' : null;
-        }}
-        onPick={(d) => {
-          // The first tap is the first day; the second, the last (either way round); a third starts again.
-          if (from === null || to !== null) setDraft({ from: d, to: null });
-          else setDraft(d < from ? { from: d, to: from } : { from, to: d });
-        }}
-      />
+        <MonthGrid
+          today={today}
+          focus={to ?? from ?? today}
+          autoFocus
+          mark={(d) => {
+            if (from === null) return null;
+            const end = to ?? from;
+            if (d === from && d === end) return 'chosen';
+            if (d === from) return 'start';
+            if (d === end) return 'end';
+            return d > from && d < end ? 'inside' : null;
+          }}
+          onPick={(d) => {
+            // The first tap is the first day; the second, the last (either way round); a third starts again.
+            if (from === null || to !== null) setDraft({ from: d, to: null });
+            else setDraft(d < from ? { from: d, to: from } : { from, to: d });
+          }}
+        />
       )}
     </Sheet>
   );
