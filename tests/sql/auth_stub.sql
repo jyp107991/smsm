@@ -25,3 +25,27 @@ do $$ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then create publication supabase_realtime; end if;
 end $$;
 reset client_min_messages;
+-- Like Supabase: pg_cron can be enabled. Plain PostgreSQL 16 doesn't ship it, so where the extension isn't
+-- available a minimal stand-in gives the migrations the same `cron.schedule` / `cron.unschedule` and the
+-- `cron.job` table to read back (the real extension upserts by job name, as here). A migration enables the
+-- real extension only where it is available, then schedules through whichever `cron` schema exists.
+do $$ begin
+  if not exists (select 1 from pg_available_extensions where name = 'pg_cron') and to_regnamespace('cron') is null then
+    create schema cron;
+    create table cron.job (
+      jobid    bigserial primary key,
+      schedule text not null,
+      command  text not null,
+      jobname  text unique,
+      active   boolean not null default true
+    );
+    create function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $f$
+      insert into cron.job(jobname, schedule, command) values (job_name, schedule, command)
+      on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+      returning jobid
+    $f$;
+    create function cron.unschedule(job_name text) returns boolean language sql as $f$
+      with gone as (delete from cron.job where jobname = job_name returning 1) select exists (select 1 from gone)
+    $f$;
+  end if;
+end $$;
