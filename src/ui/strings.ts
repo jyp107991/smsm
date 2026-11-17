@@ -15,6 +15,13 @@ export const strings = {
     later: 'Later',
     offlineReady: 'Ready to work offline',
   },
+  rig: {
+    kind: { cat: 'the cat', dog: 'the dog' },
+    plank: (left: string, right: string, higher: 'left' | 'right' | 'level') =>
+      higher === 'level'
+        ? `The plank is level between ${left} and ${right}`
+        : `The plank tilts: ${higher === 'left' ? left : right} sits higher than ${higher === 'left' ? right : left}`,
+  },
   errors: {
     generic: 'Something went wrong. Reload the app; your entries are saved on this phone.',
     reload: 'Reload',
