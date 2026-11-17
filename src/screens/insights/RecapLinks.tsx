@@ -29,7 +29,7 @@ function Linked({ to, children }: { to: Parameters<typeof go>[0]; children: stri
   );
 }
 
-/** Insights: "Recaps" (the last 12 finished months with spending, newest first) and "Years". */
+/** Insights: "Recaps" (the last 12 finished months, newest first) and "Years". */
 export function RecapLists() {
   const layer = useDataLayer();
   const today = layer.today();
@@ -39,7 +39,8 @@ export function RecapLists() {
   const { months, years } = useMemo(() => {
     const had = new Set(rows.filter((e) => e.deleted_at === null).map((e) => e.date.slice(0, 7)));
     const first = startOfMonth(today);
-    const ms = Array.from({ length: 12 }, (_, i) => addMonths(first, -(i + 1)).slice(0, 7)).filter((m) => had.has(m));
+    // Every one of the last 12 finished months once the household has any spending: a quiet month has a recap too.
+    const ms = had.size === 0 ? [] : Array.from({ length: 12 }, (_, i) => addMonths(first, -(i + 1)).slice(0, 7));
     const ys = [...new Set([...had].map((m) => m.slice(0, 4)))].sort().reverse();
     return { months: ms, years: ys };
   }, [rows, today]);
@@ -84,7 +85,7 @@ export function RecapBanners() {
   const settleDay = household?.settle_day ?? null;
 
   let offer: { to: Parameters<typeof go>[0]; text: string } | null = null;
-  if (settleDay !== null && day >= settleDay && read('smsm-recap-seen') !== thisMonth) {
+  if (settleDay !== null && day === settleDay && read('smsm-recap-seen') !== thisMonth) {
     offer = { to: { name: 'recap', month: thisMonth }, text: strings.recap.settleDay(strings.recap.shortName(thisMonth)) };
   } else if (hadLast && read('smsm-recap-seen') !== lastMonth && (settleDay === null || read('smsm-recap-seen') !== thisMonth)) {
     offer = { to: { name: 'recap', month: lastMonth }, text: strings.recap.ready(strings.recap.shortName(lastMonth)) };
@@ -92,9 +93,9 @@ export function RecapBanners() {
     offer = { to: { name: 'year', year: lastYear }, text: strings.recap.yearOffer(lastYear) };
   }
 
-  const memory = input ? onThisDay(input.entries, input.comments, today) : null;
+  const memory = input ? onThisDay(input.entries, input.commentCounts, today) : null;
   const memoryHidden = read('smsm-onthisday-hidden') === today;
-  const where = memory ? (rows.find((r) => r.id === memory.id)?.place ?? chapters?.find((c) => c.id === memory.chapterId)?.name ?? null) : null;
+  const where = memory ? (memory.place ?? chapters?.find((c) => c.id === memory.chapterId)?.name ?? null) : null;
   const memoryId = useId();
 
   return (

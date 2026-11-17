@@ -128,8 +128,11 @@ describe('addComment (ACT-4, OFF-2)', () => {
 
   it('ACT-4 OFF-5: a comment typed offline survives a restart and syncs later', async () => {
     const storage = memoryStorage();
-    const first = household({ storage, online: false });
+    // The phone has been online once (a phone that never was doesn't know its household yet), then the connection goes.
+    const first = household({ storage });
     await first.layer.ready;
+    await settle(first.layer);
+    first.network.set(false);
     const id = m.addComment(LAMP.id, 'Was it on offer?', first.layer);
     await settle(first.layer);
     await first.layer.dispose();

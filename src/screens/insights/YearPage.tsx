@@ -4,7 +4,7 @@
  */
 import { ArrowLeft } from 'lucide-react';
 import { useId, useMemo, type ReactNode } from 'react';
-import { formatDate } from '../../core/dates';
+import { formatShortDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import { yearOf } from '../../core/recap';
 import { useCategories, useChapters, useDataLayer } from '../../data';
@@ -47,9 +47,9 @@ export function YearPage({ year }: { year: number }) {
       {review ? (
         <>
           <Card title={strings.insights.total} hidden><p className="text-sentence nums-list m-0">{strings.recap.yearTotal(y, formatPence(review.total))}</p></Card>
-          {review.topCategories.length > 0 ? (
+          {review.categories.length > 0 ? (
             <Card title={strings.recap.topCategories}>
-              <Lines items={review.topCategories.map((c) => ({ key: c.categoryId ?? 'none', name: catName(c.categoryId), amount: c.total }))} label={strings.recap.topCategories} />
+              <Lines items={review.categories.map((c) => ({ key: c.categoryId ?? 'none', name: catName(c.categoryId), amount: c.total }))} label={strings.recap.topCategories} />
             </Card>
           ) : null}
           <Card title={strings.recap.month}>
@@ -65,7 +65,7 @@ export function YearPage({ year }: { year: number }) {
                 onClick={(e) => { e.preventDefault(); if (review.biggest) go({ name: 'entry', id: review.biggest.id }); }}
                 className="text-forest text-body inline-flex min-h-11 items-center underline underline-offset-4"
               >
-                {strings.recap.momentLine(review.biggest.description, formatPence(review.biggest.amount), formatDate(review.biggest.date, today))}
+                {strings.recap.momentLine(review.biggest.description, formatPence(review.biggest.amount), formatShortDate(review.biggest.date, today))}
               </a>
             </Card>
           ) : null}

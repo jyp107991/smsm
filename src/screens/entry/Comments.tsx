@@ -6,7 +6,7 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import { addComment, deleteComment, editComment, useComments, useDataLayer, useSyncStatus, type CommentRow } from '../../data';
 import { enterSavesOnce } from '../../ui/keys';
-import { Button, Field, Sheet } from '../../ui/primitives';
+import { Button, Field } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
@@ -44,14 +44,16 @@ export function Comments({ expenseId }: { expenseId: string }) {
         <ol aria-labelledby={id} className="m-0 flex list-none flex-col p-0">
           {comments.map((c) => (
             <li key={c.id} className="border-line flex flex-col gap-1 border-b py-2.5 last:border-b-0">
-              {c.deleted_at !== null ? (
-                <p className="text-secondary text-ink-2 m-0">{strings.comments.deleted(name(c.author))}</p>
+              {editing?.id === c.id && c.deleted_at === null ? (
+                <EditForm comment={c} onDone={() => { setEditing(null); }} />
+              ) : c.deleted_at !== null ? (
+                <p className="text-body text-ink-2 m-0"><span className="font-medium">{name(c.author)}:</span> <em>{strings.comments.deleted}</em></p>
               ) : (
                 <p className="text-body m-0 break-words"><span className="font-medium">{name(c.author)}:</span> {c.body}</p>
               )}
               <div className="flex flex-wrap items-center gap-x-3">
                 <span className="text-caption text-ink-2">{whenWords(c.created_at, today)}</span>
-                {c.author === me && c.deleted_at === null && !otherWindow ? (
+                {c.author === me && c.deleted_at === null && !otherWindow && editing?.id !== c.id ? (
                   <>
                     <button type="button" aria-label={strings.comments.editLabel} onClick={() => { setEditing(c); }} className="text-forest text-secondary press inline-flex min-h-11 items-center rounded-full px-2">
                       {strings.comments.edit}
@@ -82,48 +84,41 @@ export function Comments({ expenseId }: { expenseId: string }) {
         </form>
       ) : null}
       {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
-      <EditSheet comment={editing} onClose={() => { setEditing(null); }} />
     </section>
   );
 }
 
-function EditSheet({ comment, onClose }: { comment: CommentRow | null; onClose: () => void }) {
-  const [opened, setOpened] = useState<{ c: CommentRow; n: number } | null>(null);
-  if (comment !== null && opened?.c !== comment) setOpened({ c: comment, n: (opened?.n ?? 0) + 1 });
-  if (!opened) return null;
-  return <EditForm key={opened.n} comment={opened.c} open={comment !== null} onClose={onClose} />;
-}
-
-function EditForm({ comment, open, onClose }: { comment: CommentRow; open: boolean; onClose: () => void }) {
+/** Editing happens in place, in the thread: the comment's line becomes its box with Save and Cancel. */
+function EditForm({ comment, onDone }: { comment: CommentRow; onDone: () => void }) {
   const [text, setText] = useState(comment.body);
   const [error, setError] = useState<string | null>(null);
-  const formId = useId();
   const save = (e: SyntheticEvent) => {
     e.preventDefault();
+    if (text === comment.body) { onDone(); return; }
     try {
       editComment(comment.id, text);
     } catch (err) {
       setError(plainError(err));
       return;
     }
-    onClose();
+    onDone();
   };
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(next) => { if (!next) onClose(); }}
-      title={strings.comments.editTitle}
-      dirty={text !== comment.body}
-      footer={(
-        <div className="flex flex-col gap-2">
-          {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
-          <Button type="submit" form={formId} block>{strings.entry.save}</Button>
-        </div>
-      )}
-    >
-      <form id={formId} onSubmit={save} noValidate>
-        <Field label={strings.comments.comment} value={text} maxLength={500} autoComplete="off" onChange={(e) => { setText(e.target.value); setError(null); }} />
-      </form>
-    </Sheet>
+    <form onSubmit={save} noValidate className="flex flex-col gap-2">
+      <Field
+        label={strings.comments.comment}
+        value={text}
+        maxLength={500}
+        autoComplete="off"
+        autoFocus
+        onKeyDown={(e) => { if (e.key === 'Escape') onDone(); else enterSavesOnce(e); }}
+        onChange={(e) => { setText(e.target.value); setError(null); }}
+      />
+      {error ? <p role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={text.trim() === ''}>{strings.entry.save}</Button>
+        <Button type="button" variant="plain" onClick={onDone}>{strings.comments.cancel}</Button>
+      </div>
+    </form>
   );
 }

@@ -187,6 +187,9 @@ begin
     raise exception 'the default split changes only when both of you approve';
   end if;
   if new.join_code is distinct from old.join_code then raise exception 'not allowed'; end if;
+  if new.settle_day is distinct from old.settle_day and current_setting('smsm.setting_settle_day', true) is distinct from 'on' then
+    raise exception 'settle day changes only through set_settle_day';
+  end if;
   return new;
 end $$;
 
@@ -486,7 +489,9 @@ begin
   if p_day is not null and (p_day < 1 or p_day > 28) then raise exception 'pick a day from 1 to 28'; end if;
   select settle_day into was from households where id = hid;
   if was is not distinct from p_day then return; end if;
+  perform set_config('smsm.setting_settle_day', 'on', true);
   update households set settle_day = p_day where id = hid;
+  perform set_config('smsm.setting_settle_day', 'off', true);
   insert into activity(household_id, actor, entity, entity_id, action, summary)
   values (hid, auth.uid(), 'household', hid, 'edited', jsonb_build_object('settle_day', jsonb_build_object('before', was, 'after', p_day)));
 end $$;

@@ -5,7 +5,7 @@
  */
 import { ArrowLeft } from 'lucide-react';
 import { useId, useMemo, type ReactNode } from 'react';
-import { formatDate } from '../../core/dates';
+import { formatShortDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import { recapOf } from '../../core/recap';
 import { useBalance, useCategories, useDataLayer } from '../../data';
@@ -32,13 +32,12 @@ export function RecapPage({ month }: { month: string }) {
   const people = usePeople();
   const balance = useBalance();
   const sheets = useSheets();
-  const current = month === today.slice(0, 7);
-  const recap = useMemo(() => (input ? recapOf(input, month, current ? today : undefined) : null), [input, month, current, today]);
+  const recap = useMemo(() => (input ? recapOf(input.entries, input.settlements, input.people, month, {
+    today, names: input.names, categories: input.categories, templates: input.templates, commentCounts: input.commentCounts,
+  }) : null), [input, month, today]);
   if (recap) markRecapSeen(month);
   const name = strings.recap.monthName(month);
-  const short = strings.recap.shortName(month);
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
-  const pounds = (p: number) => `£${Math.round(Math.abs(p) / 100).toLocaleString('en-GB')}`;
 
   const header = (
     <header className="flex flex-col gap-2">
@@ -57,10 +56,6 @@ export function RecapPage({ month }: { month: string }) {
   );
   if (!recap) return <div className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">{header}</div>;
 
-  const against = recap.againstUsual;
-  const headline = strings.recap.cost(`${short}${current ? strings.recap.soFarSuffix : ''}`, formatPence(recap.total))
-    + (against === null ? strings.recap.noUsual : against === 0 ? strings.recap.aboutUsual
-      : against < 0 ? strings.recap.lessThanUsual(pounds(against)) : strings.recap.moreThanUsual(pounds(against)));
   const owes = balance.status === 'ready' && balance.state.kind === 'owes';
 
   return (
@@ -68,16 +63,16 @@ export function RecapPage({ month }: { month: string }) {
       {header}
       <article className="bg-surface flex flex-col gap-8 rounded-[20px] px-5 py-6">
         <Part title={strings.recap.headline} hidden>
-          <p className="text-sentence nums-list m-0">{recap.total === 0 ? strings.recap.nothing : headline}</p>
+          <p className="text-sentence nums-list m-0">{recap.total === 0 ? strings.recap.nothing : recap.headline}</p>
         </Part>
 
         {recap.bar.length > 0 ? (
           <Part title={strings.recap.whereItWent}>
-            <StackedBar items={recap.bar.map((b) => ({ key: b.rest ? 'rest' : (b.categoryId ?? 'none'), colour: b.rest ? 'stone' : (categories.find((c) => c.id === b.categoryId)?.colour ?? 'stone'), total: b.total }))} />
+            <StackedBar items={recap.bar.map((b) => ({ key: b.categoryId ?? (b.name ? 'rest' : 'none'), colour: b.categoryId === null ? 'stone' : (categories.find((c) => c.id === b.categoryId)?.colour ?? 'stone'), total: b.total }))} />
             <ul aria-label={strings.recap.whereItWent} className="m-0 list-none p-0">
               {recap.bar.map((b) => (
-                <li key={b.rest ? 'rest' : (b.categoryId ?? 'none')} className="border-line flex min-h-11 items-baseline justify-between gap-4 border-b py-2 last:border-b-0">
-                  <span className="text-body min-w-0 break-words">{b.rest ? strings.recap.everythingElse : catName(b.categoryId)}</span>{' '}
+                <li key={b.categoryId ?? (b.name ? 'rest' : 'none')} className="border-line flex min-h-11 items-baseline justify-between gap-4 border-b py-2 last:border-b-0">
+                  <span className="text-body min-w-0 break-words">{b.name || catName(b.categoryId)}</span>{' '}
                   <span className="text-body nums-list shrink-0">{formatPence(b.total)}</span>
                 </li>
               ))}
@@ -110,7 +105,7 @@ export function RecapPage({ month }: { month: string }) {
               onClick={(e) => { e.preventDefault(); if (recap.moment) go({ name: 'entry', id: recap.moment.id }); }}
               className="text-forest text-body inline-flex min-h-11 items-center underline underline-offset-4"
             >
-              {strings.recap.momentLine(recap.moment.description, formatPence(recap.moment.amount), formatDate(recap.moment.date, today))}
+              {strings.recap.momentLine(recap.moment.description, formatPence(recap.moment.amount), formatShortDate(recap.moment.date, today))}
             </a>
           </Part>
         ) : null}

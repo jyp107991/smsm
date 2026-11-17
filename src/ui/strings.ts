@@ -631,8 +631,8 @@ export const strings = {
     delete: 'Delete',
     editLabel: 'Edit comment',
     deleteLabel: 'Delete comment',
-    editTitle: 'Edit comment',
-    deleted: (who: string) => `${who} deleted a comment.`,
+    deleted: 'Deleted',
+    cancel: 'Cancel',
     count: (n: number) => (n === 1 ? '1 comment' : `${String(n)} comments`),
   },
   /** S5b: settle day (SET-4). */
