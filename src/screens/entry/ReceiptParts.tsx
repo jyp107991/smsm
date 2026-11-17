@@ -5,6 +5,7 @@
  */
 import { Camera, ImagePlus, X } from 'lucide-react';
 import { useRef } from 'react';
+import { formatForeign } from '../../core/fx';
 import { formatPence, type Pence } from '../../core/money';
 import { Button, ICON } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
@@ -77,16 +78,19 @@ export function ReceiptPhoto({ url, reading, onRemove, onSortLater }: {
 export interface ItemLine { label: string; pence: Pence; shared: boolean }
 
 /** SCAN-2, SCAN-3: the receipt's lines as checkboxes; the mismatch said in words when they don't add up. */
-export function Itemise({ items, mismatch, onToggle }: {
+export function Itemise({ items, mismatch, currency, onToggle }: {
   items: readonly ItemLine[];
   mismatch: { lines: Pence; total: Pence } | null;
+  /** The receipt's own currency (its lines are hundredths of it); pounds when null or GBP. */
+  currency: string | null;
   onToggle: (index: number) => void;
 }) {
+  const money = (p: Pence) => (currency === null || currency === 'GBP' ? formatPence(p) : formatForeign(p / 100, currency));
   return (
     <fieldset className="m-0 mb-4 flex min-w-0 flex-col gap-1 border-0 p-0">
       <legend className="text-secondary text-ink-2 mb-1 p-0 font-medium">{strings.smart.itemise}</legend>
       {mismatch ? (
-        <p className="text-secondary text-berry m-0 mb-1">{strings.smart.mismatch(formatPence(mismatch.lines), formatPence(mismatch.total))}</p>
+        <p className="text-secondary text-berry m-0 mb-1">{strings.smart.mismatch(money(mismatch.lines), money(mismatch.total))}</p>
       ) : (
         <p className="text-caption text-ink-2 m-0 mb-1">{strings.smart.itemiseHint}</p>
       )}
@@ -96,11 +100,11 @@ export function Itemise({ items, mismatch, onToggle }: {
             type="checkbox"
             checked={line.shared}
             onChange={() => { onToggle(i); }}
-            aria-label={`${line.label} ${formatPence(line.pence)}`}
+            aria-label={`${line.label} ${money(line.pence)}`}
             className="accent-forest size-5 shrink-0"
           />
           <span className="text-body min-w-0 flex-1 break-words">{line.label}</span>
-          <span className="text-body nums-list shrink-0">{formatPence(line.pence)}</span>
+          <span className="text-body nums-list shrink-0">{money(line.pence)}</span>
         </label>
       ))}
     </fieldset>

@@ -3,7 +3,7 @@
  * on the phone), the phone's photo store (IndexedDB, so a photo taken offline survives closing the app until it is
  * uploaded) and the photo shrinker. All injectable through the data layer's options, so tests and the demo use fakes.
  */
-import { createStore, get, set } from 'idb-keyval';
+import { createStore, del, get, set } from 'idb-keyval';
 import { shrink } from './photos';
 
 export type AiReason = 'off' | 'limit' | 'timeout' | 'invalid' | 'error';
@@ -18,6 +18,8 @@ export interface AiService {
 export interface PhotoStore {
   put(path: string, photo: Blob): Promise<void>;
   get(path: string): Promise<Blob | null>;
+  /** Lets a photo go that was never saved with anything (removed from the form, or the form closed). */
+  remove?(path: string): Promise<void>;
 }
 
 export type Downscale = (photo: Blob) => Promise<Blob>;
@@ -76,6 +78,7 @@ export function idbPhotos(): PhotoStore {
   return {
     put: (path, photo) => set(path, photo, store),
     get: async (path) => (await get<Blob>(path, store)) ?? null,
+    remove: (path) => del(path, store),
   };
 }
 
@@ -85,6 +88,7 @@ export function memoryPhotoStore(): PhotoStore {
   return {
     put: (path, photo) => { map.set(path, photo); return Promise.resolve(); },
     get: (path) => Promise.resolve(map.get(path) ?? null),
+    remove: (path) => { map.delete(path); return Promise.resolve(); },
   };
 }
 

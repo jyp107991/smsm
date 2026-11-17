@@ -40,7 +40,10 @@ create trigger expenses_category_guess before update on expenses for each row ex
 do $$
 begin
   if exists (select 1 from information_schema.tables where table_schema = 'storage' and table_name = 'objects') then
-    insert into storage.buckets (id, name, public) values ('receipts', 'receipts', false) on conflict (id) do nothing;
+    -- Shrunk JPEGs only (1280 px, well under 2 MB): anything else is refused by Storage itself.
+    execute $b$insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+      values ('receipts', 'receipts', false, 2097152, '{image/jpeg}')
+      on conflict (id) do update set public = false, file_size_limit = 2097152, allowed_mime_types = '{image/jpeg}'$b$;
     execute 'drop policy if exists receipts_insert on storage.objects';
     execute $p$create policy receipts_insert on storage.objects for insert to authenticated
       with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = my_household()::text)$p$;

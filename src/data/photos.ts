@@ -11,14 +11,24 @@ export function receiptPath(householdId: string, id: string = crypto.randomUUID(
   return `${householdId}/${id}.jpg`;
 }
 
-/** The photo as a JPEG no longer than 1280 px on either side; the original when the browser can't draw it. */
+export class PhotoUnreadableError extends Error {
+  constructor() {
+    super('That photo can’t be used here. Try another, or a screenshot of it.');
+    this.name = 'PhotoUnreadableError';
+  }
+}
+
+/**
+ * The photo as a JPEG no longer than 1280 px on either side. A photo the browser can't draw is refused, never sent
+ * as it is: the original may carry the camera's location (EXIF), and only a redrawn copy is sure not to.
+ */
 export async function shrink(photo: Blob): Promise<Blob> {
-  if (typeof createImageBitmap !== 'function') return photo;
+  if (typeof createImageBitmap !== 'function') throw new PhotoUnreadableError();
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(photo, { imageOrientation: 'from-image' });
   } catch {
-    return photo;
+    throw new PhotoUnreadableError();
   }
   const scale = Math.min(1, LONG_SIDE / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
@@ -27,7 +37,7 @@ export async function shrink(photo: Blob): Promise<Blob> {
     if (typeof OffscreenCanvas === 'function') {
       const canvas = new OffscreenCanvas(width, height);
       const ctx = canvas.getContext('2d');
-      if (!ctx) return photo;
+      if (!ctx) throw new PhotoUnreadableError();
       ctx.drawImage(bitmap, 0, 0, width, height);
       return await canvas.convertToBlob({ type: 'image/jpeg', quality: QUALITY });
     }
@@ -35,10 +45,10 @@ export async function shrink(photo: Blob): Promise<Blob> {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return photo;
+    if (!ctx) throw new PhotoUnreadableError();
     ctx.drawImage(bitmap, 0, 0, width, height);
-    return await new Promise<Blob>((resolve) => {
-      canvas.toBlob((b) => { resolve(b ?? photo); }, 'image/jpeg', QUALITY);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => { if (b) resolve(b); else reject(new PhotoUnreadableError()); }, 'image/jpeg', QUALITY);
     });
   } finally {
     bitmap.close();

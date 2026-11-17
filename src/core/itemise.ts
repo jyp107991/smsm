@@ -12,8 +12,10 @@ export interface ReceiptLine { label: string; pence: Pence }
 
 /** `total` split over `weights` in proportion, largest remainder (ties to the earlier one), exact. */
 function shareOut(total: number, weights: readonly number[]): number[] {
+  if (total === 0 || weights.length === 0) return weights.map(() => 0);
+  // Nothing to weigh by (every line £0): shared equally.
+  if (weights.every((w) => w <= 0)) return shareOut(total, weights.map(() => 1));
   const sum = weights.reduce((t, w) => t + w, 0);
-  if (total === 0 || sum <= 0) return weights.map(() => 0);
   const big = BigInt(total);
   const bigSum = BigInt(sum);
   const parts = weights.map((w) => (big * BigInt(w)) / bigSum);

@@ -66,7 +66,7 @@ export function Inbox() {
   const dismiss = (it: InboxItemRow, bill: Bill) => {
     try {
       dismissInboxItem(it.id);
-      toast.show({ message: strings.inbox.dismissed(bill.description) });
+      toast.show({ message: strings.inbox.dismissed(it.source === 'scan' ? strings.smart.receiptToSort : bill.description) });
     } catch (err) {
       toast.show({ message: plainError(err) });
     }

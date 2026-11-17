@@ -116,6 +116,11 @@ export async function attachPhoto(photo: Blob, layer = activeDataLayer()): Promi
   return path;
 }
 
+/** A kept photo that was never saved with anything is let go from this phone. */
+export function forgetPhoto(path: string, layer = activeDataLayer()): void {
+  void layer.photos.remove?.(path).catch(() => undefined);
+}
+
 /** The photo as a Blob, for reading it again (this phone's copy, else downloaded from the bucket). */
 export async function photoBlob(path: string, layer = activeDataLayer()): Promise<Blob | null> {
   const local = await layer.photos.get(path).catch(() => null);
@@ -170,19 +175,24 @@ export interface LooseReading {
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** AI.md rule 4: the two people's names, as whole words in any case, become "A" (this phone's person) and "B". */
+function masked(text: string, layer: DataLayer): string {
+  const me = layer.me();
+  const members = layer.members();
+  let words = text;
+  for (const [m, label] of [[members.find((x) => x.user_id === me), 'A'], [members.find((x) => x.user_id !== me), 'B']] as const) {
+    const name = m?.display_name?.trim();
+    if (name) words = words.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, 'giu'), label);
+  }
+  return words;
+}
+
 /** ADD-9: words the grammar couldn't read, read by the AI into the same form (never saved by itself). */
 export async function parseLoose(text: string, layer = activeDataLayer()): Promise<Result<LooseReading>> {
   if (!ready(layer)) return { ok: false, reason: 'off' };
   const me = layer.me();
-  const members = layer.members();
-  const partner = members.find((m) => m.user_id !== me);
-  const mine = members.find((m) => m.user_id === me);
-  // AI.md rule 4: people go as "A" (me) and "B" (partner), never by name.
-  let words = text;
-  for (const [m, label] of [[mine, 'A'], [partner, 'B']] as const) {
-    const name = m?.display_name?.trim();
-    if (name) words = words.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, 'giu'), label);
-  }
+  const partner = layer.members().find((m) => m.user_id !== me);
+  const words = masked(text, layer);
   const categories = liveCategories(layer);
   const chapters = openChapters(layer);
   try {
@@ -235,7 +245,7 @@ export async function guessCategory(expenseId: string, layer = activeDataLayer()
   const known = suggest(row.description, { memory: memoryMap(layer.memory()), history, seed: SEED, categories });
   if (known.categoryId !== null) return;
   try {
-    const res = await layer.ai.categorise(row.description, categories.map((c) => c.name));
+    const res = await layer.ai.categorise(masked(row.description, layer), categories.map((c) => c.name));
     if (!res.ok) return;
     const reply = checkReply('categorise', res.data);
     const categoryId = byName(categories, reply?.category ?? null);

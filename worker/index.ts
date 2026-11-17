@@ -24,12 +24,14 @@ export interface Env extends AiEnv { ASSETS: { fetch(req: Request): Promise<Resp
 
 const TASKS: readonly Task[] = ['scan', 'parse', 'categorise'];
 const MAX_IMAGE_CHARS = 2_800_000; // a 1280 px JPEG as base64 is far below this
+const MAX_BODY_BYTES = 3_000_000;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
 function inputFrom(body: Record<string, unknown>): TaskInput | null {
-  const strings = (v: unknown) => (Array.isArray(v) && v.every((s) => typeof s === 'string') ? v.slice(0, 100) : null);
+  // Names only, each short: a household's categories or chapters, never a way to send a long prompt.
+  const strings = (v: unknown) => (Array.isArray(v) && v.every((s) => typeof s === 'string' && s.length <= 80) ? v.slice(0, 100) : null);
   const text = (v: unknown, max: number) => (typeof v === 'string' && v.length > 0 && v.length <= max ? v : null);
   const categories = strings(body.categories);
   if (!categories) return null;
@@ -73,6 +75,8 @@ export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch
   if (req.headers.get('origin') !== (env.APP_ORIGIN ?? new URL(req.url).origin)) return json({ error: 'forbidden' }, 403);
   const auth = req.headers.get('authorization') ?? '';
   if (!/^Bearer \S+$/.test(auth)) return json({ error: 'sign in' }, 401);
+  // A shrunk receipt is well under a megabyte; nothing bigger is read.
+  if (Number(req.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) return json({ error: 'bad request' }, 400);
   let parsed: unknown;
   try { parsed = await req.json(); } catch { return json({ error: 'bad request' }, 400); }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return json({ error: 'bad request' }, 400);
@@ -97,13 +101,19 @@ export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch
   const deadline = Date.now() + timeoutFor(task);
   let threw = 0;
   let invalid = 0;
-  for (const model of MODELS[task]) {
+  const models = MODELS[task];
+  for (const [i, model] of models.entries()) {
     const left = deadline - Date.now();
     if (left <= 0) return json({ ok: false, reason: 'timeout' } satisfies Outcome<never>);
-    const got = await ask({ AI: ai }, model, buildRequest(input, model), left);
+    // Each model gets its share of what is left, so a slow one hands over to the next instead of using it all.
+    const share = i === models.length - 1 ? left : Math.ceil(left / (models.length - i));
+    const got = await ask({ AI: ai }, model, buildRequest(input, model), share);
     if ('error' in got) {
       if (isDailyLimit(got.error)) return json({ ok: false, reason: 'limit' } satisfies Outcome<never>);
-      if (got.error === 'timeout') return json({ ok: false, reason: 'timeout' } satisfies Outcome<never>);
+      if (got.error === 'timeout') {
+        if (i === models.length - 1) return json({ ok: false, reason: 'timeout' } satisfies Outcome<never>);
+        continue;
+      }
       threw += 1;
       continue;
     }

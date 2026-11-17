@@ -20,7 +20,7 @@ import { checkTotal, itemise } from '../../core/itemise';
 import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
-  currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
+  currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, forgetPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
   useSmartFeatures, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
 } from '../../data';
@@ -54,6 +54,12 @@ import {
  * for an expense "For Sam" / "My treat"; for money back, whose money it all is ("All Jae’s").
  */
 type SplitValue = `ratio:${string}` | 'other' | `all:${string}` | SplitChoice;
+
+/** A receipt's currency as an ISO code ("eur" → "EUR"), or null when it isn't one. */
+function receiptCurrency(code: string | null): string | null {
+  const c = code?.trim().toUpperCase() ?? '';
+  return /^[A-Z]{3}$/.test(c) ? c : null;
+}
 
 /** A receipt's amount in its own currency, as typed in the Amount box ("648", "12.50"). */
 function foreignText(p: Pence): string {
@@ -146,7 +152,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [photo, setPhoto] = useState<{ path: string; url: string | null; queued: boolean } | null>(
     () => (fromInboxScan ? { path: fromInboxScan, url: null, queued: true } : null));
   const [reading, setReading] = useState<ReadingState>('idle');
-  const [receipt, setReceipt] = useState<{ discount: Pence; service: Pence } | null>(null);
+  const [receipt, setReceipt] = useState<{ discount: Pence; service: Pence; currency: string | null } | null>(null);
   const touched = useRef({ amount: false, description: false, date: false });
   const scanRun = useRef(0);
   const [errors, setErrors] = useState<string[]>([]);
@@ -222,7 +228,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     const items = reply.items.map((l) => ({ label: l.label, pence: pence(l.pence), shared: true }));
     const discount = pence(reply.discount_pence);
     const service = pence(reply.service_pence);
-    setReceipt({ discount, service });
+    setReceipt({ discount, service, currency: receiptCurrency(reply.currency) });
     setS((prev) => {
       const t = touched.current;
       let next: FormState = { ...prev, items: items.length > 0 ? items : null, billTotal: total };
@@ -239,10 +245,13 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       }
       if (!t.amount) {
         // PLC-6: a receipt in the currency of where this entry is turns on "Paid in", with the amount in that currency.
-        const currency = reply.currency !== null && reply.currency !== 'GBP' && currencyOf(next.country ?? home) === reply.currency ? reply.currency : null;
+        // One in any other currency fills no amount: the person sets it (never pounds that are really euros).
+        const code = receiptCurrency(reply.currency);
+        const local = code !== null && code !== 'GBP' && currencyOf(next.country ?? home) === code ? code : null;
         const adds = items.length === 0 || (total !== null && checkTotal(items, discount, service, total).adds);
-        if (currency) next = { ...next, foreign: { currency, rateText: '' } };
-        next = { ...next, amountText: total !== null && adds ? (currency ? foreignText(total) : formatPlainPounds(total)) : '' };
+        const usable = total !== null && adds && (code === null || code === 'GBP' || local !== null);
+        if (local) next = { ...next, foreign: { currency: local, rateText: '' } };
+        next = { ...next, amountText: usable ? (local ? foreignText(total) : formatPlainPounds(total)) : '' };
       }
       return followExact(next);
     });
@@ -266,26 +275,45 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     setPhoto({ path: '', url, queued: false });
     const kept = keepPhoto(file).then(
       (path) => { setPhoto((p) => (p && p.url === url ? { ...p, path } : p)); return path; },
-      () => { setPhoto(null); setErrors([strings.errors.generic]); return null; },
+      (err: unknown) => { setPhoto(null); setErrors([err instanceof Error && err.name === 'PhotoUnreadableError' ? err.message : strings.errors.generic]); return null; },
     );
     pendingPhoto.current = kept;
     if (read) scan(file);
   };
   const removePhoto = () => {
     scanRun.current += 1;
+    // Never saved with anything: it leaves this phone's store too (a receipt sorted earlier stays where it is).
+    const was = pendingPhoto.current;
+    if (photo && !photo.queued) void was?.then((path) => { if (path) forgetPhoto(path); });
     pendingPhoto.current = null;
+    if (photo?.url?.startsWith('blob:')) URL.revokeObjectURL(photo.url);
     setPhoto(null);
     setReading('idle');
+    // The receipt's lines and total go with it (what was filled in the visible fields stays, as the person sees it).
+    setReceipt(null);
+    setS((prev) => ({ ...prev, items: null, billTotal: null }));
   };
+  // A photo picked into a form closed without saving is let go from this phone too.
+  const photoNow = useRef(photo);
+  useEffect(() => { photoNow.current = photo; }, [photo]);
+  useEffect(() => () => {
+    const p = photoNow.current;
+    if (!done.current && p && !p.queued) void pendingPhoto.current?.then((path) => { if (path) forgetPhoto(path); });
+  }, []);
+  // The photo's preview address is let go when the sheet goes.
+  const shownUrl = photo?.url ?? null;
+  useEffect(() => () => { if (shownUrl?.startsWith('blob:')) URL.revokeObjectURL(shownUrl); }, [shownUrl]);
   /** SCAN-4: to the Inbox to sort later; nothing else is saved. */
-  const sortLaterNow = () => {
+  const sortLaterNow = (keptPath?: string) => {
     if (!photo || done.current) return;
-    if (photo.path === '') {
-      void pendingPhoto.current?.then((path) => { if (path) sortLaterNow(); });
+    const path = keptPath ?? (photo.path === '' ? null : photo.path);
+    if (path === null) {
+      const waiting = pendingPhoto.current;
+      void waiting?.then((p) => { if (p && pendingPhoto.current === waiting) sortLaterNow(p); });
       return;
     }
     try {
-      sortPhotoLater(photo.path);
+      sortPhotoLater(path);
     } catch (err) {
       setErrors([plainError(err)]);
       return;
@@ -329,12 +357,15 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const other = pair.find((p) => p.id !== s.payer) ?? null;
   const isBack = s.kind === 'money_back';
 
-  const save = (e?: SyntheticEvent) => {
+  const save = (e?: SyntheticEvent, keptPath?: string) => {
     e?.preventDefault();
     if (done.current) return;
-    // A photo still being kept on the phone (a moment at most): save as soon as it is.
-    if (photo && photo.path === '') {
-      void pendingPhoto.current?.then(() => { saveRef.current?.click(); });
+    // A photo still being kept on the phone (a moment at most): save once it is, with its path handed over (never
+    // by reading this render's state again, which still has no path).
+    const photoPath = keptPath ?? (photo?.path === '' ? null : (photo?.path ?? null));
+    if (photo && photoPath === null) {
+      const waiting = pendingPhoto.current;
+      void waiting?.then((path) => { if (path && pendingPhoto.current === waiting) save(undefined, path); });
       return;
     }
     if (rec) {
@@ -350,7 +381,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       return;
     }
     const description = s.description.trim() !== '' ? s.description : (live.find((c) => c.id === s.categoryId)?.name ?? '');
-    const result = draftOf({ ...s, description, ...(photoMode ? { receiptPath: photo?.path ?? null } : {}) }, pair);
+    const result = draftOf({ ...s, description, ...(photoMode ? { receiptPath: photoPath } : {}) }, pair);
     if ('errors' in result) {
       setErrors(result.errors);
       return;
@@ -376,7 +407,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         undo = () => { /* kept bills are edited or deleted from their entry page */ };
       } else {
         // OFF-2: the photo's upload goes into the queue just ahead of its entry.
-        if (photo && !photo.queued) queuePhotoUpload(photo.path);
+        if (photo && !photo.queued && photoPath !== null) queuePhotoUpload(photoPath);
         id = addExpense({ ...draft, id: rowId });
         // Q-U8: Undo says what it took away.
         undo = () => {
@@ -401,7 +432,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     }
     tickSaved();
     // CAT-2 step 4: nothing known about the words, so the AI may guess a moment later (marked as a guess).
-    if (request.mode === 'add' && !isBack) void guessCategory(id);
+    if (request.mode === 'add' && !isBack && !s.categoryTouched && !picked.current.category) void guessCategory(id);
     // Q-U8: the toast says what happened, and keeps clear of the row it reports.
     toast.show({
       message: isBack ? strings.entry.moneyBackSaved : strings.entry.savedWhat(draft.description, formatPence(draft.amount)),
@@ -536,7 +567,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         enterKeyHint="next"
         autoFocus={request.mode !== 'edit'}
       />
-      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined) ? (
+      {!rec && !(request.mode === 'add' && request.inboxItem !== undefined && fromInboxScan === undefined) ? (
         <ForeignAmount s={s} home={home} setForm={(change) => { setS((prev) => followExact(change(prev))); setErrors([]); }} />
       ) : null}
       {photoMode && photo ? (
@@ -544,7 +575,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           url={photo.url}
           reading={reading}
           onRemove={removePhoto}
-          onSortLater={request.inboxItem === undefined ? sortLaterNow : null}
+          onSortLater={request.inboxItem === undefined ? () => { sortLaterNow(); } : null}
         />
       ) : photoMode && smart && online ? (
         <div><PhotoButton label={strings.smart.scan} scan onPicked={(file) => { pick(file, true); }} /></div>
@@ -696,7 +727,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         {photoMode && !photo ? (
           <div className="mb-4"><PhotoButton label={strings.smart.addPhoto} scan={false} onPicked={(file) => { pick(file, false); }} /></div>
         ) : null}
-        {photoMode && s.items && s.items.length > 0 ? <Itemise items={s.items} mismatch={mismatch} onToggle={toggleItem} /> : null}
+        {photoMode && s.items && s.items.length > 0 ? <Itemise items={s.items} mismatch={mismatch} currency={receipt?.currency ?? null} onToggle={toggleItem} /> : null}
         {!rec ? (
           <Field
             ref={placeRef}

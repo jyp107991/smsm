@@ -271,7 +271,9 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
       if (!res.error) return;
       // Already there (a retry after the answer was lost): the same photo, so it is done.
       if (/already exists|duplicate/i.test(res.error.message)) return;
-      const status = Number((res.error as { statusCode?: string | number }).statusCode ?? 0);
+      // The HTTP status (a body's own `statusCode` can be text); none at all is a connection that dropped.
+      const raw = (res.error as { status?: unknown }).status;
+      const status = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
       throw new ApiError(status === 0 ? 'network' : classifyStatus(status), res.error.message, status);
     },
     receiptUrl: async (path) => {

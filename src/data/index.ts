@@ -26,7 +26,7 @@ export {
   addComment, editComment, deleteComment, restoreComment, setSettleDay,
 } from './mutations';
 export type { WindowRole } from './windows';
-export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, photoBlob, photoUrl, sortLater, sortPhotoLater, parseLoose, guessCategory, type LooseReading } from './smartActions';
+export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, forgetPhoto, photoBlob, photoUrl, sortLater, sortPhotoLater, parseLoose, guessCategory, type LooseReading } from './smartActions';
 export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';
 export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
 export {

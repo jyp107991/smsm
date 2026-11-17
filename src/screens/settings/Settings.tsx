@@ -164,7 +164,7 @@ export function Settings() {
       </Section>
 
       {/* S6a: one switch for the smart features, this phone only (off until turned on). */}
-      <Section title={strings.smart.switchLabel}>
+      <Section title={strings.smart.section}>
         <SmartSwitch />
       </Section>
 
