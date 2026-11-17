@@ -16,7 +16,8 @@
  *   This month: £1,170.00 (everyday only £450.00). Where it went: Travel £720.00, Groceries £240.00, Eating out £210.00.
  *   Who paid: Jae £960.00, Sam £210.00. By country: Japan £720.00, UK £450.00.
  *   Last 3 months (1 Sep–14 Nov): 136500 × 2 + 117000 = £3,900.00; the 3 months before (1 Jun–14 Aug) £4,095.00
- *     → "£3,900.00, £195.00 less than the 3 months before".
+ *     → compared on everyday spending (CHP-5): £3,180.00 against £4,095.00 →
+ *     "£3,900.00 in all · everyday £3,180.00, £915.00 less than the same stretch 3 months earlier".
  *   Trend: Dec 2025–Mar 2026 £0.00, Apr £100.00, May–Oct £1,365.00, Nov 2026 £1,170.00.
  *   Fairness: 3 months Jae 296000 / 390000 → 76%, Sam 24%; 12 months Jae 706000 / 946000 → 75%, Sam 25%; split 50/50.
  *   Usual (May–Oct, everyday) £1,365.00; on 14 Nov the usual pace is £637.00; £450.00 so far is £187 under → "£190".
@@ -288,13 +289,15 @@ describe('Include chapters (CHP-5, PLC-7)', () => {
 });
 
 describe('Periods and the comparison (INS-4)', () => {
-  it('INS-4: Last 3 months: "£3,900.00, £195.00 less than the 3 months before"', async () => {
+  it('INS-4 CHP-5: Last 3 months: "£3,900.00 in all · everyday £3,180.00, £915.00 less than the same stretch 3 months earlier"', async () => {
     const { layer } = insightsHousehold();
     show(layer);
     await goInsights();
     fireEvent.click(period('Last 3 months'));
     await waitFor(() => { expect(isChecked(period('Last 3 months'))).toBe(true); });
-    await waitFor(() => { expect(shows(region('Total'), '£3,900.00, £195.00 less than the 3 months before')).toBe(true); });
+    // CHP-5 (fresh review): the comparison is of everyday spending (£3,900.00 − the £720.00 rail pass = £3,180.00,
+    // against £4,095.00), so a trip never makes a period look cheaper or dearer than usual.
+    await waitFor(() => { expect(shows(region('Total'), '£3,900.00 in all · everyday £3,180.00, £915.00 less than the same stretch 3 months earlier')).toBe(true); });
     expect(text(region('Who paid'))).toMatch(/Jae\s*£2,960\.00/);
     expect(text(region('Who paid'))).toMatch(/Sam\s*£940\.00/);
   });

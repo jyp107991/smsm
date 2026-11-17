@@ -55,8 +55,10 @@ export function Insights() {
     : periodOf(choice as Exclude<PeriodChoice, 'chapter'>, today);
   const opts = { everydayOnly: !withChapters };
   const total = sharedSpend(entries, period, opts);
+  // CHP-5: a comparison is always of everyday spending, so a trip or a wedding never makes a month look alarming.
   const prev = previousPeriod(period);
-  const before = prev ? sharedSpend(entries, prev, opts) : null;
+  const everydayNow = sharedSpend(entries, period, { everydayOnly: true });
+  const before = prev ? sharedSpend(entries, prev, { everydayOnly: true }) : null;
   const cats = byCategory(entries, period, opts);
   const countries = byCountry(entries, period, opts);
   const paid = pair ? whoPaid(entries, period, pair, opts) : {};
@@ -64,10 +66,12 @@ export function Insights() {
 
   const beforeWords = choice === 'month' ? strings.insights.beforeMonth : choice === '3months' ? strings.insights.before3
     : choice === '12months' ? strings.insights.before12 : strings.insights.beforeYear;
-  const sentence = before === null
-    ? strings.insights.totalIn(formatPence(total))
-    : before === total ? strings.insights.same(formatPence(total), beforeWords)
-    : strings.insights.comparison(formatPence(total), formatPence(pence(Math.abs(total - before))), total > before, beforeWords);
+  const compared = before === null ? null
+    : before === everydayNow ? strings.insights.same(formatPence(everydayNow), beforeWords)
+    : strings.insights.comparison(formatPence(everydayNow), formatPence(pence(Math.abs(everydayNow - before))), everydayNow > before, beforeWords);
+  const sentence = compared === null ? strings.insights.totalIn(formatPence(total))
+    : total === everydayNow ? compared
+    : strings.insights.withChapters(formatPence(total), compared);
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
   const catColour = (id: string | null) => categories.find((c) => c.id === id)?.colour;
 
@@ -127,7 +131,7 @@ export function Insights() {
         <Lines label={strings.insights.whoPaid} items={people.list.map((p) => ({ key: p.id, name: p.name, amount: paid[p.id] ?? pence(0) }))} />
       </Figure>
 
-      <Fairness entries={entries} people={people.list} today={today} split={household?.default_ratio ?? null} />
+      <Fairness entries={withChapters ? entries : entries.filter((e) => e.chapterId === null)} people={people.list} today={today} split={household?.default_ratio ?? null} />
 
       {countries.length > 1 ? (
         <Figure title={strings.insights.byCountry} define={strings.insights.define.byCountry}>
@@ -158,13 +162,15 @@ function Lines({ label, items }: { label: string; items: readonly { key: string;
 }
 
 /** A figure: a region named by its title, with "What's this?" opening its one-line definition. */
-export function Figure({ title, define, hideTitle = false, children }: { title: string; define: string; hideTitle?: boolean; children: ReactNode }) {
+export function Figure({ title, define, hideTitle = false, compact = false, children }: {
+  title: string; define: string; hideTitle?: boolean; compact?: boolean; children: ReactNode;
+}) {
   const id = useId();
   const [open, setOpen] = useState(false);
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-3">
-      <div className={hideTitle ? 'flex items-center justify-end' : 'rule-ledger flex items-baseline justify-between gap-3'}>
-        <h2 id={id} className={hideTitle ? 'sr-only' : 'text-heading m-0'}>{title}</h2>
+    <section aria-labelledby={id} className={compact ? 'relative flex flex-col gap-1 pr-24' : 'flex flex-col gap-3'}>
+      <div className={compact ? 'absolute top-0 right-0' : hideTitle ? 'flex items-center justify-end' : 'rule-ledger flex items-baseline justify-between gap-3'}>
+        <h2 id={id} className={hideTitle || compact ? 'sr-only' : 'text-heading m-0'}>{title}</h2>
         <button
           type="button"
           onClick={() => { setOpen(true); }}

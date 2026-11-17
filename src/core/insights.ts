@@ -6,6 +6,7 @@
  * dated in the period (a chapter period: that chapter's entries, whatever their dates). Settle-ups never count.
  * Everyday: in no chapter. Usual, pace and notes use everyday only.
  */
+import { netPositions } from './balance';
 import { addMonths, daysInMonth, startOfMonth, type IsoDate } from './dates';
 import { formatPence, pence, type Pence } from './money';
 import { monthlyCost } from './recurring';
@@ -163,20 +164,32 @@ export function notes(input: { entries: readonly InsightEntry[]; templates: read
   // A category at least 30% and £20 above its usual (both inclusive, exact).
   for (const c of categories) {
     const u = usual(entries, m, { categoryId: c.id });
-    if (u === null) continue;
+    // A category with no usual (quiet in most months) has nothing to be "over".
+    if (u === null || u <= 0) continue;
     const now = sum(selected(everyday.filter((e) => e.categoryId === c.id), thisMonth));
     if (now * 10 >= u * 13 && now - u >= 2000) {
-      out.push({ kind: 'category', text: `${c.name} is ${wholePounds(now - u)} over its usual (${wholePounds(now)} so far, usually ${wholePounds(u)})`, weight: pence(now - u) });
+      // The shown figures agree with each other: the excess is the difference of the rounded pounds.
+      const nowP = Math.round(now / 100);
+      const usualP = Math.round(u / 100);
+      out.push({ kind: 'category', text: `${c.name} is £${(nowP - usualP).toLocaleString('en-GB')} over its usual (${wholePounds(now)} so far, usually ${wholePounds(u)})`, weight: pence(now - u) });
     }
   }
   // An entry at least 3× its category's median over the 6 full months before this one, with at least 5 of those.
   const six: Period = { kind: 'month', from: firstOf(shiftMonth(m, -6)), to: lastOf(shiftMonth(m, -1)), chapterId: null };
+  // Each category's earlier expenses, gathered once (not once per entry: Home works this out on every change).
+  const earlierBy = new Map<string, number[]>();
+  for (const x of selected(everyday, six)) {
+    if (x.kind !== 'expense' || x.categoryId === null) continue;
+    const list = earlierBy.get(x.categoryId);
+    if (list) list.push(x.amount); else earlierBy.set(x.categoryId, [x.amount]);
+  }
+  const medians = new Map<string, number>();
+  for (const [k, list] of earlierBy) if (list.length >= 5) medians.set(k, median(list));
   for (const e of selected(everyday, thisMonth)) {
-    if (e.kind !== 'expense') continue;
-    const earlier = selected(everyday, six).filter((x) => x.kind === 'expense' && x.categoryId === e.categoryId).map((x) => x.amount);
-    if (earlier.length < 5) continue;
-    const med = median(earlier);
-    if (med > 0 && e.amount >= 3 * med) {
+    // An uncategorised entry has no "usual entry" to compare with.
+    if (e.kind !== 'expense' || e.categoryId === null) continue;
+    const med = medians.get(e.categoryId);
+    if (med !== undefined && med > 0 && e.amount >= 3 * med) {
       out.push({ kind: 'entry', text: `${e.description} ${wholePounds(e.amount)} is about ${String(Math.round(e.amount / med))}× a usual ${nameOf(e.categoryId)} entry`, weight: e.amount });
     }
   }
@@ -232,17 +245,13 @@ export function standingOrder(entries: readonly InsightEntry[], settlements: rea
   const ends: number[] = [];
   for (let k = 1; k <= 3; k += 1) {
     const end = lastOf(shiftMonth(month(today), -k));
-    let net = 0; // a's position: positive = a is owed
-    for (const e of entries) {
-      if (e.deleted || e.date > end) continue;
-      net += sign(e) * ((e.paid[a] ?? 0) - (e.shares[a] ?? 0));
-    }
-    for (const s of settlements) {
-      if (s.deleted || s.date > end) continue;
-      if (s.from === a) net += s.amount;
-      if (s.to === a) net -= s.amount;
-    }
-    ends.push(net);
+    // The one balance function (balance.ts), over the rows up to that month's end; positive = a is owed.
+    const nets = netPositions(
+      people,
+      entries.filter((e) => e.date <= end).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
+      settlements.filter((s) => s.date <= end).map((s) => ({ from: s.from, to: s.to, amount: s.amount, deleted: s.deleted })),
+    );
+    ends.push(nets[a] ?? 0);
   }
   const owedToA = ends.every((n) => n > 0);
   const owedToB = ends.every((n) => n < 0);
