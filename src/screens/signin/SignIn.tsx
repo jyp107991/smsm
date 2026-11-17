@@ -19,6 +19,8 @@ import { CODE_LENGTH, CodeField } from './CodeField';
 function plain(err: unknown, step: 'send' | 'verify'): string {
   if (err instanceof ApiError && err.kind !== 'network') {
     if (err.status === 429 || /rate|too many|security purposes/i.test(err.message)) return strings.signIn.tooMany;
+    // Sign-ups are closed once both people have joined: an email the server doesn't know is refused.
+    if (step === 'send' && /signups? not allowed|signup[s_ ]*disabled/i.test(err.message)) return strings.signIn.closed;
     if (step === 'send' && /email/i.test(err.message) && err.kind === 'refused') return strings.signIn.badEmail;
   }
   return plainError(err, step === 'verify' ? strings.signIn.wrongCode : strings.signIn.failed);

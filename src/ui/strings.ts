@@ -96,6 +96,7 @@ export const strings = {
     wrongCode: 'That code didn’t work. Check the latest email and try again, or send a new code.',
     tooMany: 'Too many tries for now. Wait a few minutes, then send a new code.',
     badEmail: 'That doesn’t look like an email address.',
+    closed: 'This email isn’t one of the two in this household. smsm is just for the two of you.',
     failed: 'Couldn’t send the code. Check the connection and try again.',
   },
   setup: {

@@ -13,8 +13,9 @@ additional_redirect_urls = []
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
-# On until both people have joined, then off (DEPLOY §1).
-enable_signup = true
+# Off since both people joined (owner, 17 Nov). To let someone new sign up again (e.g. a new phone with a new
+# email), set this to true and push it through auth-config.yml with the owner's approval.
+enable_signup = false
 enable_anonymous_sign_ins = false
 enable_manual_linking = false
 
