@@ -41,3 +41,21 @@ jobs:
             echo "SMTP is configured but SUPABASE_SMTP_USER or SUPABASE_SMTP_PASS is not set as a GitHub secret. Not pushing."; exit 1
           fi
           npx supabase config push --yes 2>&1 | scripts/redact.sh
+      - name: Live sign-in emails carry the 6-digit code (prints yes/no only)
+        run: |
+          set -euo pipefail
+          curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth" > auth.json
+          python3 - <<'PY'
+          import json
+          c = json.load(open('auth.json'))
+          ok = True
+          for kind in ('magic_link', 'confirmation'):
+              body = c.get(f'mailer_templates_{kind}_content') or ''
+              has = '{{ .Token }}' in body
+              ok = ok and has
+              print(f"{kind}: subject {c.get(f'mailer_subjects_{kind}')!r}; contains the code: {'yes' if has else 'NO'}")
+          print('custom sender on:', 'yes' if c.get('smtp_host') else 'no')
+          raise SystemExit(0 if ok else 1)
+          PY
+          rm -f auth.json

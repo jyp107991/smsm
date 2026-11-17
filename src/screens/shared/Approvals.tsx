@@ -1,0 +1,98 @@
+/**
+ * PPL-4, PPL-5: changes that need both people. The partner sees what was asked, with Approve and Decline
+ * (the requester's animal peeking over the banner, DESIGN §2.3); the requester sees "Waiting for Sam" and
+ * can cancel. Deciding needs a connection (OFF-4) and says so.
+ */
+import { useState } from 'react';
+import { decideChange, useChangeRequests, type ChangeRequestRow } from '../../data';
+import { Animal } from '../../ui/rig/Animal';
+import { Button } from '../../ui/primitives';
+import { strings } from '../../ui/strings';
+import { usePeople } from './people';
+import { plainError } from './plain';
+import { requestWords } from './words';
+
+function usePending(): ChangeRequestRow[] {
+  return (useChangeRequests().data ?? []).filter((r) => r.status === 'pending');
+}
+
+function useDecide() {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const decide = async (id: string, approve: boolean) => {
+    setBusy(`${id}:${String(approve)}`);
+    setError(null);
+    try {
+      await decideChange(id, approve);
+    } catch (err) {
+      setError(plainError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return { busy, error, decide };
+}
+
+/** The partner's requests waiting for this person's decision. */
+export function ApprovalBanners() {
+  const people = usePeople();
+  const pending = usePending();
+  const { busy, error, decide } = useDecide();
+  const me = people.me?.id ?? '';
+  const theirs = pending.filter((r) => r.requested_by !== me);
+  if (theirs.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      {theirs.map((r) => {
+        const who = people.list.find((p) => p.id === r.requested_by);
+        return (
+          <div key={r.id} className="relative pt-9">
+            {who ? (
+              <span aria-hidden="true" className="absolute top-0 left-4">
+                <Animal kind={who.animal} pose="peeking" mood="curious" size={44} motion={false} />
+              </span>
+            ) : null}
+            <div className="bg-surface border-line flex flex-col gap-3 rounded-[16px] border px-4 py-3">
+              <p className="text-note m-0 break-words">{requestWords(r, people.list, me)}</p>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="plain" loading={busy === `${r.id}:true`} onClick={() => void decide(r.id, true)}>
+                  {strings.settings.approve}
+                </Button>
+                <Button variant="plain" loading={busy === `${r.id}:false`} onClick={() => void decide(r.id, false)}>
+                  {strings.settings.decline}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {error ? <p className="text-secondary text-berry m-0" aria-live="polite">{error}</p> : null}
+    </div>
+  );
+}
+
+/** This person's own requests: "Waiting for Sam", with Cancel request. */
+export function MyRequests() {
+  const people = usePeople();
+  const pending = usePending();
+  const { busy, error, decide } = useDecide();
+  const me = people.me?.id ?? '';
+  const mine = pending.filter((r) => r.requested_by === me);
+  if (mine.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {mine.map((r) => (
+        <div key={r.id} className="bg-sunk/60 flex flex-col gap-2 rounded-[12px] px-4 py-3">
+          <p className="m-0 break-words">{requestWords(r, people.list, me)}</p>
+          <p className="text-secondary text-ink-2 m-0">{strings.settings.waitingFor(people.partner?.name ?? '')}</p>
+          <div>
+            <Button variant="plain" loading={busy === `${r.id}:false`} onClick={() => void decide(r.id, false)}>
+              {strings.settings.cancelRequest}
+            </Button>
+          </div>
+        </div>
+      ))}
+      {error ? <p className="text-secondary text-berry m-0" aria-live="polite">{error}</p> : null}
+    </div>
+  );
+}

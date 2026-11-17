@@ -35,6 +35,9 @@ Receipt photos are compressed to about 200 KB each, so 1 GB holds roughly 5,000;
 
 The schema, migrations, storage buckets, scheduled jobs and functions are applied by the pipeline, not by hand.
 
+## 1b. Nightly backups (EXP-2)
+`.github/workflows/backup.yml` exports the household's data every night (02:23 UTC), encrypts it (AES-256) and keeps it 30 days as a downloadable file in the repo's Actions. The repo is public, so the file is encrypted before it is stored. The key is the **database password** (the `SUPABASE_DB_PASSWORD` secret, set when the project was made): no extra secret is needed, and whoever has that password can read the live data anyway. Keep the database password in a password manager; if it is ever reset, backups made before the reset still open with the old one. (An optional `BACKUP_PASSPHRASE` secret, if added, is used instead.) Restore: `BACKUP_PASSPHRASE=<the database password> scripts/restore-backup.sh <file> <database URL>` (tested in CI by `tests/unit/backup-restore.test.ts`).
+
 ## 2. Cloudflare
 1. **API token:** `dash.cloudflare.com/profile/api-tokens` → Create Token → template **Edit Cloudflare Workers** → Use template → Account Resources: your account → Continue to summary → Create Token. Copy it (shown once).
 2. **Account ID:** Workers & Pages overview, or the account's Overview page.

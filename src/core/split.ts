@@ -78,6 +78,13 @@ function sumMap(m: PenceMap): number {
   return Object.values(m).reduce((t, v) => t + v, 0);
 }
 
+/**
+ * Why an entry's money is refused, as codes (the interface words them, strings.invalid; TXT-7):
+ * amount not above £0.00; not whole pence; shares or paid not summing to the amount; a negative amount;
+ * someone outside the two; paid-for-the-other or a treat that isn't one.
+ */
+export type EntryIssue = 'amount' | 'wholePence' | 'sharesSum' | 'paidSum' | 'negative' | 'members' | 'forOther' | 'treat';
+
 /** [] when valid. Mirrors the database's check_money trigger (SPL-5): the phone refuses what the database would. */
 export function validateEntry(e: {
   amount: Pence;
@@ -85,24 +92,24 @@ export function validateEntry(e: {
   shares: PenceMap;
   mode: SplitMode;
   members: readonly [UserId, UserId];
-}): string[] {
-  const errors: string[] = [];
-  if (!Number.isSafeInteger(e.amount) || e.amount <= 0) errors.push('The amount must be more than £0.00.');
+}): EntryIssue[] {
+  const errors: EntryIssue[] = [];
+  if (!Number.isSafeInteger(e.amount) || e.amount <= 0) errors.push('amount');
   const all = [...Object.entries(e.paid), ...Object.entries(e.shares)];
-  if (all.some(([, v]) => !Number.isSafeInteger(v))) errors.push('Amounts must be whole pence.');
-  if (sumMap(e.shares) !== e.amount) errors.push('The shares must add up to the amount.');
-  if (sumMap(e.paid) !== e.amount) errors.push('What was paid must add up to the amount.');
-  if (all.some(([, v]) => v < 0)) errors.push('Amounts can’t be negative.');
-  if (all.some(([k]) => !e.members.includes(k))) errors.push('Only the two of you can pay or owe.');
+  if (all.some(([, v]) => !Number.isSafeInteger(v))) errors.push('wholePence');
+  if (sumMap(e.shares) !== e.amount) errors.push('sharesSum');
+  if (sumMap(e.paid) !== e.amount) errors.push('paidSum');
+  if (all.some(([, v]) => v < 0)) errors.push('negative');
+  if (all.some(([k]) => !e.members.includes(k))) errors.push('members');
   const payers = Object.entries(e.paid).filter(([, v]) => v > 0);
   if (e.mode === 'for_other') {
     const payer = payers[0]?.[0];
     if (payers.length !== 1 || payer === undefined || (e.shares[payer] ?? 0) !== 0) {
-      errors.push('Paid for the other: one person pays and owes nothing.');
+      errors.push('forOther');
     }
   }
   if (e.mode === 'treat' && e.members.some((m) => (e.shares[m] ?? 0) !== (e.paid[m] ?? 0))) {
-    errors.push('A treat is covered by whoever pays.');
+    errors.push('treat');
   }
   return errors;
 }
@@ -119,4 +126,12 @@ export function resolveDefaultSplit(c: {
   if (c.householdDefault) return { mode: 'ratio', ratio: c.householdDefault };
   const [a, b] = c.members;
   return { mode: 'ratio', ratio: { [a]: 50, [b]: 50 } };
+}
+
+/**
+ * SPL-1 Exact amounts: what is still to be shared out (positive) or shared out too much (negative), shown
+ * live under the two fields. Zero means the parts add up to the amount.
+ */
+export function exactRemainder(amount: Pence, parts: readonly Pence[]): number {
+  return parts.reduce((left: number, p) => left - p, amount);
 }

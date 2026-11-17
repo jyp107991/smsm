@@ -51,3 +51,12 @@ export function formatPence(p: Pence): string {
   const body = `£${grouped.format(pounds)}.${String(rest).padStart(2, '0')}`;
   return p < 0 ? `−${body}` : body;
 }
+
+/**
+ * 4250 → "42.50", 1000 → "10.00": pounds and pence with no sign or grouping, for an amount field to start
+ * from and for a monzo.me link (SET-2). Only for zero or more.
+ */
+export function formatPlainPounds(p: Pence): string {
+  if (!Number.isSafeInteger(p) || p < 0) throw new RangeError(`not a plain amount of pence: ${String(p)}`);
+  return `${String(Math.floor(p / 100))}.${String(p % 100).padStart(2, '0')}`;
+}

@@ -21,6 +21,10 @@ export interface PlankProps {
   /** The left person's net position in pence: positive when the left person is owed. */
   leftNetPence: number;
   motion?: boolean;
+  /** Square: the two sit close, nearer the middle (DESIGN §2.3). */
+  together?: boolean;
+  /** The all-square moment: both hop once (nothing under reduced motion). */
+  hop?: boolean;
 }
 
 /** Each animal's size on the plank, in px. Fixed, so the plank never changes height. */
@@ -42,18 +46,22 @@ function Beam() {
   );
 }
 
-export function Plank({ left, right, leftNetPence, motion = true }: PlankProps) {
+export function Plank({ left, right, leftNetPence, motion = true, together = false, hop = false }: PlankProps) {
   const reduced = usePrefersReducedMotion();
   const tilt = plankTilt(leftNetPence);
   const label = strings.rig.plank(strings.rig.kind[left.kind], strings.rig.kind[right.kind], tilt > 0 ? 'left' : tilt < 0 ? 'right' : 'level');
 
   const seats = (
     <>
-      <div className="rig-plank-seat rig-plank-seat-left">
-        <Animal kind={left.kind} mood={left.mood} pose="sitting" size={SEAT} motion={motion} />
+      <div className={`rig-plank-seat rig-plank-seat-left${together ? ' rig-plank-together' : ''}`}>
+        <div className={hop && motion && !reduced ? 'rig-m-hop' : undefined}>
+          <Animal kind={left.kind} mood={left.mood} pose="sitting" size={SEAT} motion={motion} />
+        </div>
       </div>
-      <div className="rig-plank-seat rig-plank-seat-right">
-        <Animal kind={right.kind} mood={right.mood} pose="sitting" size={SEAT} motion={motion} />
+      <div className={`rig-plank-seat rig-plank-seat-right${together ? ' rig-plank-together' : ''}`}>
+        <div className={hop && motion && !reduced ? 'rig-m-hop' : undefined} style={hop ? { animationDelay: '90ms' } : undefined}>
+          <Animal kind={right.kind} mood={right.mood} pose="sitting" size={SEAT} motion={motion} />
+        </div>
       </div>
       <Beam />
     </>

@@ -215,6 +215,20 @@ describe('createErrorReporter', () => {
     expect(messages[1]).toContain('42');
   });
 
+  it('keeps a report whose reason or context can\'t be turned into JSON (circular, BigInt)', async () => {
+    const { sink, calls } = recordingSink(() => true);
+    const r = createErrorReporter(new MemoryStorage(), () => sink);
+    const loop: Record<string, unknown> = { name: 'loop' };
+    loop['self'] = loop;
+    await r.report(loop, '/');
+    await r.report({ big: 10n }, '/', { loop, big: 5n });
+    const rows = calls.flat();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.message).toContain('[circular]');
+    expect(rows[1]?.message).toContain('10n');
+    expect(rows[1]?.context).toEqual({ loop: { name: 'loop', self: '[circular]' }, big: '5n' });
+  });
+
   it('never throws when storage throws', async () => {
     const { sink } = recordingSink(() => true);
     for (const getSink of [() => null, () => sink]) {

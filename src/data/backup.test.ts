@@ -1,0 +1,30 @@
+/** EXP-1 (the JSON backup part): everything entered, from the phone's copy, offline too. */
+import { afterEach, describe, expect, it } from 'vitest';
+import { pence } from '../core/money';
+import { couple, JAE_ID, TODAY } from '../../tests/fixtures/couple';
+import { BACKUP_FORMAT, backupJson } from './backup';
+import { addExpense, deleteExpense } from './mutations';
+import type { DataLayer } from './queryClient';
+
+let open: DataLayer | null = null;
+afterEach(async () => { await open?.dispose(); open = null; });
+
+describe('backup', () => {
+  it('EXP-1 OFF-3: the household, people, categories and every entry, deleted and still waiting ones included', async () => {
+    const { layer, network } = couple();
+    open = layer;
+    await layer.ready;
+    network.set(false);
+    const kept = addExpense({ description: 'Tesco', amount: pence(4250), date: TODAY, categoryId: null, payer: JAE_ID, split: { mode: 'treat' } }, layer);
+    const gone = addExpense({ description: 'Gum', amount: pence(100), date: TODAY, categoryId: null, payer: JAE_ID, split: { mode: 'treat' } }, layer);
+    deleteExpense(gone, layer);
+    const data = JSON.parse(backupJson({ appVersion: '0.1.0' }, layer)) as Record<string, unknown>;
+    expect(data['format']).toBe(BACKUP_FORMAT);
+    expect((data['household'] as { join_code: string }).join_code).toBe('AB12CD');
+    expect((data['members'] as unknown[]).length).toBe(2);
+    expect((data['categories'] as unknown[]).length).toBe(12);
+    const expenses = data['expenses'] as { id: string; deleted_at: string | null }[];
+    expect(expenses.map((e) => e.id).sort()).toEqual([kept, gone].sort());
+    expect(expenses.find((e) => e.id === gone)?.deleted_at).not.toBeNull();
+  });
+});

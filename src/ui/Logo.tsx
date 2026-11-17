@@ -30,7 +30,7 @@ export const LOGO_MARKS: Record<LogoVariant, LogoMark> = {
   c: { roof: 'M50 14C49 30 41 41 28 47M50 14C51 30 59 41 72 47', walls: 'M35 58H65V84H35Z' },
 };
 
-export function Logo({ size = 48, variant = 'a', title = strings.app.name }: { size?: number; variant?: LogoVariant; title?: string }) {
+export function Logo({ size = 48, variant = 'c', title = strings.app.name }: { size?: number; variant?: LogoVariant; title?: string }) {
   const mark = LOGO_MARKS[variant];
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title} data-variant={variant}>

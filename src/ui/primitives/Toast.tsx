@@ -1,5 +1,5 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
 import { strings } from '../strings';
 import { cx, ICON } from './util';
@@ -16,7 +16,7 @@ export interface ToastOptions {
   action?: ToastAction;
   /** Shown before the message, e.g. the payer's animal head. */
   icon?: ReactNode;
-  /** Milliseconds before it goes by itself; 0 keeps it until dismissed. Default 4 s, or 6 s with an action. */
+  /** Milliseconds before it goes by itself; 0 keeps it until dismissed. Default 4 s, or 5 s with an action (ADD-6). */
   duration?: number;
 }
 
@@ -32,8 +32,11 @@ export interface ToastEntry extends ToastOptions {
 
 const ToastContext = createContext<ToastApi | null>(null);
 
-/** At most this many toasts at once; the oldest goes first. */
-const MAX_VISIBLE = 3;
+/**
+ * One toast at a time: a new one replaces the one showing (as Android's snackbars do), so a stale Undo is
+ * never left beside a new one and the live region reads one message.
+ */
+const MAX_VISIBLE = 1;
 
 /** The toast functions from the nearest ToastProvider. */
 export function useToast(): ToastApi {
@@ -70,30 +73,58 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The stack itself (also usable on its own, e.g. in the gallery). Newest at the bottom, nearest the thumb. */
+/**
+ * The stack itself (also usable on its own, e.g. in the gallery). It is the one persistent live region
+ * (`role="status"`, always in the page), so every toast is announced politely without moving focus:
+ * a live region created together with its message is often not read at all.
+ *
+ * It has one slot. A new toast takes the slot at once, replacing what it shows, and never waits for the old
+ * toast to animate out: "Saved" appears the moment a save is made, and a replaced toast's Undo is gone the
+ * same moment (ADD-6). Only when the slot empties does the toast animate out.
+ */
 export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDismiss: (id: number) => void }) {
   const reduce = useReducedMotion() ?? false;
+  const current = toasts.at(-1);
   return (
-    <section
+    <div
+      role="status"
       aria-label={strings.ui.notifications}
       className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+var(--toast-lift,1rem))] z-[60] flex flex-col items-center gap-2 px-4"
     >
       <AnimatePresence initial={false}>
-        {toasts.map((t) => (
-          <motion.div
-            key={t.id}
-            layout={!reduce}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
-            transition={reduce ? { duration: 0.18 } : { type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
-            className="pointer-events-auto w-full max-w-md"
-          >
-            <Toast {...t} onDismiss={() => { onDismiss(t.id); }} />
-          </motion.div>
-        ))}
+        {current ? <ToastSlot key="toast" toast={current} reduce={reduce} onDismiss={onDismiss} /> : null}
       </AnimatePresence>
-    </section>
+    </div>
+  );
+}
+
+/**
+ * The slot. While the last toast plays its exit it is still on screen, so it is made inert and hidden from
+ * assistive tech: its Undo can't be pressed once it is going. A toast shown meanwhile takes the slot back.
+ */
+function ToastSlot({ toast, reduce, onDismiss }: { toast: ToastEntry; reduce: boolean; onDismiss: (id: number) => void }) {
+  const present = useIsPresent();
+  return (
+    <motion.div
+      layout={!reduce}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
+      transition={reduce ? { duration: 0.18 } : { type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
+      className={cx('w-full max-w-md', present ? 'pointer-events-auto' : 'pointer-events-none')}
+    >
+      <div inert={!present} aria-hidden={present ? undefined : true}>
+        {/* Keyed by toast: a replacement starts its own timer and makes its own small arrival. */}
+        <motion.div
+          key={toast.id}
+          initial={reduce ? false : { scale: 0.98 }}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
+        >
+          <Toast {...toast} onDismiss={() => { onDismiss(toast.id); }} />
+        </motion.div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -101,9 +132,9 @@ export interface ToastProps extends ToastOptions {
   onDismiss: () => void;
 }
 
-/** One toast: `role="status"`, so it is announced politely without moving focus. */
+/** One toast. Announced by the stack's live region; on its own (the gallery) it is a plain group. */
 export function Toast({ message, action, icon, duration, onDismiss }: ToastProps) {
-  const ms = duration ?? (action ? 6000 : 4000);
+  const ms = duration ?? (action ? 5000 : 4000);
   const [paused, setPaused] = useState(false);
   const dismissRef = useRef(onDismiss);
   useEffect(() => {
@@ -122,10 +153,8 @@ export function Toast({ message, action, icon, duration, onDismiss }: ToastProps
 
   return (
     <div
-      role="status"
-      // Reading or pressing it holds it on screen (WCAG 2.2.1).
-      onPointerEnter={() => { setPaused(true); }}
-      onPointerLeave={() => { setPaused(false); }}
+      // Moving into it with the keyboard holds it on screen (WCAG 2.2.1). Not on hover: on a phone there
+      // is none, and a toast appearing under a resting mouse pointer would never go.
       onFocus={() => { setPaused(true); }}
       onBlur={() => { setPaused(false); }}
       className="bg-surface text-ink shadow-float flex min-h-14 w-full items-center gap-3 rounded-[16px] py-1.5 pr-1.5 pl-4"

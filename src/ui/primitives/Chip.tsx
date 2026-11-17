@@ -11,8 +11,19 @@ export interface ChipProps extends Omit<ComponentPropsWithRef<'button'>, 'onChan
   onSelectedChange?: (selected: boolean) => void;
   /** A category colour dot before the label. */
   colour?: CategoryColourName;
+  /**
+   * A small mark before the label instead of the colour dot (a category's emoji). Like the dot, the tick
+   * takes its place when pressed, in a slot of fixed width, so the chip keeps its size.
+   */
+  icon?: ReactNode;
   /** Marks a suggestion (for example the guessed category) with a small forest dot after the label. */
   suggested?: boolean;
+  /**
+   * The suggestion dot's place is kept whether or not it shows, so a chip doesn't change width as the
+   * suggestion moves (the category chips, re-guessed as a description is typed). Pass with `colour` or
+   * `icon` for a chip that never changes size at all (DESIGN §6: no layout shift).
+   */
+  suggestible?: boolean;
   children: ReactNode;
 }
 
@@ -21,7 +32,9 @@ export interface ChipProps extends Omit<ComponentPropsWithRef<'button'>, 'onChan
  * extends to 44 px, so rows of chips need at least 8 px between them.
  * Selected is never colour alone: the outline and a tick appear together.
  */
-export function Chip({ selected = false, onSelectedChange, colour, suggested = false, className, children, onClick, type = 'button', ...rest }: ChipProps) {
+export function Chip({
+  selected = false, onSelectedChange, colour, icon, suggested = false, suggestible = false, className, children, onClick, type = 'button', ...rest
+}: ChipProps) {
   return (
     <button
       type={type}
@@ -41,23 +54,23 @@ export function Chip({ selected = false, onSelectedChange, colour, suggested = f
         className,
       )}
     >
-      {selected || colour ? (
-        // The tick takes the colour dot's place, so a chip with a colour keeps its width when pressed.
-        <span aria-hidden="true" className="-ml-0.5 flex size-4 shrink-0 items-center justify-center">
+      {selected || colour || icon !== undefined ? (
+        // The tick takes the dot's (or the icon's) place, so a chip with either keeps its width when pressed.
+        <span aria-hidden="true" className={cx('-ml-0.5 flex h-4 shrink-0 items-center justify-center', icon !== undefined ? 'w-5' : 'w-4')}>
           {selected ? (
             <Check size={16} strokeWidth={2.25} />
+          ) : icon !== undefined ? (
+            icon
           ) : (
             <span className="size-2.5 rounded-full" style={{ background: `var(--cat-${colour ?? 'stone'})` }} />
           )}
         </span>
       ) : null}
       <span className="min-w-0 truncate">{children}</span>
-      {suggested ? (
-        <>
-          <span aria-hidden="true" className="bg-forest size-1.5 shrink-0 rounded-full" />
-          <span className="sr-only">{strings.ui.suggested}</span>
-        </>
+      {suggested || suggestible ? (
+        <span aria-hidden="true" className={cx('size-1.5 shrink-0 rounded-full', suggested ? 'bg-forest' : 'bg-transparent')} />
       ) : null}
+      {suggested ? <span className="sr-only">{strings.ui.suggested}</span> : null}
     </button>
   );
 }

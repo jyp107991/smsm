@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-test('the shell loads with its name and version', async ({ page }) => {
+test('the app loads with its name, and Settings shows the version', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'smsm' })).toBeVisible();
+  await page.goto('/settings');
   await expect(page.getByTestId('version')).toContainText('Version');
 });
 

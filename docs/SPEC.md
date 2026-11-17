@@ -37,7 +37,7 @@ The first screen answers "are we square?" and lets you add.
 - BAL-1 The balance is one signed number: each person's net is what they paid minus their share of every live entry, adjusted by settle-ups (`docs/DATA_MODEL.md` §3). The two nets always sum to zero.
 - BAL-2 Shown as a sentence with both avatars: "All square", or "Sam owes Jae £24.50". Names, never "you owe" (the same sentence on both phones).
 - BAL-3 The plank the two animals sit on tilts with the balance (DESIGN §4.1): level when square.
-- BAL-4 **Whose turn.** When the balance is £10 or more, a quiet line says "Next one's on Sam". Paying when it's your turn is the easiest way to stay square.
+- BAL-4 **Whose turn.** When the balance is £10 or more, a quiet line says "Next one’s on Sam". Paying when it's your turn is the easiest way to stay square.
 - BAL-5 Offline, the balance is computed from the phone's copy and marked "offline".
 - BAL-6 Before the partner joins: "Waiting for your partner" with a share-invite button; adding still works.
 
