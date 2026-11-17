@@ -193,6 +193,10 @@
 }
 .rig-plank-seat-left { left: 0.25rem; }
 .rig-plank-seat-right { right: 0.25rem; }
+/* Square: the two sit close (DESIGN §2.3), sliding along the plank. */
+.rig-plank-seat { transition: left 260ms cubic-bezier(0.3, 0.7, 0.4, 1), right 260ms cubic-bezier(0.3, 0.7, 0.4, 1); }
+.rig-plank-seat-left.rig-plank-together { left: calc(50% - 5.75rem); }
+.rig-plank-seat-right.rig-plank-together { right: calc(50% - 5.75rem); }
 .rig-plank-pivot {
   position: absolute;
   left: 50%;

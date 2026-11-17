@@ -1,0 +1,41 @@
+/*
+ * The all-square moment (DESIGN §3.4, SET-5): five or six leaves drift down once over the plank, about
+ * 1.2 s. Leaves are drawn in the palette's own greens and wood; nothing here runs under reduced motion
+ * (the component doesn't render them, and the global rule stops any animation).
+ */
+.moment-leaves {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 11rem;
+  pointer-events: none;
+  overflow: hidden;
+}
+.moment-leaf {
+  position: absolute;
+  top: -1rem;
+  opacity: 0;
+  fill: var(--moss);
+  animation: moment-fall 1.15s cubic-bezier(0.35, 0.1, 0.5, 1) forwards;
+}
+.moment-vein {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+.moment-leaf-0 { left: 18%; animation-delay: 0ms; }
+.moment-leaf-1 { left: 34%; animation-delay: 120ms; fill: var(--oak); }
+.moment-leaf-2 { left: 52%; animation-delay: 40ms; }
+.moment-leaf-3 { left: 66%; animation-delay: 200ms; fill: var(--walnut); }
+.moment-leaf-4 { left: 78%; animation-delay: 90ms; fill: var(--oak); }
+.moment-leaf-5 { left: 44%; animation-delay: 260ms; fill: var(--moss); }
+@keyframes moment-fall {
+  0% { opacity: 0; transform: translate(0, 0) rotate(-20deg); }
+  15% { opacity: 0.9; }
+  50% { transform: translate(14px, 5rem) rotate(25deg); }
+  85% { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(-8px, 9.5rem) rotate(-10deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .moment-leaves { display: none; }
+}
