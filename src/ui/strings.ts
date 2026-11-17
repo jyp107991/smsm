@@ -22,6 +22,26 @@ export const strings = {
         ? `The plank is level between ${left} and ${right}`
         : `The plank tilts: ${higher === 'left' ? left : right} sits higher than ${higher === 'left' ? right : left}`,
   },
+  /** Shared primitives in src/ui/primitives. */
+  ui: {
+    working: 'Working…',
+    currency: '£',
+    suggested: 'Suggested',
+    close: 'Close',
+    dismiss: 'Dismiss',
+    notifications: 'Notifications',
+    discardTitle: 'Discard your changes?',
+    discardBody: "What you typed here won't be kept.",
+    keepEditing: 'Keep editing',
+    discard: 'Discard',
+  },
+  tabs: {
+    label: 'Main',
+    home: 'Home',
+    activity: 'Activity',
+    bills: 'Bills',
+    insights: 'Insights',
+  },
   errors: {
     generic: 'Something went wrong. Reload the app; your entries are saved on this phone.',
     reload: 'Reload',
