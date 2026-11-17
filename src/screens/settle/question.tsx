@@ -13,7 +13,7 @@ import { Button, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
-import { loadPending, savePending, type PendingMonzo } from './monzo';
+import { isAnswered, loadPending, markAnswered, savePending, type PendingMonzo } from './monzo';
 
 export interface MonzoQuestion {
   /** The question kept on this phone, if any. */
@@ -50,7 +50,13 @@ export function useMonzoQuestion(): MonzoQuestion {
  * that was never answered, so Settle up can ask it again.
  */
 export function MonzoQuestionProvider({ onUnanswered, children }: { onUnanswered: (p: PendingMonzo) => void; children: ReactNode }) {
-  const [pending, setPending] = useState<PendingMonzo | null>(null);
+  const [pending, setPendingState] = useState<PendingMonzo | null>(null);
+  // The question as it stands, for answers given from callbacks made once (the api below).
+  const current = useRef<PendingMonzo | null>(null);
+  const setPending = (p: PendingMonzo | null) => {
+    current.current = p;
+    setPendingState(p);
+  };
   const [bannerHidden, setBannerHidden] = useState(false);
   const [first] = useState(() => onUnanswered);
   const layer = useDataLayer();
@@ -64,7 +70,8 @@ export function MonzoQuestionProvider({ onUnanswered, children }: { onUnanswered
       // already recorded (its row is here) is done. Anything else is forgotten.
       const theirs = p.by === undefined || p.by === me;
       const ours = p.from !== p.to && pair.includes(p.from) && pair.includes(p.to);
-      if (!theirs || !ours || me === null || (p.id !== undefined && layer.settlements().some((s) => s.id === p.id))) {
+      // Answered already on this phone (Yes, Forget it), though the store's delete didn't land: done too.
+      if (!theirs || !ours || me === null || isAnswered(p) || (p.id !== undefined && layer.settlements().some((s) => s.id === p.id))) {
         void savePending(null);
         return;
       }
@@ -93,6 +100,8 @@ export function MonzoQuestionProvider({ onUnanswered, children }: { onUnanswered
       void savePending(kept);
     },
     forget: () => {
+      // Noted at once, before the store's slower delete (which a closing app can lose).
+      if (current.current) markAnswered(current.current);
       setPending(null);
       void savePending(null);
     },
