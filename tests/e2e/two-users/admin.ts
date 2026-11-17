@@ -59,7 +59,7 @@ export async function settlementsOf(householdId: string): Promise<SettlementRow[
 
 export interface ActivityRow { actor: string | null; entity: string; entity_id: string | null; action: string; summary: Record<string, unknown>; at: string }
 export function activityOf(householdId: string): ActivityRow[] {
-  return (sqlJson(`select json_agg(a order by a.id) from (select actor, entity, entity_id, action, summary, at
+  return (sqlJson(`select json_agg(a order by a.id) from (select id, actor, entity, entity_id, action, summary, at
     from activity where household_id = ${lit(householdId)}) a`) as ActivityRow[] | null) ?? [];
 }
 

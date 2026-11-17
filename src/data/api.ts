@@ -194,7 +194,11 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     watchHousehold(householdId, onChange, onStatus) {
       // A topic of its own each time: supabase-js hands back an existing channel with the same topic, so a
       // follow right after a stop (whose removal is still in flight) would get the closing one.
-      const channel = db.channel(`household:${householdId}:${crypto.randomUUID()}`);
+      // `wait`: "subscribed" only once the server is really listening for row changes, not merely joined
+      // (realtime-js docs: SUBSCRIBED can otherwise come before the replication stream is live).
+      const channel = db.channel(`household:${householdId}:${crypto.randomUUID()}`, {
+        config: { postgres_changes_options: { wait: true } },
+      });
       for (const table of Object.keys(TABLE_FILTER) as WatchedTable[]) {
         channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `${TABLE_FILTER[table]}=eq.${householdId}` }, () => {
           onChange(table);
