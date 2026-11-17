@@ -10,12 +10,18 @@ export type Route =
   | { name: 'home' }
   | { name: 'activity' }
   | { name: 'entry'; id: string }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  | { name: 'bills' }
+  | { name: 'inbox' }
+  | { name: 'categories' };
 
 export function parseRoute(path: string): Route {
   const clean = (path.split(/[?#]/)[0] ?? '/').replace(/\/+$/, '') || '/';
   if (clean === '/activity') return { name: 'activity' };
   if (clean === '/settings') return { name: 'settings' };
+  if (clean === '/bills') return { name: 'bills' };
+  if (clean === '/inbox') return { name: 'inbox' };
+  if (clean === '/settings/categories') return { name: 'categories' };
   const entry = /^\/entry\/([^/]+)$/.exec(clean);
   if (entry?.[1]) return { name: 'entry', id: decodeURIComponent(entry[1]) };
   return { name: 'home' };
@@ -29,6 +35,12 @@ export function pathOf(route: Route): string {
       return '/activity';
     case 'settings':
       return '/settings';
+    case 'bills':
+      return '/bills';
+    case 'inbox':
+      return '/inbox';
+    case 'categories':
+      return '/settings/categories';
     case 'entry':
       return `/entry/${encodeURIComponent(route.id)}`;
   }

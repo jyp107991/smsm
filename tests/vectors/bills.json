@@ -1,0 +1,182 @@
+{
+  "about": "Golden vectors for S3's core (src/core/recurring.ts): monthlyCost and yearlyCost (REC-7, REC-8; DATA_MODEL §5 'What home costs'), the upcoming occurrences for Bills (REC-7) and suggestRecurring (REC-5). Money in integer pence; costs rounded once to the nearest penny, halves up (DECISIONS, S3). Written before the build.",
+  "monthlyCost": [
+    { "name": "weekly £10.00: ×52÷12", "frequency": "weekly", "every": 1, "amount": 1000, "expected": 4333 },
+    { "name": "fortnightly window cleaner £12.00", "frequency": "weekly", "every": 2, "amount": 1200, "expected": 2600 },
+    { "name": "weekly 3p is exactly 13p a month", "frequency": "weekly", "every": 1, "amount": 3, "expected": 13 },
+    { "name": "weekly 1p rounds down", "frequency": "weekly", "every": 1, "amount": 1, "expected": 4 },
+    { "name": "every 52 weeks 1p rounds to nothing", "frequency": "weekly", "every": 52, "amount": 1, "expected": 0 },
+    { "name": "every 4 weeks £9.99", "frequency": "weekly", "every": 4, "amount": 999, "expected": 1082 },
+    { "name": "every 3 weeks 7p", "frequency": "weekly", "every": 3, "amount": 7, "expected": 10 },
+    { "name": "fortnightly 3p is 6.5p: a half rounds up", "frequency": "weekly", "every": 2, "amount": 3, "expected": 7 },
+    { "name": "monthly rent is itself", "frequency": "monthly", "every": 1, "amount": 145000, "expected": 145000 },
+    { "name": "every 2 months £10.01 is 500.5p: up", "frequency": "monthly", "every": 2, "amount": 1001, "expected": 501 },
+    { "name": "quarterly £10.00", "frequency": "monthly", "every": 3, "amount": 1000, "expected": 333 },
+    { "name": "quarterly 2p", "frequency": "monthly", "every": 3, "amount": 2, "expected": 1 },
+    { "name": "yearly Prime £95.00", "frequency": "yearly", "every": 1, "amount": 9500, "expected": 792 },
+    { "name": "yearly 6p is half a penny: up", "frequency": "yearly", "every": 1, "amount": 6, "expected": 1 },
+    { "name": "yearly 18p is 1.5p: up", "frequency": "yearly", "every": 1, "amount": 18, "expected": 2 },
+    { "name": "every 2 years £120.00", "frequency": "yearly", "every": 2, "amount": 12000, "expected": 500 },
+    { "name": "yearly £11.99", "frequency": "yearly", "every": 1, "amount": 1199, "expected": 100 }
+  ],
+  "yearlyCost": [
+    { "name": "weekly £10.00 ×52", "frequency": "weekly", "every": 1, "amount": 1000, "expected": 52000 },
+    { "name": "fortnightly £12.00", "frequency": "weekly", "every": 2, "amount": 1200, "expected": 31200 },
+    { "name": "every 3 weeks £1.00", "frequency": "weekly", "every": 3, "amount": 100, "expected": 1733 },
+    { "name": "monthly Netflix £10.99 ×12", "frequency": "monthly", "every": 1, "amount": 1099, "expected": 13188 },
+    { "name": "quarterly £10.00", "frequency": "monthly", "every": 3, "amount": 1000, "expected": 4000 },
+    { "name": "every 5 months £10.01", "frequency": "monthly", "every": 5, "amount": 1001, "expected": 2402 },
+    { "name": "every 8 months 4p", "frequency": "monthly", "every": 8, "amount": 4, "expected": 6 },
+    { "name": "every 24 months 2p", "frequency": "monthly", "every": 24, "amount": 2, "expected": 1 },
+    { "name": "yearly is itself", "frequency": "yearly", "every": 1, "amount": 9500, "expected": 9500 },
+    { "name": "every 2 years £95.01 is 4750.5p: up", "frequency": "yearly", "every": 2, "amount": 9501, "expected": 4751 },
+    { "name": "every 3 years £1.00", "frequency": "yearly", "every": 3, "amount": 100, "expected": 33 }
+  ],
+  "upcoming": {
+    "templates": [
+      { "id": "rent", "description": "Rent", "amount": 145000, "amountVaries": false, "active": true, "postedCount": 11, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2026-01-01", "endDate": null } },
+      { "id": "netflix", "description": "Netflix", "amount": 1099, "amountVaries": false, "active": true, "postedCount": 10, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2026-01-20", "endDate": null } },
+      { "id": "spotify", "description": "Spotify", "amount": 1199, "amountVaries": false, "active": true, "postedCount": 12, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2025-12-05", "endDate": null } },
+      { "id": "prime", "description": "Prime", "amount": 9500, "amountVaries": false, "active": true, "postedCount": 1, "schedule": { "frequency": "yearly", "every": 1, "startDate": "2026-03-02", "endDate": null } },
+      { "id": "energy", "description": "Energy", "amount": 9000, "amountVaries": true, "active": true, "postedCount": 11, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2026-01-03", "endDate": null } },
+      { "id": "window", "description": "Window cleaner", "amount": 1200, "amountVaries": false, "active": true, "postedCount": 1, "schedule": { "frequency": "weekly", "every": 2, "startDate": "2026-11-07", "endDate": null } },
+      { "id": "gym", "description": "Old gym", "amount": 3000, "amountVaries": false, "active": false, "postedCount": 10, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2026-01-10", "endDate": null } },
+      { "id": "magazine", "description": "Magazine", "amount": 450, "amountVaries": false, "active": true, "postedCount": 10, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2026-01-15", "endDate": "2026-10-31" } },
+      { "id": "council", "description": "Council tax", "amount": 15000, "amountVaries": false, "active": true, "postedCount": 7, "schedule": { "frequency": "monthly", "every": 1, "startDate": "2026-04-13", "endDate": null } }
+    ],
+    "cases": [
+      {
+        "name": "the next 30 days from Sat 14 Nov, with an unposted bill from yesterday (offline) first",
+        "to": "2026-12-14",
+        "expected": [
+          { "id": "council", "date": "2026-11-13" },
+          { "id": "netflix", "date": "2026-11-20" },
+          { "id": "window", "date": "2026-11-21" },
+          { "id": "rent", "date": "2026-12-01" },
+          { "id": "energy", "date": "2026-12-03" },
+          { "id": "spotify", "date": "2026-12-05" },
+          { "id": "window", "date": "2026-12-05" },
+          { "id": "council", "date": "2026-12-13" }
+        ]
+      },
+      {
+        "name": "the rest of November (the calendar's upcoming days)",
+        "from": "2026-11-01",
+        "to": "2026-11-30",
+        "expected": [
+          { "id": "council", "date": "2026-11-13" },
+          { "id": "netflix", "date": "2026-11-20" },
+          { "id": "window", "date": "2026-11-21" }
+        ]
+      },
+      {
+        "name": "a window with nothing in it",
+        "from": "2026-11-22",
+        "to": "2026-11-30",
+        "expected": []
+      }
+    ]
+  },
+  "suggest": [
+    {
+      "name": "Netflix on the 20th three months running",
+      "today": "2026-11-14",
+      "history": [["Netflix", 1099, "2026-08-20"], ["Netflix", 1099, "2026-09-20"], ["Netflix", 1099, "2026-10-20"]],
+      "expected": [{ "key": "netflix", "description": "Netflix", "frequency": "monthly", "every": 1, "amount": 1099, "lastDate": "2026-10-20", "nextDate": "2026-11-20" }]
+    },
+    {
+      "name": "twice is not enough",
+      "today": "2026-11-14",
+      "history": [["Netflix", 1099, "2026-09-20"], ["Netflix", 1099, "2026-10-20"]],
+      "expected": []
+    },
+    {
+      "name": "an unsteady interval (18 then 61 days)",
+      "today": "2026-11-14",
+      "history": [["Pizza", 2400, "2026-08-02"], ["Pizza", 2400, "2026-08-20"], ["Pizza", 2400, "2026-10-20"]],
+      "expected": []
+    },
+    {
+      "name": "amounts too different (£10 then £15)",
+      "today": "2026-11-14",
+      "history": [["Takeaway", 1000, "2026-08-20"], ["Takeaway", 1500, "2026-09-20"], ["Takeaway", 1000, "2026-10-20"]],
+      "expected": []
+    },
+    {
+      "name": "similar amounts (within 10 %): the latest amount is offered",
+      "today": "2026-11-14",
+      "history": [["Octopus", 6200, "2026-08-20"], ["Octopus", 6500, "2026-09-21"], ["Octopus", 6800, "2026-10-20"]],
+      "expected": [{ "key": "octopus", "description": "Octopus", "frequency": "monthly", "every": 1, "amount": 6800, "lastDate": "2026-10-20", "nextDate": "2026-11-20" }]
+    },
+    {
+      "name": "weekly",
+      "today": "2026-11-14",
+      "history": [["Window cleaner", 1200, "2026-10-24"], ["Window cleaner", 1200, "2026-10-31"], ["Window cleaner", 1200, "2026-11-07"]],
+      "expected": [{ "key": "window cleaner", "description": "Window cleaner", "frequency": "weekly", "every": 1, "amount": 1200, "lastDate": "2026-11-07", "nextDate": "2026-11-14" }]
+    },
+    {
+      "name": "every two weeks",
+      "today": "2026-11-14",
+      "history": [["Cleaner", 4000, "2026-10-03"], ["Cleaner", 4000, "2026-10-17"], ["Cleaner", 4000, "2026-10-31"]],
+      "expected": [{ "key": "cleaner", "description": "Cleaner", "frequency": "weekly", "every": 2, "amount": 4000, "lastDate": "2026-10-31", "nextDate": "2026-11-14" }]
+    },
+    {
+      "name": "stopped months ago: not suggested",
+      "today": "2026-11-14",
+      "history": [["Netflix", 1099, "2026-01-20"], ["Netflix", 1099, "2026-02-20"], ["Netflix", 1099, "2026-03-20"]],
+      "expected": []
+    },
+    {
+      "name": "case and spaces don't matter; the latest spelling is offered",
+      "today": "2026-11-14",
+      "history": [["netflix", 1099, "2026-08-20"], ["Netflix ", 1099, "2026-09-20"], ["NETFLIX", 1099, "2026-10-20"]],
+      "expected": [{ "key": "netflix", "description": "NETFLIX", "frequency": "monthly", "every": 1, "amount": 1099, "lastDate": "2026-10-20", "nextDate": "2026-11-20" }]
+    },
+    {
+      "name": "excluded (already a regular payment, or the person said No)",
+      "today": "2026-11-14",
+      "exclude": ["netflix"],
+      "history": [["Netflix", 1099, "2026-08-20"], ["Netflix", 1099, "2026-09-20"], ["Netflix", 1099, "2026-10-20"]],
+      "expected": []
+    },
+    {
+      "name": "two on the same day among the last three",
+      "today": "2026-11-14",
+      "history": [["Netflix", 1099, "2026-09-20"], ["Netflix", 1099, "2026-10-20"], ["Netflix", 1099, "2026-10-20"]],
+      "expected": []
+    },
+    {
+      "name": "month ends (31 Aug, 30 Sep, 31 Oct): next is 30 Nov",
+      "today": "2026-11-14",
+      "history": [["Rent", 145000, "2026-08-31"], ["Rent", 145000, "2026-09-30"], ["Rent", 145000, "2026-10-31"]],
+      "expected": [{ "key": "rent", "description": "Rent", "frequency": "monthly", "every": 1, "amount": 145000, "lastDate": "2026-10-31", "nextDate": "2026-11-30" }]
+    },
+    {
+      "name": "every three months",
+      "today": "2026-11-10",
+      "history": [["Water", 9000, "2026-02-15"], ["Water", 9000, "2026-05-15"], ["Water", 9000, "2026-08-15"]],
+      "expected": [{ "key": "water", "description": "Water", "frequency": "monthly", "every": 3, "amount": 9000, "lastDate": "2026-08-15", "nextDate": "2026-11-15" }]
+    },
+    {
+      "name": "yearly, across a leap year",
+      "today": "2026-10-30",
+      "history": [["TV licence", 17450, "2023-11-01"], ["TV licence", 17450, "2024-11-01"], ["TV licence", 17450, "2025-11-01"]],
+      "expected": [{ "key": "tv licence", "description": "TV licence", "frequency": "yearly", "every": 1, "amount": 17450, "lastDate": "2025-11-01", "nextDate": "2026-11-01" }]
+    },
+    {
+      "name": "older irregular entries don't matter: the last three decide",
+      "today": "2026-11-14",
+      "history": [["Netflix", 999, "2026-03-01"], ["Netflix", 1099, "2026-05-17"], ["Netflix", 1099, "2026-08-20"], ["Netflix", 1099, "2026-09-20"], ["Netflix", 1099, "2026-10-20"]],
+      "expected": [{ "key": "netflix", "description": "Netflix", "frequency": "monthly", "every": 1, "amount": 1099, "lastDate": "2026-10-20", "nextDate": "2026-11-20" }]
+    },
+    {
+      "name": "two at once: the most recent first",
+      "today": "2026-11-14",
+      "history": [["Netflix", 1099, "2026-08-20"], ["Gym", 3000, "2026-10-27"], ["Netflix", 1099, "2026-09-20"], ["Gym", 3000, "2026-11-03"], ["Netflix", 1099, "2026-10-20"], ["Gym", 3000, "2026-11-10"]],
+      "expected": [
+        { "key": "gym", "description": "Gym", "frequency": "weekly", "every": 1, "amount": 3000, "lastDate": "2026-11-10", "nextDate": "2026-11-17" },
+        { "key": "netflix", "description": "Netflix", "frequency": "monthly", "every": 1, "amount": 1099, "lastDate": "2026-10-20", "nextDate": "2026-11-20" }
+      ]
+    }
+  ]
+}

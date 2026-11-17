@@ -21,8 +21,10 @@ export function createDemoLayer(now: Date = new Date()): DataLayer {
       categories: seed.categories,
       expenses: seed.expenses,
       settlements: seed.settlements,
+      recurring: seed.recurring,
+      inboxItems: seed.inboxItems,
     },
-    { user },
+    { user, today: () => todayIn(now, 'Europe/London') },
   );
   const today = todayIn(now, 'Europe/London');
   return createDataLayer({ api, storage: memoryStorage(), network: manualNetwork(true), session: fixedSession(JAE), today: () => today });

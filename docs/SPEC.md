@@ -188,8 +188,7 @@ Names and animals; default split; monzo.me name; settle day; home country and cu
 
 ## 8. Import, export, backup
 ### 8.1 Import [IMP]
-- IMP-1 CSV import with presets for **Splitwise** (bring your history across), **Monzo** statements, and a generic column-mapping step. The file is read on the phone.
-- IMP-2 Splitwise import maps payers and shares into entries and settle-ups, and shows the resulting balance beside Splitwise's own before anything is saved.
+- IMP-1 CSV import with a preset for **Monzo** statements and a generic column-mapping step. The file is read on the phone.
 - IMP-3 Bank rows go through the Inbox one card at a time: Keep or Not ours, with "always do this for Tesco". Discarded rows are never stored; only a hash of the bank's id is kept so they don't reappear. Kept rows can't be imported twice.
 ### 8.2 Export and backup [EXP]
 - EXP-1 CSV of entries and settle-ups for any range; a monthly PDF statement; a full JSON backup that can be restored.
@@ -209,7 +208,7 @@ Plan:
 - v1 already contains the fields, the Inbox, the rules and the ignore-hashes this needs. v1 must not add anything that assumes typing is the only source of entries.
 
 ## 10. Not doing
-Groups of more than two; balances in several currencies; bank linking in v1; budgets, savings goals, personal spending, incomes; moving money inside the app; maps; ads; accounts for anyone else.
+Groups of more than two; importing from Splitwise (owner, 17 Nov); balances in several currencies; bank linking in v1; budgets, savings goals, personal spending, incomes; moving money inside the app; maps; ads; accounts for anyone else.
 
 ## 11. Things that must hold everywhere
 

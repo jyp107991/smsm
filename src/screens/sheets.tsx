@@ -6,11 +6,18 @@
 import { createContext, use } from 'react';
 import type { ExpenseDraft, ExpenseRow, SettlementRow } from '../data';
 import type { FormState } from './entry/form';
+import type { ScheduleState } from './entry/schedule';
 import type { PendingMonzo } from './settle/monzo';
 
 export type EntryRequest =
   /** A new expense, optionally prefilled (the quick-add reading, "Same as last time"). */
-  | { mode: 'add'; prefill?: Partial<FormState>; fromQuickAdd?: { typedCategory: boolean; typedSplit: boolean } }
+  | {
+    mode: 'add'; prefill?: Partial<FormState>; fromQuickAdd?: { typedCategory: boolean; typedSplit: boolean };
+    /** INB-2 Keep: the Inbox bill this entry settles (saved with its template and occurrence). */
+    inboxItem?: string;
+  }
+  /** S3: a new regular payment (optionally prefilled, e.g. from "looks monthly"), or edit one by its id. */
+  | { mode: 'recurring'; id?: string; prefill?: Partial<FormState>; schedule?: Partial<ScheduleState> }
   /** Edit an entry; `row` and `input` when it is a refused write kept on the phone (OFF-5). */
   | { mode: 'edit'; id: string; row?: ExpenseRow; input?: ExpenseDraft }
   /** MB-2: money back for this expense. */

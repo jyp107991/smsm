@@ -43,8 +43,8 @@ The `ai` function with caps and guards; scan and itemise; loose-wording parse; c
 - ★ Owner: add the Gemini key (`DEPLOY.md` §5) and drop ten receipt photos into the eval folder.
 
 ## S7: import and export
-Splitwise import with the balance cross-check; Monzo CSV and generic CSV through the Inbox with rules and hashed ignores; CSV export; PDF statement; restore from backup.
-- ★ Owner: a Splitwise export (if history is wanted) and a real Monzo CSV to confirm the columns.
+Monzo CSV and generic CSV through the Inbox with rules and hashed ignores; CSV export; PDF statement; restore from backup.
+- ★ Owner: a real Monzo CSV to confirm the columns.
 
 ## S8: notifications
 Push subscriptions and preferences; the Edge Function on a schedule; the five notification types; deep links; icon badge.

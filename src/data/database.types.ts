@@ -506,6 +506,12 @@ isOneToOne: false
 "post_due_recurring":
 { Args: { "p_household"?: string }; Returns: number
                            },
+"post_due_recurring_all":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"recurring_step":
+{ Args: { "p_every": number,"p_frequency": string }; Returns: string
+                           },
 "request_change":
 { Args: { "p_kind": string,"p_payload": Json }; Returns: string
                            },

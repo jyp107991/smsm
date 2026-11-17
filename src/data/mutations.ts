@@ -10,15 +10,18 @@
  */
 import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
-import type { AuthUser, ExpenseRow, SettlementRow } from './api';
+import type { IsoDate } from '../core/dates';
+import { isIsoDate } from '../core/dates';
+import type { Pence } from '../core/money';
+import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
 import type { DataLayer } from './queryClient';
 import { OtherWindowError } from './windows';
 import {
-  buildExpense, buildProvisionalExpense, buildSettlement, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
-  newId, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
+  buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
+  newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
   type SettlementDraft,
 } from './writes';
 import type { Json as JsonValue } from './database.types';
@@ -424,4 +427,177 @@ export async function requestChange(change: ChangeRequest, layer = activeDataLay
 export async function decideChange(id: string, approve: boolean, layer = activeDataLayer()): Promise<void> {
   await online(layer, () => layer.api.decideChange(id, approve));
   await layer.refresh();
+}
+
+// ─────────────────────────────── S3: regular payments, the Inbox, categories ───────────────────────────────
+
+/** A regular payment as the person enters it (REC-1): an entry's fields plus its schedule. */
+export interface RecurringDraft {
+  description: string; amount: Pence; categoryId: string | null; payer: UserId; split: SplitParams; notes?: string | null;
+  frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate; endDate: IsoDate | null;
+  amountVaries: boolean; isSubscription: boolean;
+}
+
+/** The palette a category may use (DESIGN §3.1; the database checks the same list). */
+export const CATEGORY_COLOURS = ['moss', 'amber', 'walnut', 'honey', 'slate', 'plum', 'oak', 'berry', 'lake', 'clay', 'fern', 'stone'] as const;
+export type CategoryColour = (typeof CATEGORY_COLOURS)[number];
+export interface CategoryDraft { name: string; emoji: string; colour: CategoryColour }
+
+type S3Table = 'recurring' | 'inbox_items' | 'categories';
+
+/** The rows of a table as this phone shows them: the stored copy with every waiting change on top. */
+function shown<R extends { id: string }>(layer: DataLayer, table: S3Table): R[] {
+  const uid = layer.me() ?? '';
+  const key = table === 'recurring' ? keys.recurring(uid) : table === 'inbox_items' ? keys.inbox(uid) : keys.categories(uid);
+  return overlay(layer.client.getQueryData<R[]>(key) ?? [], layer.waiting(), table);
+}
+
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * REC-1, REC-6: adds a regular payment or (with an existing template's id) edits it; returns its id at once.
+ * Its money is built by the core like an entry's; the phone never sends posted_count, so an edit changes
+ * future occurrences only. A second submit of the same form changes nothing (Q-F1). Once stored, the phone
+ * posts what is due (REC-2), so a payment due today is money at once.
+ */
+export function saveRecurring(input: RecurringDraft & { id?: string }, layer = activeDataLayer()): string {
+  const { id, ...draft } = input;
+  const ctx = context(layer);
+  const reasons: InvalidReason[] = [];
+  if (draft.description.trim() === '') reasons.push('description');
+  if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('amount');
+  if (!Number.isInteger(draft.every) || draft.every < 1 || draft.every > 52 || !isIsoDate(draft.startDate)
+    || (draft.endDate !== null && (!isIsoDate(draft.endDate) || draft.endDate < draft.startDate))) reasons.push('schedule');
+  if (reasons.length > 0) throw new EntryInvalidError(reasons);
+  if (!ctx.pair) throw new PartnerNotJoinedError();
+  // The money, worked out as for an entry of that amount (check_money holds for templates too).
+  const money = expenseRowFor(ctx, {
+    description: draft.description, amount: draft.amount, date: layer.today(), categoryId: draft.categoryId, payer: draft.payer, split: draft.split,
+  }).row;
+  const existing = id === undefined ? undefined : shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  const stamp = layer.now().toISOString();
+  const row: RecurringRow = {
+    id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,
+    category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
+    shares: money.shares, is_subscription: draft.isSubscription, frequency: draft.frequency, every: draft.every, start_date: draft.startDate,
+    end_date: draft.endDate, active: existing?.active ?? true, notes: draft.notes ?? existing?.notes ?? null,
+    posted_count: existing?.posted_count ?? 0, created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
+  };
+  // Q-F1: the same form saved twice (a double tap) changes nothing.
+  if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
+  // An edit writes what the form owns, never `active` (a partner's pause stays paused).
+  layer.enqueue({
+    opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
+    ...(existing ? { columns: EDIT_COLUMNS } : {}),
+  });
+  return row.id;
+}
+
+const EDIT_COLUMNS: readonly RecurringColumn[] = RECURRING_WRITE_COLUMNS.filter(
+  (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active',
+);
+
+function changeRecurring(id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date'>>, layer: DataLayer): boolean {
+  const ctx = context(layer);
+  const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  if (!current) throw new EntryNotFoundError(id);
+  const next: RecurringRow = { ...current, ...change, updated_at: layer.now().toISOString() };
+  if (sameJson(recurringWrite(current), recurringWrite(next))) return false;
+  layer.enqueue({
+    opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: false, row: next, input: null,
+    columns: Object.keys(change) as RecurringColumn[],
+  });
+  return true;
+}
+
+/** REC-1: pause (nothing posts while paused; nothing is deleted). True when something changed. */
+export function pauseRecurring(id: string, layer = activeDataLayer()): boolean {
+  return changeRecurring(id, { active: false }, layer);
+}
+
+export function resumeRecurring(id: string, layer = activeDataLayer()): boolean {
+  return changeRecurring(id, { active: true }, layer);
+}
+
+/** REC-1: end on a day (today unless told); the template and its history stay. */
+export function endRecurring(id: string, endDate?: IsoDate, layer = activeDataLayer()): boolean {
+  return changeRecurring(id, { end_date: endDate ?? layer.today() }, layer);
+}
+
+/**
+ * INB-2 Keep: saves the bill as an entry (carrying its template and occurrence, at home, in no chapter, so the
+ * database refuses a second keep of the same bill from the other phone), then marks the item kept with the
+ * entry's id. Returns the entry's id. A second tap records nothing more.
+ */
+export function keepInboxItem(itemId: string, input: ExpenseDraft & { id?: string }, layer = activeDataLayer()): string {
+  const { id, ...draft } = input;
+  const ctx = context(layer);
+  const item = shown<InboxItemRow>(layer, 'inbox_items').find((i) => i.id === itemId);
+  if (!item) throw new EntryNotFoundError(itemId);
+  if (item.status !== 'open') return item.expense_id ?? id ?? '';
+  if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
+  const built = expenseRowFor(ctx, draft);
+  const home = layer.household()?.home_country ?? 'GB';
+  const row: ExpenseRow = {
+    ...built.row, id: id ?? built.row.id, source: item.recurring_id ? 'recurring' : built.row.source, recurring_id: item.recurring_id,
+    occurrence_date: item.occurrence_date, country: home, chapter_id: null,
+  };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'inbox_items', op: 'patch', id: item.id, patch: { status: 'kept', expense_id: row.id }, label: row.description });
+  return row.id;
+}
+
+/** INB-2 Not ours: dismissed, no entry. True when something changed. */
+export function dismissInboxItem(itemId: string, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const item = shown<InboxItemRow>(layer, 'inbox_items').find((i) => i.id === itemId);
+  if (!item) throw new EntryNotFoundError(itemId);
+  if (item.status !== 'open') return false;
+  const payload = item.payload as { description?: unknown } | null;
+  const label = typeof payload?.description === 'string' ? payload.description : '';
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'inbox_items', op: 'patch', id: item.id, patch: { status: 'dismissed', expense_id: null }, label });
+  return true;
+}
+
+function enqueueCategory(layer: DataLayer, uid: string, current: CategoryRow | undefined, next: CategoryRow): boolean {
+  if (current && sameJson(categoryWrite(current), categoryWrite(next))) return false;
+  layer.enqueue({ opId: newId(), by: uid, table: 'categories', op: 'upsert', isNew: current === undefined, row: next, input: null });
+  return true;
+}
+
+/** CAT-1: adds a category (last in the order) or, with an id, renames / re-emojis / recolours it. */
+export function saveCategory(input: CategoryDraft & { id?: string }, layer = activeDataLayer()): string {
+  const { id, ...draft } = input;
+  const ctx = context(layer);
+  const reasons: InvalidReason[] = [];
+  if (draft.name.trim() === '') reasons.push('name');
+  if (!(CATEGORY_COLOURS as readonly string[]).includes(draft.colour)) reasons.push('colour');
+  if (reasons.length > 0) throw new EntryInvalidError(reasons);
+  const all = shown<CategoryRow>(layer, 'categories');
+  const current = id === undefined ? undefined : all.find((c) => c.id === id);
+  const next: CategoryRow = {
+    id: id ?? newId(), household_id: ctx.hid, name: draft.name.trim(), emoji: draft.emoji.trim(), colour: draft.colour,
+    archived: current?.archived ?? false, sort: current?.sort ?? Math.max(0, ...all.map((c) => c.sort)) + 1,
+    default_ratio: current?.default_ratio ?? null, updated_at: layer.now().toISOString(),
+  };
+  enqueueCategory(layer, ctx.uid, current, next);
+  return next.id;
+}
+
+/** CAT-1: archive (its entries keep it) or bring back. True when something changed. */
+export function archiveCategory(id: string, archived = true, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const current = shown<CategoryRow>(layer, 'categories').find((c) => c.id === id);
+  if (!current) throw new EntryNotFoundError(id);
+  return enqueueCategory(layer, ctx.uid, current, { ...current, archived, updated_at: layer.now().toISOString() });
+}
+
+/** CAT-1: the categories in this order (only the ones that moved are written). */
+export function reorderCategories(ids: readonly string[], layer = activeDataLayer()): void {
+  const ctx = context(layer);
+  const all = shown<CategoryRow>(layer, 'categories');
+  ids.forEach((id, i) => {
+    const current = all.find((c) => c.id === id);
+    if (current && current.sort !== i + 1) enqueueCategory(layer, ctx.uid, current, { ...current, sort: i + 1, updated_at: layer.now().toISOString() });
+  });
 }

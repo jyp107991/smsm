@@ -40,7 +40,7 @@ import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE } from './keys';
 import type { Network } from './network';
 import { createProblemStore, problemFrom, type ProblemStore } from './problems';
 import {
-  categoriesQuery, changesQuery, expensesQuery, householdQuery, membersQuery, membershipQuery, memoryQuery, settlementsQuery,
+  categoriesQuery, changesQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery, settlementsQuery,
 } from './queries';
 import { createRealtime, type Realtime } from './realtime';
 import { expenseToLedger, settlementToLedger } from './rows';
@@ -48,8 +48,8 @@ import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
 import { claimQueue, OtherWindowError, type QueueLocks, type WindowRole } from './windows';
 import {
-  completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, settlementWrite,
-  type ExpenseUpsert, type MemoryOp, type MoneyOp,
+  categoryWrite, completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, recurringWrite, settlementWrite,
+  type ExpenseUpsert, type MemoryOp, type MoneyOp, type QueuedRow,
 } from './writes';
 
 export const CACHE_KEY = 'smsm-cache';
@@ -345,6 +345,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       client.query({ ...settlementsQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...changesQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...memoryQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      client.query({ ...recurringQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      client.query({ ...inboxQuery(api, id, hid), staleTime: 0 }).catch(noop),
     ]);
     followHousehold();
     wake();
@@ -358,7 +360,11 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       const posted = await api.postDueRecurring();
       await owned.setItem(RECURRING_DAY_KEY, today);
       const id = uid();
-      if (posted > 0 && id) void client.invalidateQueries({ queryKey: keys.expenses(id) });
+      if (posted > 0 && id) {
+        void client.invalidateQueries({ queryKey: keys.expenses(id) });
+        void client.invalidateQueries({ queryKey: keys.inbox(id) });
+        void client.invalidateQueries({ queryKey: keys.recurring(id) });
+      }
     } catch {
       /* the nightly job posts them anyway (REC-2); try again on the next open */
     }
@@ -376,13 +382,22 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     return completedRow(op, [a.user_id, b.user_id], defaultRatioOf(household), now());
   }
 
-  async function sendOnce(op: MoneyOp): Promise<ExpenseRow | SettlementRow> {
-    if (op.table === 'expenses') {
-      if (op.op === 'patch') return api.patchExpense(op.id, op.patch);
-      const row = op.awaitingPartner === true ? await completeForPartner(op) : op.row;
-      return api.upsertExpense(expenseWrite(row));
+  async function sendOnce(op: MoneyOp): Promise<QueuedRow> {
+    switch (op.table) {
+      case 'expenses': {
+        if (op.op === 'patch') return api.patchExpense(op.id, op.patch);
+        const row = op.awaitingPartner === true ? await completeForPartner(op) : op.row;
+        return api.upsertExpense(expenseWrite(row));
+      }
+      case 'settlements':
+        return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row)) : api.patchSettlement(op.id, op.patch);
+      case 'recurring':
+        return api.upsertRecurring(recurringWrite(op.row), op.isNew ? undefined : op.columns);
+      case 'inbox_items':
+        return api.patchInboxItem(op.id, op.patch);
+      case 'categories':
+        return api.upsertCategory(categoryWrite(op.row));
     }
-    return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row)) : api.patchSettlement(op.id, op.patch);
   }
 
   /** Still in the queue (not discarded by a sign-out). */
@@ -390,7 +405,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     return client.getMutationCache().getAll().some((m) => isQueuedMutation(m) && opOf(m)?.opId === op.opId);
   }
 
-  async function send(op: MoneyOp): Promise<ExpenseRow | SettlementRow> {
+  async function send(op: MoneyOp): Promise<QueuedRow> {
     return sendWith(op, () => sendOnce(op));
   }
 
@@ -416,19 +431,50 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     }
   }
 
-  async function applyServerRow(op: MoneyOp, row: ExpenseRow | SettlementRow): Promise<void> {
+  function keyFor(table: MoneyOp['table'], id: string): QueryKey {
+    switch (table) {
+      case 'expenses': return keys.expenses(id);
+      case 'settlements': return keys.settlements(id);
+      case 'recurring': return keys.recurring(id);
+      case 'inbox_items': return keys.inbox(id);
+      case 'categories': return keys.categories(id);
+    }
+  }
+
+  async function applyServerRow(op: MoneyOp, row: QueuedRow): Promise<void> {
     const id = uid();
     if (!id) return;
-    const key: QueryKey = op.table === 'expenses' ? keys.expenses(id) : keys.settlements(id);
+    const key = keyFor(op.table, id);
     const wasFetching = client.isFetching({ queryKey: key }) > 0;
     // A refetch that started before this write finished could bring back the old row; cancel it, then
     // fetch again afterwards so nothing the partner changed meanwhile is missed.
     if (wasFetching) await client.cancelQueries({ queryKey: key });
     if (client.getQueryData(key) !== undefined) {
-      client.setQueryData<(ExpenseRow | SettlementRow)[]>(key, (old) => upsertById(old ?? [], row));
+      client.setQueryData<QueuedRow[]>(key, (old) => upsertById(old ?? [], row));
     }
     if (wasFetching || client.getQueryData(key) === undefined) void client.invalidateQueries({ queryKey: key, refetchType: 'all' });
     void client.invalidateQueries({ queryKey: keys.activity(id, row.id) });
+    // REC-2: a regular payment that has reached the server posts what is due at once (not at the next open).
+    // Not awaited: a slow post never holds the rest of the queue (it refreshes the lists when it lands).
+    if (op.table === 'recurring') void postDueNow();
+  }
+
+  /** Post what is due now, then read back what it made (entries, Inbox bills, the templates' counts). */
+  async function postDueNow(): Promise<void> {
+    const id = uid();
+    if (!id || !network.online) return;
+    try {
+      const posted = await api.postDueRecurring();
+      if (posted > 0) {
+        await Promise.all([
+          client.invalidateQueries({ queryKey: keys.expenses(id), refetchType: 'all' }),
+          client.invalidateQueries({ queryKey: keys.inbox(id), refetchType: 'all' }),
+          client.invalidateQueries({ queryKey: keys.recurring(id), refetchType: 'all' }),
+        ]);
+      }
+    } catch {
+      /* the next open, or the nightly job, posts it (REC-2) */
+    }
   }
 
   client.setMutationDefaults(MONEY_KEY, {
@@ -436,7 +482,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     networkMode: 'always',
     retry: 0, // transient failures are retried inside `send`; what reaches TanStack as an error is a refusal
     mutationFn: (op: MoneyOp) => send(op),
-    onSuccess: async (row: ExpenseRow | SettlementRow, op: MoneyOp) => {
+    onSuccess: async (row: QueuedRow, op: MoneyOp) => {
       problems.resolveRow(opRowId(op));
       await applyServerRow(op, row);
     },
@@ -506,7 +552,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
   function enqueue(op: MoneyOp): void {
     if (disposed) throw new Error('This store has been closed.');
     if (role !== 'owner') throw new OtherWindowError();
-    const observer = new MutationObserver<ExpenseRow | SettlementRow, Error, MoneyOp>(client, { mutationKey: MONEY_KEY, scope: scopeFor(op.by) });
+    const observer = new MutationObserver<QueuedRow, Error, MoneyOp>(client, { mutationKey: MONEY_KEY, scope: scopeFor(op.by) });
     observer
       .mutate(op)
       .catch(noop) // handled by the defaults' onError

@@ -10,10 +10,9 @@ import { isIsoDate, type IsoDate } from '../core/dates';
 import { formatPence, type Pence } from '../core/money';
 import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type SplitParams, type UserId } from '../core/split';
 import {
-  EXPENSE_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
-  type CategoryMemoryRow, type CategoryMemoryWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow, type SettlementRow, type SettlementWrite,
-  type SoftDeletePatch,
-} from './api';
+  EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
+  type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
+  type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
 export interface ExpenseDraft {
@@ -46,7 +45,8 @@ export interface SettlementDraft {
  */
 export type InvalidReason =
   | EntryIssue
-  | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100';
+  | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100'
+  | 'schedule' | 'colour';
 
 /** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
@@ -87,6 +87,13 @@ export type MoneyOp = OpBase & (
   | { table: 'expenses'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   | { table: 'settlements'; op: 'upsert'; isNew: boolean; row: SettlementRow; input: SettlementDraft }
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
+  /** S3: a regular payment (added, edited, paused, resumed, ended: always the whole template, never deleted). */
+  /** `columns`: only these are written to an existing template (pause, resume, end, an edit), never the rest. */
+  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[] }
+  /** S3: an Inbox decision (INB-2). */
+  | { table: 'inbox_items'; op: 'patch'; id: string; patch: InboxPatch; label: string }
+  /** S3: a category added, edited, archived or moved (CAT-1). */
+  | { table: 'categories'; op: 'upsert'; isNew: boolean; row: CategoryRow; input: null }
 );
 
 export function newId(): string {
@@ -397,7 +404,10 @@ export function opRowId(op: MoneyOp): string {
 
 export function opLabel(op: MoneyOp): string {
   if (op.op === 'patch') return op.label;
-  return op.table === 'expenses' ? expenseLabel(op.row) : settlementLabel(op.row);
+  if (op.table === 'expenses') return expenseLabel(op.row);
+  if (op.table === 'settlements') return settlementLabel(op.row);
+  if (op.table === 'recurring') return op.row.description;
+  return op.row.name;
 }
 
 /**
@@ -440,3 +450,17 @@ export function overlayMemory(rows: readonly CategoryMemoryRow[], ops: readonly 
   for (const op of ops) byKey.set(op.row.key, { ...op.row, updated_at: byKey.get(op.row.key)?.updated_at ?? '' });
   return [...byKey.values()];
 }
+
+/** The columns of a regular payment the phone sends (never posted_count: the server keeps counting, REC-6). */
+export function recurringWrite(row: RecurringRow): RecurringWrite {
+  return Object.fromEntries(RECURRING_WRITE_COLUMNS.map((k) => [k, row[k]])) as RecurringWrite;
+}
+
+/** The columns of a category the phone sends. */
+export function categoryWrite(row: CategoryRow): CategoryWrite {
+  const { id, household_id, name, emoji, colour, archived, sort, default_ratio } = row;
+  return { id, household_id, name, emoji, colour, archived, sort, default_ratio };
+}
+
+/** Whatever a queued write gets back from the server. */
+export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow;

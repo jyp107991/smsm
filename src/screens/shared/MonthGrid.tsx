@@ -24,16 +24,16 @@ export interface MonthGridProps {
   onPick: (day: IsoDate) => void;
   /** Put focus on the starting day as the grid appears (inside a sheet that just opened). */
   autoFocus?: boolean;
+  /** The last day that can be picked: today unless told; null for none (a regular payment may start later, S3). */
+  max?: IsoDate | null;
 }
 
-function clamp(day: IsoDate, today: IsoDate): IsoDate {
-  return day > today ? today : day;
-}
-
-export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: MonthGridProps) {
+export function MonthGrid({ today, focus, mark, onPick, autoFocus = false, max }: MonthGridProps) {
+  const limit = max === undefined ? today : max;
+  const clamp = (day: IsoDate): IsoDate => (limit !== null && day > limit ? limit : day);
   const titleId = useId();
-  const [focused, setFocused] = useState(() => clamp(focus, today));
-  const [month, setMonth] = useState(() => startOfMonth(clamp(focus, today)));
+  const [focused, setFocused] = useState(() => clamp(focus));
+  const [month, setMonth] = useState(() => startOfMonth(clamp(focus)));
   /** Focus follows the keyboard's day once it is drawn (it may be in the next month). */
   const moved = useRef(false);
   const grid = useRef<HTMLDivElement>(null);
@@ -53,11 +53,11 @@ export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: Mon
   }, [autoFocus]);
 
   const [year, monthNumber] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
-  const thisMonth = startOfMonth(today);
+  const lastMonth = limit === null ? null : startOfMonth(limit);
   /** Another month; the keyboard's place moves with the page (the same day of the month, or the nearest). */
   const show = (by: number) => {
     setMonth(addMonths(month, by));
-    setFocused(clamp(addMonths(focused, by), today));
+    setFocused(clamp(addMonths(focused, by)));
   };
 
   const keys = (e: KeyboardEvent<HTMLButtonElement>, day: IsoDate) => {
@@ -74,7 +74,7 @@ export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: Mon
     const next = to[e.key];
     if (!next) return;
     e.preventDefault();
-    const day2 = clamp(next(), today);
+    const day2 = clamp(next());
     moved.current = true;
     setFocused(day2);
     setMonth(startOfMonth(day2));
@@ -98,7 +98,7 @@ export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: Mon
         <button
           type="button"
           aria-label={strings.datePicker.nextMonth}
-          disabled={month >= thisMonth}
+          disabled={lastMonth !== null && month >= lastMonth}
           onClick={() => { show(1); }}
           className="text-ink press inline-flex size-11 items-center justify-center rounded-full disabled:opacity-40"
         >
@@ -120,7 +120,7 @@ export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: Mon
             {week.map((day, i) => {
               if (day === null) return <span key={i} role="gridcell" className="h-11" />;
               const m = mark(day);
-              const later = day > today;
+              const later = limit !== null && day > limit;
               const ends = m === 'chosen' || m === 'start' || m === 'end';
               return (
                 <span
@@ -169,15 +169,17 @@ export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: Mon
  * "Pick a date" (Q-L13): the month grid in a small sheet over the form. Picking a day closes it; Escape, back
  * or Close leave the date as it was.
  */
-export function DateSheet({ open, onClose, value, today, onPick }: {
+export function DateSheet({ open, onClose, value, today, onPick, max, title }: {
   open: boolean;
   onClose: () => void;
   value: IsoDate;
   today: IsoDate;
   onPick: (day: IsoDate) => void;
+  max?: IsoDate | null;
+  title?: string;
 }) {
   return (
-    <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title={strings.entry.pickDate}>
+    <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title={title ?? strings.entry.pickDate}>
       {/* Mounted with the sheet's content, so each opening starts on the chosen day. */}
       <MonthGrid
         today={today}
@@ -188,6 +190,7 @@ export function DateSheet({ open, onClose, value, today, onPick }: {
           onClose();
         }}
         autoFocus
+        {...(max === undefined ? {} : { max })}
       />
     </Sheet>
   );

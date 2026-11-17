@@ -1,13 +1,22 @@
 /**
  * A small household for screen and data tests: Jae (the cat, joined first) and Sam (the dog), the twelve
  * starting categories, no entries yet, served by the in-memory Api. Signed in as whoever `as` names.
+ *
+ * S3 (docs/slices/S3.md "Interfaces"): regular payments (`recurring`) and Inbox items (`inboxItems`) can be
+ * seeded too; the in-memory Api keeps them in `controls.tables.recurring` and `controls.tables.inboxItems`, and
+ * its post_due_recurring posts by the fixture's TODAY (the "server's" UK date, option `today`).
  */
-import { createMemoryApi, type MemoryControls } from '../../src/data/memoryApi';
+import type { AsyncStorage } from '@tanstack/react-query-persist-client';
+import { createMemoryApi, type MemoryControls, type MemoryTables } from '../../src/data/memoryApi';
 import { manualNetwork } from '../../src/data/network';
 import { createDataLayer, type DataLayer } from '../../src/data/queryClient';
 import { fixedSession } from '../../src/data/session';
 import { memoryStorage } from '../../src/data/storage';
 import type { ActivityRow, CategoryRow, ChangeRequestRow, ExpenseRow, HouseholdRow, MemberRow, SettlementRow } from '../../src/data/api';
+import type { Database, Json } from '../../src/data/database.types';
+
+export type RecurringRow = Database['public']['Tables']['recurring']['Row'];
+export type InboxItemRow = Database['public']['Tables']['inbox_items']['Row'];
 
 export const HID = '00000000-0000-4000-8000-0000000000c1';
 export const JAE_ID = '00000000-0000-4000-8000-0000000000a1';
@@ -53,15 +62,49 @@ export function storedSettlement(over: Partial<SettlementRow> = {}): SettlementR
   };
 }
 
+/**
+ * A stored regular payment (as the server holds it): Rent, £1,450.00 a month from 1 Jan 2026, paid by Jae and
+ * split 50/50, with the occurrences up to 1 Nov already posted (posted_count 11), unless told otherwise.
+ */
+export function storedRecurring(over: Partial<RecurringRow> = {}): RecurringRow {
+  const amount = over.amount_pence ?? 145000;
+  const half = Math.floor(amount / 2);
+  return {
+    id: '00000000-0000-4000-8000-00000000d001', household_id: HID, description: 'Rent', amount_pence: amount, amount_varies: false,
+    category_id: categoryId('Rent & bills'), paid: { [JAE_ID]: amount }, paid_via: 'person', split_mode: 'ratio',
+    split_params: { [JAE_ID]: 50, [SAM_ID]: 50 }, shares: { [JAE_ID]: amount - half, [SAM_ID]: half }, is_subscription: false,
+    frequency: 'monthly', every: 1, start_date: '2026-01-01', end_date: null, posted_count: 11, active: true, notes: null,
+    created_by: JAE_ID, created_at: '2026-01-01T09:00:00.000Z', updated_at: '2026-01-01T09:00:00.000Z',
+    ...over,
+  };
+}
+
+/** A stored Inbox item: the variable Energy bill of 3 Nov asking for its amount (REC-3), unless told otherwise. */
+export function storedInboxItem(over: Partial<InboxItemRow> = {}): InboxItemRow {
+  const payload: Json = { description: 'Energy', estimate_pence: 9000, date: '2026-11-03', category_id: categoryId('Utilities') };
+  return {
+    id: '00000000-0000-4000-8000-00000000b0c1', household_id: HID, source: 'bill', status: 'open', payload, receipt_path: null,
+    recurring_id: '00000000-0000-4000-8000-00000000d0e1', occurrence_date: '2026-11-03', external_id: null, expense_id: null,
+    created_by: null, created_at: '2026-11-03T00:05:00.000Z', updated_at: '2026-11-03T00:05:00.000Z',
+    ...over,
+  };
+}
+
 export function couple(
   opts: {
     as?: 'jae' | 'sam'; partnerJoined?: boolean; expenses?: ExpenseRow[]; changeRequests?: ChangeRequestRow[];
     settlements?: SettlementRow[]; activity?: ActivityRow[];
+    /** S3: regular payments and Inbox items on the "server". */
+    recurring?: RecurringRow[]; inboxItems?: InboxItemRow[];
+    /** The household's approved default split (PPL-5), e.g. { [JAE_ID]: 60, [SAM_ID]: 40 }. */
+    defaultRatio?: Record<string, number> | null;
+    /** The phone's storage and network, to restart the app over the same storage or start offline. */
+    storage?: AsyncStorage; online?: boolean;
   } = {},
 ): Couple {
   const stamp = '2026-11-01T12:00:00.000Z';
   const household: HouseholdRow = {
-    id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: null, joint_enabled: false, joint_ratio: null, created_at: stamp,
+    id: HID, join_code: 'AB12CD', home_country: 'GB', default_ratio: opts.defaultRatio ?? null, joint_enabled: false, joint_ratio: null, created_at: stamp,
   };
   const members: MemberRow[] = [
     { household_id: HID, user_id: JAE_ID, display_name: 'Jae', animal: 'cat', locked_at: stamp, monzo_me: 'jaetest', joined_at: stamp },
@@ -73,14 +116,14 @@ export function couple(
     id: categoryId(name), household_id: HID, name, emoji, colour, default_ratio: null, archived: false, sort: i + 1, updated_at: stamp,
   }));
   const me = opts.as === 'sam' ? SAM_ID : JAE_ID;
-  const { api, controls } = createMemoryApi(
-    {
-      households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
-      settlements: opts.settlements ?? [], activity: opts.activity ?? [],
-    },
-    { user: { userId: me, email: null } },
-  );
-  const network = manualNetwork(true);
-  const layer = createDataLayer({ api, storage: memoryStorage(), network, session: fixedSession(me), today: () => TODAY });
+  // `recurring`, `inboxItems` and the `today` option are S3's additions to the in-memory Api (docs/slices/S3.md).
+  const seed = {
+    households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
+    settlements: opts.settlements ?? [], activity: opts.activity ?? [], recurring: opts.recurring ?? [], inboxItems: opts.inboxItems ?? [],
+  } as Partial<MemoryTables>;
+  const apiOpts = { user: { userId: me, email: null }, today: () => TODAY } as Parameters<typeof createMemoryApi>[1];
+  const { api, controls } = createMemoryApi(seed, apiOpts);
+  const network = manualNetwork(opts.online ?? true);
+  const layer = createDataLayer({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => TODAY });
   return { layer, controls, network };
 }

@@ -22,6 +22,7 @@ import { usePeople } from '../shared/people';
 import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
+import { InboxButton, SuggestRecurring } from './BillsBanners';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
@@ -42,8 +43,10 @@ export function Home() {
       <ApprovalBanners />
       <MonzoBanner />
       <Problems />
+      <InboxButton />
       <BalanceRegion />
       <QuickAdd />
+      <SuggestRecurring />
       <RecentRows />
     </div>
   );

@@ -4,12 +4,14 @@
  * the RPCs' own checks), and `controls` lets a test go offline, refuse a call, or play the partner.
  * It holds no data of its own: the demo's seed is passed in, so none of it reaches the production bundle.
  */
+import { todayIn, type IsoDate } from '../core/dates';
 import { pence, type Pence } from '../core/money';
+import { occurrence } from '../core/recurring';
 import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
-  type ExpenseWrite, type HouseholdRow, type MemberRow, type SettlementRow, type SettlementWrite, type WatchedTable,
+  type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
 } from './api';
 import type { Json } from './database.types';
 
@@ -22,6 +24,9 @@ export interface MemoryTables {
   changeRequests: ChangeRequestRow[];
   activity: ActivityRow[];
   categoryMemory: CategoryMemoryRow[];
+  /** S3: regular payments and the Inbox. */
+  recurring: RecurringRow[];
+  inboxItems: InboxItemRow[];
   minClientVersion: string | null;
 }
 
@@ -57,6 +62,9 @@ const DEFAULT_CATEGORIES: readonly [string, string, string][] = [
   ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '•', 'stone'],
 ];
 
+/** The palette names a category may use (migration 6, DESIGN §3.1). */
+const PALETTE: readonly string[] = ['moss', 'amber', 'walnut', 'honey', 'slate', 'plum', 'oak', 'berry', 'lake', 'clay', 'fern', 'stone'];
+
 /** What the database says for each refusal (supabase/schema.sql check_money and the amount checks). */
 const SERVER_WORDS: Record<EntryIssue, string> = {
   amount: 'new row violates check constraint "expenses_amount_pence_check"',
@@ -83,7 +91,7 @@ function toPenceMap(j: Json): PenceMap {
 
 export function createMemoryApi(
   seed: Partial<MemoryTables> = {},
-  opts: { user?: AuthUser | null; latencyMs?: number; now?: () => Date } = {},
+  opts: { user?: AuthUser | null; latencyMs?: number; now?: () => Date; today?: () => IsoDate } = {},
 ): { api: Api; controls: MemoryControls } {
   const now = opts.now ?? (() => new Date());
   const tables: MemoryTables = {
@@ -95,8 +103,12 @@ export function createMemoryApi(
     changeRequests: clone(seed.changeRequests ?? []),
     activity: clone(seed.activity ?? []),
     categoryMemory: clone(seed.categoryMemory ?? []),
+    recurring: clone(seed.recurring ?? []),
+    inboxItems: clone(seed.inboxItems ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
+  /** The server's UK date (DAT-2: post_due_recurring posts by London's date). */
+  const today = opts.today ?? (() => todayIn(now(), 'Europe/London'));
   let user: AuthUser | null = opts.user ?? null;
   const watchers = new Set<{ householdId: string; onChange: (t: WatchedTable) => void; onStatus: (s: ChannelStatus) => void }>();
   const inflight = new Set<Promise<unknown>>();
@@ -154,6 +166,26 @@ export function createMemoryApi(
 
   function log(entity: string, id: string, action: string, summary: Json, householdId: string) {
     tables.activity.push({ id: activityId++, household_id: householdId, actor: user?.userId ?? null, entity, entity_id: id, action, summary: summary ?? {}, at: now().toISOString() });
+  }
+
+  /**
+   * What the recurring_guard trigger does (migration 8): a new rhythm or start on a template that has posted
+   * applies from its next occurrence (posted days never move); a resumed template skips what fell due while it
+   * was paused.
+   */
+  function guardRecurring(old: RecurringRow, next: RecurringRow): RecurringRow {
+    const out = { ...next };
+    const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: null });
+    if (old.posted_count > 0 && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
+      const nxt = occurrence(sched(old), old.posted_count);
+      out.start_date = out.start_date > nxt ? out.start_date : nxt;
+      out.posted_count = 0;
+    }
+    if (!old.active && out.active) {
+      const t = today();
+      for (let n = 0; n < 10000 && occurrence(sched(out), out.posted_count) < t; n += 1) out.posted_count += 1;
+    }
+    return out;
   }
 
   /** What changed, as the database's log_activity trigger records it: { field: { before, after } }. */
@@ -215,6 +247,48 @@ export function createMemoryApi(
     return next;
   }
 
+  /** What post_due_recurring() does (migration 6): each due occurrence once, at home, by the UK date. */
+  function postDue(): number {
+    const hid = myHousehold();
+    if (!hid) return 0;
+    const home = tables.households.find((h) => h.id === hid)?.home_country ?? 'GB';
+    const uk = today();
+    let posted = 0;
+    for (const r of tables.recurring) {
+      if (r.household_id !== hid || !r.active) continue;
+      const schedule = { frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: r.end_date };
+      for (;;) {
+        const d = occurrence(schedule, r.posted_count);
+        if (d > uk || (r.end_date !== null && d > r.end_date)) break;
+        const stamp = now().toISOString();
+        if (r.amount_varies) {
+          if (!tables.inboxItems.some((x) => x.recurring_id === r.id && x.occurrence_date === d)) {
+            tables.inboxItems.push({
+              id: crypto.randomUUID(), household_id: hid, source: 'bill', status: 'open', receipt_path: null, recurring_id: r.id,
+              occurrence_date: d, external_id: null, expense_id: null, created_by: null, created_at: stamp, updated_at: stamp,
+              payload: { description: r.description, estimate_pence: r.amount_pence, date: d, category_id: r.category_id },
+            });
+          }
+        } else if (!tables.expenses.some((e) => e.recurring_id === r.id && e.occurrence_date === d)) {
+          const id = crypto.randomUUID();
+          tables.expenses.push({
+            id, household_id: hid, kind: 'expense', description: r.description, amount_pence: r.amount_pence, date: d,
+            category_id: r.category_id, chapter_id: null, paid: r.paid, paid_via: r.paid_via, split_mode: r.split_mode,
+            split_params: r.split_params, shares: r.shares, notes: r.notes, tags: [], country: home, refund_of: null, source: 'recurring',
+            items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
+            fx_rate: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
+            recurring_id: r.id, occurrence_date: d, created_by: r.created_by, created_at: stamp, updated_by: r.created_by,
+            updated_at: stamp, deleted_at: null,
+          });
+          log('expense', id, 'created', { after: { description: r.description, amount_pence: r.amount_pence } }, hid);
+        }
+        r.posted_count += 1;
+        posted += 1;
+      }
+    }
+    return posted;
+  }
+
   const api: Api = {
     auth: {
       sendCode: (email) => call('auth.sendCode', email, () => undefined),
@@ -254,9 +328,14 @@ export function createMemoryApi(
         writeRow(tables.expenses, row, 'expense', (w) => ({
           items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
           fx_rate: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
-          recurring_id: null, occurrence_date: null, created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
+          created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
-        }), checkMoney)),
+        }), (r) => {
+          checkMoney(r);
+          if (r.recurring_id !== null && tables.expenses.some((e) => e.id !== r.id && e.recurring_id === r.recurring_id && e.occurrence_date === r.occurrence_date)) {
+            refuse('duplicate key value violates unique constraint "expenses_occurrence"', '23505');
+          }
+        })),
     patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => patchRow(tables.expenses, id, patch, 'expense')),
     upsertSettlement: (row: SettlementWrite) =>
       call('upsertSettlement', row, () =>
@@ -343,7 +422,58 @@ export function createMemoryApi(
         }
         Object.assign(cr, { status: approve ? 'approved' : 'declined', decided_by: me().userId, decided_at: stamp });
       }),
-    postDueRecurring: () => call('postDueRecurring', null, () => 0),
+    postDueRecurring: () => call('postDueRecurring', null, () => postDue()),
+    recurring: (hid) => call('recurring', hid, () => mine(tables.recurring).sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0))),
+    inboxItems: (hid) => call('inboxItems', hid, () => mine(tables.inboxItems).sort((a, b) => (a.created_at < b.created_at ? -1 : 1))),
+    upsertRecurring: (row, columns) =>
+      call('upsertRecurring', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        const i = tables.recurring.findIndex((r) => r.id === row.id);
+        const existing = i === -1 ? undefined : tables.recurring[i];
+        if (existing && existing.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        const stamp = now().toISOString();
+        // The phone never sends posted_count: the server keeps counting where it was (REC-6).
+        // A narrowed write (pause, resume, end, an edit) changes only its columns, as the Supabase update does.
+        const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<RecurringRow> : row;
+        let next: RecurringRow = existing
+          ? { ...existing, ...sent, updated_at: stamp }
+          : { posted_count: 0, created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
+        if (existing) next = guardRecurring(existing, next);
+        if (next.amount_pence <= 0 || next.every < 1 || (next.end_date !== null && next.end_date < next.start_date)) {
+          refuse('new row violates check constraint "recurring_check"', '23514');
+        }
+        checkMoney(next as unknown as ExpenseRow);
+        if (existing) tables.recurring[i] = next;
+        else tables.recurring.push(next);
+        log('recurring', next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
+        return next;
+      }),
+    patchInboxItem: (id, patch) =>
+      call('patchInboxItem', { id, patch }, () => {
+        const i = tables.inboxItems.findIndex((r) => r.id === id && r.household_id === myHousehold());
+        const existing = tables.inboxItems[i];
+        if (!existing) return refuse('JSON object requested, multiple (or no) rows returned', 'PGRST116');
+        // inbox_items.expense_id references expenses: a Keep whose entry was refused can't mark the item kept.
+        if (patch.expense_id !== null && !tables.expenses.some((e) => e.id === patch.expense_id)) {
+          return refuse('insert or update on table "inbox_items" violates foreign key constraint "inbox_items_expense_id_fkey"', '23503');
+        }
+        const next: InboxItemRow = { ...existing, ...patch, updated_at: now().toISOString() };
+        tables.inboxItems[i] = next;
+        log('inbox_item', id, 'edited', diff(existing, next), next.household_id);
+        return next;
+      }),
+    upsertCategory: (row) =>
+      call('upsertCategory', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        if (!PALETTE.includes(row.colour)) refuse('new row violates check constraint "categories_colour_palette"', '23514');
+        const i = tables.categories.findIndex((r) => r.id === row.id);
+        const existing = i === -1 ? undefined : tables.categories[i];
+        const next: CategoryRow = { ...(existing ?? {}), ...row, updated_at: now().toISOString() };
+        if (existing) tables.categories[i] = next;
+        else tables.categories.push(next);
+        log('category', next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
+        return next;
+      }),
     watchHousehold(householdId, onChange, onStatus) {
       const w = { householdId, onChange, onStatus };
       watchers.add(w);
