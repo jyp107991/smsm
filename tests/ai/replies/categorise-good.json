@@ -1,0 +1,8 @@
+{
+  "response": "```json\n{\n  \"category\": \"Household\"\n}\n```",
+  "usage": {
+    "prompt_tokens": 180,
+    "completion_tokens": 12,
+    "total_tokens": 192
+  }
+}
