@@ -4,10 +4,11 @@
  * The reference sRGB values (trailing comments) are the owner's "Forest Green and Walnut" palette and its
  * derived steps; they live in src/ui/tokens.ts, and each OKLCH value here converts back to them within
  * ±1 per sRGB channel.
+ * Tokens are re-declared on any element with data-scheme="light" | "dark", so a subtree can show the
+ * other theme (the gallery shows both side by side).
  */
-:root {
-  color-scheme: light dark;
-
+:root,
+[data-scheme] {
   --paper: light-dark(oklch(95.06% 0.0147 115.04), oklch(24.40% 0.0165 133.76)); /* #eef0e5, #1d221a */
   --surface: light-dark(oklch(98.37% 0.0066 106.52), oklch(28.78% 0.0197 132.89)); /* #fafaf5, #272d23 */
   --sunk: light-dark(oklch(87.80% 0.0245 114.58), oklch(21.13% 0.0131 135.15)); /* #d6d9c7, #161a14 */
@@ -46,5 +47,8 @@
    */
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncG type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncB type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncA type='linear' slope='0' intercept='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.03'/%3E%3C/svg%3E");
 }
+:root { color-scheme: light dark; }
+[data-scheme='light'] { color-scheme: light; }
+[data-scheme='dark'] { color-scheme: dark; }
 :root[data-theme='light'] { color-scheme: light; }
 :root[data-theme='dark'] { color-scheme: dark; }
