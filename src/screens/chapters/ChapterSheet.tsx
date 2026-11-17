@@ -37,7 +37,10 @@ function ChapterForm({ editing, open, onClose }: { editing: Exclude<ChapterEditi
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
   const formId = useId();
-  const dirty = JSON.stringify(f) !== JSON.stringify(start);
+  // As the Add sheet (Q-U11): editing asks before losing any change; a new chapter only for typed text (a tapped
+  // choice is one tap to redo).
+  const asked = (x: Form) => JSON.stringify(row ? x : [x.name, x.emoji]);
+  const dirty = asked(f) !== asked(start);
   const set = (next: Partial<Form>) => { setF({ ...f, ...next }); setError(null); };
 
   const save = (e?: { preventDefault: () => void }) => {
