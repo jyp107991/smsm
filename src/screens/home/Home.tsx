@@ -24,6 +24,7 @@ import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
 import { InboxButton, SuggestRecurring } from './BillsBanners';
 import { CurrentChapterChip } from './CurrentChapter';
+import { TripBanner } from '../places/TripBanner';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
@@ -45,6 +46,7 @@ export function Home() {
       <MonzoBanner />
       <Problems />
       <InboxButton />
+      <TripBanner />
       <BalanceRegion />
       <CurrentChapterChip />
       <QuickAdd />
