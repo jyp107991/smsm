@@ -1,0 +1,172 @@
+{
+  "about": "Golden vectors for src/core/balance.ts. net(P) = Σ expenses (paid[P] − shares[P]) − Σ money_back (paid[P] − shares[P]) + Σ settle-ups P paid − Σ settle-ups P received, over live rows. Positive = owed. A key missing from paid or shares counts as 0.",
+  "members": ["jae", "sam"],
+  "workedExample": {
+    "about": "DATA_MODEL §3 worked example, one row at a time (the same rows as tests/sql/schema_test.sql).",
+    "steps": [
+      {
+        "say": "Jae pays Tesco £44.00 at 50/50 (+2200)",
+        "entry": { "kind": "expense", "paid": { "jae": 4400 }, "shares": { "jae": 2200, "sam": 2200 }, "deleted": false },
+        "expected": { "jae": 2200, "sam": -2200 },
+        "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2200 }
+      },
+      {
+        "say": "Jae pays Sam's haircut £30.00, paid for Sam (+3000)",
+        "entry": { "kind": "expense", "paid": { "jae": 3000 }, "shares": { "jae": 0, "sam": 3000 }, "deleted": false },
+        "expected": { "jae": 5200, "sam": -5200 },
+        "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 5200 }
+      },
+      {
+        "say": "Sam treats dinner £60.00 (0)",
+        "entry": { "kind": "expense", "paid": { "sam": 6000 }, "shares": { "sam": 6000 }, "deleted": false },
+        "expected": { "jae": 5200, "sam": -5200 },
+        "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 5200 }
+      },
+      {
+        "say": "A £100 sofa from the joint account, split 70/30: Jae paid 5000 and owes 7000 (−2000)",
+        "entry": { "kind": "expense", "paid": { "jae": 5000, "sam": 5000 }, "shares": { "jae": 7000, "sam": 3000 }, "deleted": false },
+        "expected": { "jae": 3200, "sam": -3200 },
+        "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 3200 }
+      },
+      {
+        "say": "Jae receives a £20 refund that belongs to both: −(2000 − 1000)",
+        "entry": { "kind": "money_back", "paid": { "jae": 2000 }, "shares": { "jae": 1000, "sam": 1000 }, "deleted": false },
+        "expected": { "jae": 2200, "sam": -2200 },
+        "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2200 }
+      },
+      {
+        "say": "Sam pays Jae £22.00: all square",
+        "settlement": { "from": "sam", "to": "jae", "amount": 2200, "deleted": false },
+        "expected": { "jae": 0, "sam": 0 },
+        "state": { "kind": "square" }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "nothing recorded: all square, both people present",
+      "entries": [],
+      "settlements": [],
+      "expected": { "jae": 0, "sam": 0 },
+      "state": { "kind": "square" },
+      "nextOneOn": null
+    },
+    {
+      "name": "spec rounding example: Sam owes £21.25",
+      "entries": [{ "kind": "expense", "paid": { "jae": 4251, "sam": 0 }, "shares": { "jae": 2126, "sam": 2125 }, "deleted": false }],
+      "settlements": [],
+      "expected": { "jae": 2125, "sam": -2125 },
+      "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2125 },
+      "nextOneOn": "sam"
+    },
+    {
+      "name": "a deleted expense is ignored",
+      "entries": [
+        { "kind": "expense", "paid": { "jae": 4400 }, "shares": { "jae": 2200, "sam": 2200 }, "deleted": false },
+        { "kind": "expense", "paid": { "sam": 9000 }, "shares": { "jae": 4500, "sam": 4500 }, "deleted": true }
+      ],
+      "settlements": [],
+      "expected": { "jae": 2200, "sam": -2200 },
+      "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2200 },
+      "nextOneOn": "sam"
+    },
+    {
+      "name": "a deleted settlement is ignored",
+      "entries": [{ "kind": "expense", "paid": { "jae": 4400 }, "shares": { "jae": 2200, "sam": 2200 }, "deleted": false }],
+      "settlements": [{ "from": "sam", "to": "jae", "amount": 2200, "deleted": true }],
+      "expected": { "jae": 2200, "sam": -2200 },
+      "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 2200 },
+      "nextOneOn": "sam"
+    },
+    {
+      "name": "a deleted money-back row is ignored",
+      "entries": [
+        { "kind": "expense", "paid": { "sam": 3000 }, "shares": { "jae": 1500, "sam": 1500 }, "deleted": false },
+        { "kind": "money_back", "paid": { "sam": 3000 }, "shares": { "jae": 1500, "sam": 1500 }, "deleted": true }
+      ],
+      "settlements": [],
+      "expected": { "jae": -1500, "sam": 1500 },
+      "state": { "kind": "owes", "debtor": "jae", "creditor": "sam", "amount": 1500 },
+      "nextOneOn": "jae"
+    },
+    {
+      "name": "a settle-up alone: Jae pays Sam £10, so Sam owes Jae £10",
+      "entries": [],
+      "settlements": [{ "from": "jae", "to": "sam", "amount": 1000, "deleted": false }],
+      "expected": { "jae": 1000, "sam": -1000 },
+      "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 1000 },
+      "nextOneOn": "sam"
+    },
+    {
+      "name": "overpaying flips the direction",
+      "entries": [{ "kind": "expense", "paid": { "jae": 2000 }, "shares": { "jae": 1000, "sam": 1000 }, "deleted": false }],
+      "settlements": [{ "from": "sam", "to": "jae", "amount": 1500, "deleted": false }],
+      "expected": { "jae": -500, "sam": 500 },
+      "state": { "kind": "owes", "debtor": "jae", "creditor": "sam", "amount": 500 },
+      "nextOneOn": null
+    },
+    {
+      "name": "money back alone: Sam received a £30 refund that is all Jae's",
+      "entries": [{ "kind": "money_back", "paid": { "sam": 3000 }, "shares": { "jae": 3000 }, "deleted": false }],
+      "settlements": [],
+      "expected": { "jae": 3000, "sam": -3000 },
+      "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 3000 },
+      "nextOneOn": "sam"
+    },
+    {
+      "name": "a full refund cancels its expense",
+      "entries": [
+        { "kind": "expense", "paid": { "jae": 7999 }, "shares": { "jae": 4000, "sam": 3999 }, "deleted": false },
+        { "kind": "money_back", "paid": { "jae": 7999 }, "shares": { "jae": 4000, "sam": 3999 }, "deleted": false }
+      ],
+      "settlements": [],
+      "expected": { "jae": 0, "sam": 0 },
+      "state": { "kind": "square" },
+      "nextOneOn": null
+    },
+    {
+      "name": "a partial refund received by the other person",
+      "entries": [
+        { "kind": "expense", "paid": { "jae": 10000 }, "shares": { "jae": 5000, "sam": 5000 }, "deleted": false },
+        { "kind": "money_back", "paid": { "sam": 4000 }, "shares": { "jae": 2000, "sam": 2000 }, "deleted": false }
+      ],
+      "settlements": [],
+      "expected": { "jae": 7000, "sam": -7000 },
+      "state": { "kind": "owes", "debtor": "sam", "creditor": "jae", "amount": 7000 },
+      "nextOneOn": "sam"
+    },
+    {
+      "name": "BAL-4 threshold: £9.99 owed shows no turn line",
+      "entries": [{ "kind": "expense", "paid": { "sam": 999 }, "shares": { "jae": 999, "sam": 0 }, "deleted": false }],
+      "settlements": [],
+      "expected": { "jae": -999, "sam": 999 },
+      "state": { "kind": "owes", "debtor": "jae", "creditor": "sam", "amount": 999 },
+      "nextOneOn": null
+    },
+    {
+      "name": "BAL-4 threshold: exactly £10.00 owed makes it the debtor's turn",
+      "entries": [{ "kind": "expense", "paid": { "sam": 2000 }, "shares": { "jae": 1000, "sam": 1000 }, "deleted": false }],
+      "settlements": [],
+      "expected": { "jae": -1000, "sam": 1000 },
+      "state": { "kind": "owes", "debtor": "jae", "creditor": "sam", "amount": 1000 },
+      "nextOneOn": "jae"
+    },
+    {
+      "name": "many small rows, with treats and a for-other",
+      "entries": [
+        { "kind": "expense", "paid": { "jae": 4251, "sam": 0 }, "shares": { "jae": 2126, "sam": 2125 }, "deleted": false },
+        { "kind": "expense", "paid": { "sam": 1001 }, "shares": { "jae": 330, "sam": 671 }, "deleted": false },
+        { "kind": "expense", "paid": { "sam": 2500 }, "shares": { "jae": 2500, "sam": 0 }, "deleted": false },
+        { "kind": "expense", "paid": { "jae": 1200 }, "shares": { "jae": 1200 }, "deleted": false },
+        { "kind": "money_back", "paid": { "jae": 500 }, "shares": { "jae": 250, "sam": 250 }, "deleted": false }
+      ],
+      "settlements": [
+        { "from": "jae", "to": "sam", "amount": 300, "deleted": false },
+        { "from": "sam", "to": "jae", "amount": 99999, "deleted": true }
+      ],
+      "expected": { "jae": -655, "sam": 655 },
+      "state": { "kind": "owes", "debtor": "jae", "creditor": "sam", "amount": 655 },
+      "nextOneOn": null
+    }
+  ]
+}
