@@ -60,15 +60,7 @@
   :focus-visible {
     outline: 2px solid var(--forest);
     outline-offset: 2px;
-  }
-  /* No browser-drawn controls (S2 polish Q-L13): a search clears with the app's own button. */
-  input[type='search']::-webkit-search-cancel-button,
-  input[type='search']::-webkit-search-decoration {
-    -webkit-appearance: none;
-    appearance: none;
-    display: none;
-  }
-}
+  }}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

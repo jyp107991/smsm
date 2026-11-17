@@ -594,7 +594,8 @@ test.describe('Q-L8: plank staging', () => {
   test('the fulcrum has the rig outline with rounded joins, a quiet ground under it, the plank inset to ~86 %', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await home(page);
-    const plank = balance(page).getByRole('img', { name: /plank/i });
+    // Q-L15: the plank's name now says who is owed ("Jae, the dog, is owed; Sam, the cat, owes"; was "The plank tilts: …").
+    const plank = balance(page).getByRole('img', { name: /plank|is owed/i });
     // The plank's parts are named like the animals' (data-part): fulcrum, ground.
     const fulcrum = plank.locator('[data-part="fulcrum"]');
     await expect(fulcrum).toHaveCount(1);
@@ -725,6 +726,10 @@ test.describe('Q-L11: leading text buttons, the "Other" category, the gallery', 
     const hasDot = (await Promise.all(dotColours.map((c) => rgba(page, c)))).some((c) => sameColour(c, stone));
     expect(hasDot, 'the row shows the stone colour dot').toBe(true);
 
+    // S2 polish wave 2: Home's "Recent" (day headings, the reading's two lines) puts the new row within 48 px of
+    // where Save was, and a second tap there within 0.5 s of a sheet closing is ignored on purpose (Q-F1). A
+    // person's next tap comes later than that.
+    await page.waitForTimeout(600);
     await row.click();
     await expect(page.getByRole('heading', { name: 'Odd thing' })).toBeVisible();
     expect(await page.getByRole('main').innerText(), 'the entry page shows "•"').not.toContain('•');

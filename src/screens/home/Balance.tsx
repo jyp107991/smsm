@@ -243,7 +243,7 @@ export function BalanceRegion() {
           </p>
           {/* The turn line and Settle up keep their place when hidden, so nothing below jumps (DESIGN §6). */}
           <p className="text-note text-ink-2 m-0 min-h-[1.6rem]">{shown.turn}</p>
-          <div className="mt-2 flex min-h-11 items-center">
+          <div className="mt-2 flex min-h-[max(2.75rem,calc(var(--size-body)*var(--leading-body)+1.25rem))] items-center">
             {shown.owes ? (
               <Button
                 ref={settleRef}

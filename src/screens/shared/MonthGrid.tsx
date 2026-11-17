@@ -35,13 +35,22 @@ export function MonthGrid({ today, focus, mark, onPick, autoFocus = false }: Mon
   const [focused, setFocused] = useState(() => clamp(focus, today));
   const [month, setMonth] = useState(() => startOfMonth(clamp(focus, today)));
   /** Focus follows the keyboard's day once it is drawn (it may be in the next month). */
-  const moved = useRef(autoFocus);
+  const moved = useRef(false);
   const grid = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!moved.current) return;
     moved.current = false;
     grid.current?.querySelector<HTMLButtonElement>(`[data-day="${focused}"]`)?.focus();
   }, [focused, month]);
+  // In a sheet that has just opened, the starting day takes focus once the sheet holds focus (a frame later,
+  // after its focus trap has taken over from the sheet under it).
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => {
+      grid.current?.querySelector<HTMLButtonElement>('button[tabindex="0"]')?.focus({ preventScroll: true });
+    });
+    return () => { cancelAnimationFrame(frame); };
+  }, [autoFocus]);
 
   const [year, monthNumber] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
   const thisMonth = startOfMonth(today);

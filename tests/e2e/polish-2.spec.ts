@@ -548,7 +548,9 @@ test.describe('wave 2 surfaces fit at 320 px and are axe clean', () => {
       await expect(picker).toBeHidden();
       await expect(sheet).toBeVisible();
       await page.keyboard.press('Escape');
-      await page.getByRole('button', { name: 'Discard' }).click().catch(() => undefined);
+      // Only if asked: a new entry with nothing typed closes without asking (owner, 17 Nov). Without a timeout of its
+      // own, Playwright's click waits for a Discard that never comes until the test times out (build fix, wave 2).
+      await page.getByRole('button', { name: 'Discard' }).click({ timeout: 2_000 }).catch(() => undefined);
       await expect(sheet).toBeHidden();
       await balance(page).getByRole('button', { name: 'Settle up' }).click();
       const settle = page.getByRole('dialog', { name: 'Settle up' });

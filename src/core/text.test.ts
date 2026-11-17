@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { normaliseKey, matches } from './text';
+import { normaliseKey, matches, tidyDescription } from './text';
 
 const EMART = '이마트';
 const EMART_NFD = EMART.normalize('NFD'); // the same word as separate jamo, as some keyboards produce it
@@ -108,6 +108,46 @@ describe('matches', () => {
         expect(matches(text, part.toUpperCase())).toBe(true);
         expect(matches(text, toFullWidth(part))).toBe(true);
         expect(matches(toFullWidth(text), part.normalize('NFD'))).toBe(true);
+      }),
+    );
+  });
+});
+
+describe('tidyDescription (S2 polish Q-U6)', () => {
+  const spellings = new Map([['ikea', 'IKEA'], ['easyjet', 'easyJet'], ['tk maxx', 'TK Maxx'], ['tfl', 'TfL']]);
+  const cases: [string, string][] = [
+    ['tesco', 'Tesco'],
+    ['bread', 'Bread'],
+    ['ikea', 'IKEA'],
+    ['Ikea', 'IKEA'],
+    ['ikea lamp', 'IKEA lamp'],
+    ['lamp from ikea', 'Lamp from IKEA'],
+    ['easyjet', 'easyJet'],
+    ['easyjet to lisbon', 'easyJet to lisbon'],
+    ['tk maxx towels', 'TK Maxx towels'],
+    ['tfl top-up', 'TfL top-up'],
+    ['ikeas', 'Ikeas'], // not the whole word
+    ['mikea', 'Mikea'],
+    ['Tesco Express', 'Tesco Express'],
+    ['이마트', '이마트'],
+    ['ラーメン', 'ラーメン'],
+    ['élan', 'Élan'],
+    ['ßtraße', 'ßtraße'], // capitalising would change its length
+    ['42 things', '42 things'],
+    ['#weekly', '#weekly'],
+    ['', ''],
+  ];
+  it.each(cases)('Q-U6 TXT-1 %j → %j', (typed, tidy) => {
+    expect(tidyDescription(typed, spellings)).toBe(tidy);
+  });
+
+  it('Q-U6 TXT-1 only ever changes the case of letters, never the words', () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 30 }), (s) => {
+        const out = tidyDescription(s, spellings);
+        expect(out.toLowerCase()).toBe(s.toLowerCase().length === s.length ? s.toLowerCase() : out.toLowerCase());
+        expect(out.length).toBe(s.length);
+        expect(tidyDescription(out, spellings)).toBe(out);
       }),
     );
   });

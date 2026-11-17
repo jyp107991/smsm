@@ -139,7 +139,10 @@ export function Activity() {
       <div className="bg-sunk focus-within:outline-forest flex min-h-12 items-center rounded-[12px] pr-0.5 pl-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-solid">
         <input
           ref={searchRef}
-          type="search"
+          // Q-L13: a text box in the search role, so no browser draws its own clear button over the app's.
+          type="text"
+          role="searchbox"
+          inputMode="search"
           aria-label={strings.activity.search}
           placeholder={strings.activity.searchPlaceholder}
           value={text}

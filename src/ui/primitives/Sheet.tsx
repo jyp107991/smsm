@@ -43,6 +43,13 @@ export interface SheetProps {
  * shrinks when the keyboard opens and the footer stays visible above it. vaul's own input repositioning
  * is turned off so the two don't fight.
  */
+/**
+ * The sheets that are open, innermost last. A sheet sliding away is still the top layer for Radix until it has
+ * gone, so it hands an Escape on to the open sheet under it (a quick second Escape after closing the date grid
+ * closes the Add sheet, as it would with no animation).
+ */
+const openSheets: { escape: () => void }[] = [];
+
 export function Sheet({ open, onOpenChange, title, description, dirty = false, full = false, footer, children }: SheetProps) {
   const id = useId();
   const [confirming, setConfirming] = useState(false);
@@ -80,10 +87,27 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
   };
 
   // What the history coordinator calls back with reads the latest props (it outlives renders).
-  const latest = useRef({ dirty, confirming, onOpenChange });
+  const latest = useRef({ dirty, confirming, onOpenChange, askOrClose });
   useEffect(() => {
-    latest.current = { dirty, confirming, onOpenChange };
+    latest.current = { dirty, confirming, onOpenChange, askOrClose };
   });
+
+  // Escape handed on from a sheet closing over this one: as Escape would do here.
+  useEffect(() => {
+    if (!open) return;
+    const entry = {
+      escape: () => {
+        const l = latest.current;
+        if (l.confirming) setConfirming(false);
+        else l.askOrClose();
+      },
+    };
+    openSheets.push(entry);
+    return () => {
+      const at = openSheets.indexOf(entry);
+      if (at !== -1) openSheets.splice(at, 1);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -137,7 +161,10 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
           aria-hidden={open ? undefined : true}
           inert={!open}
           onEscapeKeyDown={(event) => {
-            if (confirming) {
+            if (!open) {
+              event.preventDefault();
+              openSheets[openSheets.length - 1]?.escape();
+            } else if (confirming) {
               event.preventDefault();
               setConfirming(false);
             } else if (dirty) {
