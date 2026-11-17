@@ -20,7 +20,7 @@
 - [ ] S0: on the gallery, choose the logo variant and the type option; confirm the palette, including the fifth colour (read as `#D6D9C7`, partly hidden in the screenshot).
 - [ ] S2: both install; both save a monzo.me name in Settings.
 - [ ] S6: Gemini key; ten receipt photos for the eval.
-- [ ] S7: Splitwise export (if you want your history) and a Monzo CSV.
+- [ ] S7: a Monzo CSV.
 
 ## Known risks
 - **Keep-alive stops if the repo goes quiet.** GitHub disables scheduled workflows in public repos after 60 days without activity; Supabase would then pause 7 days later. S2 adds a second keep-alive that doesn't depend on GitHub (a Cloudflare Cron Trigger calling `health()`).
@@ -39,7 +39,7 @@ Each line: ids, then where and why. `npm run trace` reads this list; remove an i
 - CHP-1, CHP-2, CHP-3, CHP-4, CHP-5, CHP-6, PLC-1, PLC-2, PLC-3, PLC-4, PLC-5, PLC-6, PLC-7: S4, chapters and places.
 - INS-1, INS-2, INS-3, INS-4, INS-5, INS-6, INS-7, INS-8, SET-4, ACT-4: S5, insights, recap, settle day, comments.
 - ADD-8, ADD-9, SCAN-1, SCAN-2, SCAN-3, SCAN-4, SCAN-5, INS-9, TXT-5: S6, smart features, share target and shortcuts.
-- IMP-1, IMP-2, IMP-3, EXP-1, EXP-3: S7, import and export (the JSON backup download part of EXP-1 is built and tested in S2).
+- IMP-1, IMP-3, EXP-1, EXP-3: S7, import and export (the JSON backup download part of EXP-1 is built and tested in S2).
 - NOT-1, NOT-2, NOT-3: S8, notifications.
 
 ## Ideas (not in scope until promoted)
