@@ -47,7 +47,8 @@ export function applyFilter<T extends FilterEntry>(rows: readonly T[], f: Filter
     if (f.to !== undefined && r.date > f.to) return false;
     if (f.tags && f.tags.length > 0) {
       const have = r.tags.map((t) => t.normalize('NFKC').toLowerCase());
-      if (!f.tags.every((t) => have.includes(t.normalize('NFKC').toLowerCase()))) return false;
+      // Within a filter, any chosen value matches (as with categories and countries).
+      if (!f.tags.some((t) => have.includes(t.normalize('NFKC').toLowerCase()))) return false;
     }
     if (f.kinds && f.kinds.length > 0 && !f.kinds.includes(r.kind)) return false;
     return true;
