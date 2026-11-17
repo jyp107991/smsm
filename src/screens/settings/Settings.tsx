@@ -116,7 +116,7 @@ export function Settings() {
         </Section>
       ) : null}
 
-      <Section title={strings.settings.backup}>
+      <Section title={strings.settings.backupTitle}>
         <p className="text-secondary text-ink-2 m-0">{strings.settings.backupLine}</p>
         <div>
           <Button variant="plain" onClick={() => { download(); toast.show({ message: strings.settings.backupDone }); }}>

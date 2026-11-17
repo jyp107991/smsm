@@ -311,6 +311,7 @@ export const strings = {
     shareInvite: 'Share invite',
     shareText: (code: string) => `Join our home ledger on smsm with the code ${code}.`,
     copied: 'Invite copied',
+    backupTitle: 'A copy of everything',
     backup: 'Download a backup',
     backupLine: 'Everything the two of you have entered, in one file.',
     backupDone: 'Backup downloaded',

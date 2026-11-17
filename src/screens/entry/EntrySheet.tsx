@@ -17,8 +17,6 @@ import { Button, Chip, Field, Segmented, Sheet, useToast } from '../../ui/primit
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
-import type { CategoryColourName } from '../../ui/tokens';
-import { CATEGORY_COLOUR_NAMES } from '../../ui/tokens';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
@@ -28,10 +26,6 @@ import {
   blankForm, draftOf, formFromRow, RATIO_PRESETS, refundForm, remainderWords, setPayerShare, sumWords, summaryWords,
   withSplit, yesterdayOf, type FormState, type SplitChoice,
 } from './form';
-
-export function colourOf(name: string): CategoryColourName {
-  return (CATEGORY_COLOUR_NAMES as readonly string[]).includes(name) ? (name as CategoryColourName) : 'stone';
-}
 
 export function EntrySheet({ request, onClose }: { request: EntryRequest | null; onClose: () => void }) {
   // A new key per request, so every opening starts from its own prefill; the last one stays while closing.
@@ -215,7 +209,6 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           {live.map((c) => (
             <Chip
               key={c.id}
-              colour={colourOf(c.colour)}
               selected={s.categoryId === c.id}
               suggested={guess.categoryId === c.id}
               onSelectedChange={() => {
