@@ -22,6 +22,7 @@ import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { usePeople } from '../shared/people';
 import { ratioWords, type Person } from '../shared/words';
 import { Bars, Columns } from './Charts';
+import { RecapLists } from './RecapLinks';
 import { toInsight, toSettle, toTemplate } from './model';
 
 type Choice = Exclude<PeriodChoice, 'chapter'> | `chapter:${string}`;
@@ -138,6 +139,8 @@ export function Insights() {
           <Lines label={strings.insights.byCountry} items={countries.map((c) => ({ key: c.country ?? '', name: countryName(c.country) ?? strings.insights.uncategorised, amount: c.total }))} />
         </Figure>
       ) : null}
+
+      <RecapLists />
 
       <NotesSection entries={entries} settlements={settlements} templates={templates} categories={categories} people={people.list} today={today} />
     </div>

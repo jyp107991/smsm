@@ -26,6 +26,7 @@ import { InboxButton, SuggestRecurring } from './BillsBanners';
 import { CurrentChapterChip } from './CurrentChapter';
 import { TripBanner } from '../places/TripBanner';
 import { ThisMonth } from '../insights/ThisMonth';
+import { RecapBanners } from '../insights/RecapLinks';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
@@ -48,6 +49,7 @@ export function Home() {
       <Problems />
       <InboxButton />
       <TripBanner />
+      <RecapBanners />
       <BalanceRegion />
       <ThisMonth />
       <CurrentChapterChip />
