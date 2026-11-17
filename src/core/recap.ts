@@ -62,7 +62,7 @@ export function recapOf(input: RecapInput, month: Month, to?: IsoDate): Recap {
   if (pick) moment = { id: pick.id, description: pick.description, amount: pick.amount, date: pick.date };
   return {
     month, total, usual: u, againstUsual: u === null ? null : pence(nearestTen(everyday - u)), bar,
-    notes: notes({ entries: input.entries, templates: input.templates, categories: input.categories }, last).slice(0, 3),
+    notes: notes({ entries: input.entries, templates: input.templates, categories: input.categories }, last, { finished: to === undefined }).slice(0, 3),
     paid: whoPaid(input.entries, period, input.people),
     moment,
   };

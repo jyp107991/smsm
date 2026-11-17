@@ -154,7 +154,12 @@ export function pace(entries: readonly InsightEntry[], today: IsoDate): Pace {
 const wholePounds = (p: number): string => `£${Math.round(p / 100).toLocaleString('en-GB')}`;
 
 /** INS-3: this month's notes (everyday only), each by its stated rule, by weight, largest first. */
-export function notes(input: { entries: readonly InsightEntry[]; templates: readonly NoteTemplate[]; categories: readonly { id: string; name: string }[] }, today: IsoDate): Note[] {
+export function notes(
+  input: { entries: readonly InsightEntry[]; templates: readonly NoteTemplate[]; categories: readonly { id: string; name: string }[] },
+  today: IsoDate,
+  /** A finished month (the recap): its figures are "£460", not "£460 so far". */
+  opts: { finished?: boolean } = {},
+): Note[] {
   const { entries, templates, categories } = input;
   const m = month(today);
   const thisMonth = periodOf('month', today);
@@ -171,7 +176,7 @@ export function notes(input: { entries: readonly InsightEntry[]; templates: read
       // The shown figures agree with each other: the excess is the difference of the rounded pounds.
       const nowP = Math.round(now / 100);
       const usualP = Math.round(u / 100);
-      out.push({ kind: 'category', text: `${c.name} is £${(nowP - usualP).toLocaleString('en-GB')} over its usual (${wholePounds(now)} so far, usually ${wholePounds(u)})`, weight: pence(now - u) });
+      out.push({ kind: 'category', text: `${c.name} is £${(nowP - usualP).toLocaleString('en-GB')} over its usual (${wholePounds(now)}${opts.finished ? '' : ' so far'}, usually ${wholePounds(u)})`, weight: pence(now - u) });
     }
   }
   // An entry at least 3× its category's median over the 6 full months before this one, with at least 5 of those.
