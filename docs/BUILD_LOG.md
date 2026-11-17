@@ -2,6 +2,13 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~13:45 UTC: sign-ups closed; 1b release blocked on one CI test; wave 2 building
+- **Sign-ups closed** (owner yes): `enable_signup = false`, auth-config diff run 44095092073 (1 update), push run 44095233212; the live service now answers a new email with 422 signup_disabled. The app's message for it ("This email isn’t one of the two…") ships with the next release. Reopen = set true + auth-config push with the owner's approval.
+- Both people have joined and are already adding real entries (owner's partner hit the hidden "Updated. Tap to refresh" prompt — fixed in 1b, Q-L1; workaround: fully close and reopen the app).
+- A test account exists for the smsm Gmail address (from the email test this morning): no household, can't see data. Owner told how to delete it (Supabase → Authentication → Users).
+- 1b: fresh-review blocker (toast over the tab bar after Save) + 8 more fixed (6dd1ed6); CI run 44092991657 then failed one demo e2e twice (polish1a.spec.ts:277, the banner's "Forget it" question comes back after reopening; passes locally). The 1b builder is diagnosing.
+- Wave 2: tests written (worktree branch 3a62900); builder running.
+
 ## 2026-11-17 ~13:00 UTC: wave 1b built and merged on the branch; owner reviewing screenshots
 - Quick add: cat/dog never decide who paid (owner) — live after the next merge.
 - Wave 1b (look) merged into the branch with 1a; 1149 unit tests, 68/68 demo e2e locally. Chosen-chip tint 28 % by night (14 % by day).
