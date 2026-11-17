@@ -2,8 +2,10 @@
  * Hearing the partner's changes (DATA_MODEL §6). One Supabase Realtime channel per household; a change to a
  * table refetches that table, so the partner's entry appears within seconds. When the channel comes back
  * after a drop (the phone slept, the connection changed), everything is refetched once, since changes made
- * meanwhile were not heard. Refetch on open, on reconnect and on return to the foreground is done by the
- * layer itself (queryClient.ts).
+ * meanwhile were not heard. The first time it comes up everything is refetched too: the channel can take
+ * seconds to start listening (Realtime's first connection, a slow network), and a change made between the
+ * open's load and that moment (the partner joining, say) would otherwise wait for the next refresh. Refetch
+ * on open, on reconnect and on return to the foreground is done by the layer itself (queryClient.ts).
  */
 import type { QueryClient } from '@tanstack/react-query';
 import type { Api, WatchedTable } from './api';
@@ -45,7 +47,6 @@ export function createRealtime(deps: { api: Api; client: QueryClient; userId: ()
       stop();
       if (!householdId) return;
       current = householdId;
-      let subscribedBefore = false;
       unsubscribe = deps.api.watchHousehold(
         householdId,
         (table) => {
@@ -56,9 +57,9 @@ export function createRealtime(deps: { api: Api; client: QueryClient; userId: ()
         (status) => {
           if (status !== 'subscribed') return;
           const uid = deps.userId();
-          // The first subscription follows a fresh load; a later one means changes may have been missed.
-          if (subscribedBefore && uid) void refetch(keys.all(uid));
-          subscribedBefore = true;
+          // Changes made before the channel was listening were not heard: on the first subscription (which
+          // can come seconds after the open's load) as on a later one (after a drop).
+          if (uid) void refetch(keys.all(uid));
         },
       );
     },

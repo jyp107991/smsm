@@ -1,5 +1,5 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
 import { strings } from '../strings';
 import { cx, ICON } from './util';
@@ -88,20 +88,33 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
     >
       <AnimatePresence initial={false} mode="wait">
         {toasts.map((t) => (
-          <motion.div
-            key={t.id}
-            layout={!reduce}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
-            transition={reduce ? { duration: 0.18 } : { type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
-            className="pointer-events-auto w-full max-w-md"
-          >
-            <Toast {...t} onDismiss={() => { onDismiss(t.id); }} />
-          </motion.div>
+          <ToastSlot key={t.id} toast={t} reduce={reduce} onDismiss={onDismiss} />
         ))}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * One toast in the stack. While a replaced toast plays its exit it is still on screen, so it is made inert
+ * and hidden from assistive tech: a tap on Undo just after a new save must undo that save, never the
+ * previous one (ADD-6).
+ */
+function ToastSlot({ toast, reduce, onDismiss }: { toast: ToastEntry; reduce: boolean; onDismiss: (id: number) => void }) {
+  const present = useIsPresent();
+  return (
+    <motion.div
+      layout={!reduce}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
+      transition={reduce ? { duration: 0.18 } : { type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
+      className={cx('w-full max-w-md', present ? 'pointer-events-auto' : 'pointer-events-none')}
+    >
+      <div inert={!present} aria-hidden={present ? undefined : true}>
+        <Toast {...toast} onDismiss={() => { onDismiss(toast.id); }} />
+      </div>
+    </motion.div>
   );
 }
 
