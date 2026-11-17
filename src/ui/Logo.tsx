@@ -6,7 +6,7 @@ import { strings } from './strings';
  * Three variants for the owner to choose between in the gallery:
  *   a: plain, sans-serif letterforms.
  *   b: as A, with a door: a gap in ㅁ's bottom stroke.
- *   c: a handwritten ㅅ (longer, curving left stroke; shorter right leg).
+ *   c: a ㅅ whose legs sweep outward at the feet, like eaves.
  * The same geometry (100-unit space) is used, scaled, by public/icons/logo-{a,b,c}.svg.
  */
 export type LogoVariant = 'a' | 'b' | 'c';
@@ -20,14 +20,14 @@ export interface LogoMark {
 }
 
 /**
- * The mark's two letters in a 100 × 100 space, drawn from real Hangul letterforms: ㅅ is asymmetric (its
- * right stroke branches a third of the way down the left one, with steep legs), and ㅁ is a square whose
- * sharp inner corners give only the stroke's own rounding outside.
+ * The mark's two letters in a 100 × 100 space, drawn from real Hangul letterforms and made symmetric (owner):
+ * ㅅ's two steep legs leave the apex as mirror images; ㅁ is a square whose sharp inner corners give only
+ * the stroke's own rounding outside.
  */
 export const LOGO_MARKS: Record<LogoVariant, LogoMark> = {
-  a: { roof: 'M50.5 15Q47.5 32 30 46M45 29Q53 39 70 46', walls: 'M34 57H66V84H34Z' },
-  b: { roof: 'M50.5 15Q47.5 32 30 46M45 29Q53 39 70 46', walls: 'M45 84H34V57H66V84H55' },
-  c: { roof: 'M51 14C50 28 44 41 28 49M46.5 30C52 37 59 42 70 45', walls: 'M35 58H65V84H35Z' },
+  a: { roof: 'M50 15Q46.5 33 30 46M50 15Q53.5 33 70 46', walls: 'M34 57H66V84H34Z' },
+  b: { roof: 'M50 15Q46.5 33 30 46M50 15Q53.5 33 70 46', walls: 'M45 84H34V57H66V84H55' },
+  c: { roof: 'M50 14C49 30 41 41 28 47M50 14C51 30 59 41 72 47', walls: 'M35 58H65V84H35Z' },
 };
 
 export function Logo({ size = 48, variant = 'a', title = strings.app.name }: { size?: number; variant?: LogoVariant; title?: string }) {

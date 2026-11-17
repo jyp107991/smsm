@@ -8,7 +8,7 @@ import { Plank } from '../../../ui/rig/Plank';
 const LOGOS: readonly { variant: LogoVariant; note: string }[] = [
   { variant: 'a', note: 'A: plain letters, like a clean sans-serif ㅅ and ㅁ.' },
   { variant: 'b', note: 'B: as A, with a door in the bottom of ㅁ.' },
-  { variant: 'c', note: 'C: a handwritten ㅅ, longer on the left.' },
+  { variant: 'c', note: 'C: ㅅ with feet that sweep out, like eaves.' },
 ];
 
 export function LogoSection() {
