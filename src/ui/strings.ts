@@ -7,7 +7,6 @@ export const strings = {
     name: 'smsm',
     tagline: 'A home ledger for two',
     version: (version: string, commit: string) => `Version ${version} · ${commit.slice(0, 7)}`,
-    comingSoon: 'Soon you’ll sign in here.',
   },
   update: {
     ready: 'Updated. Tap to refresh',
@@ -181,6 +180,7 @@ export const strings = {
     gotBackSentence: (who: string, shares: string) => `${who} got it back. ${shares}`,
     forSentence: (payer: string, other: string) => `${payer} paid, all of it for ${other}.`,
     treatSentence: (payer: string) => `${payer} paid. ${payer}’s treat.`,
+    editButton: 'Edit',
     duplicate: 'Duplicate',
     refund: 'Refund this',
     delete: 'Delete',

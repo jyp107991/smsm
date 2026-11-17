@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Drawer } from 'vaul';
 import { X } from 'lucide-react';
 import { closeLayer, openLayer } from '../history';
@@ -50,31 +50,34 @@ export function Sheet({ open, onOpenChange, title, description, dirty = false, f
     else onOpenChange(false);
   };
 
-  const onBack = useEffectEvent(() => {
-    // The gesture has already popped this sheet's entry.
-    if (confirming) {
-      // Back while asking means "keep editing".
-      reopen();
-      setConfirming(false);
-    } else if (dirty) {
-      reopen();
-      setConfirming(true);
-    } else {
-      onOpenChange(false);
-    }
+  // What the history coordinator calls back with reads the latest props (it outlives renders).
+  const latest = useRef({ dirty, confirming, onOpenChange });
+  useEffect(() => {
+    latest.current = { dirty, confirming, onOpenChange };
   });
-  // Leaving the page (a navigation) closes the sheet without asking: the person chose to go.
-  const onLeave = useEffectEvent(() => {
-    onOpenChange(false);
-  });
-  const reopen = () => {
-    openLayer(id, { onBack: () => { onBack(); }, onLeave: () => { onLeave(); } });
-  };
 
   useEffect(() => {
     if (!open) return;
     active.current = true;
-    openLayer(id, { onBack: () => { onBack(); }, onLeave: () => { onLeave(); } });
+    const handlers = {
+      // The back gesture has already popped this sheet's entry.
+      onBack: () => {
+        const l = latest.current;
+        if (l.confirming) {
+          // Back while asking means "keep editing".
+          openLayer(id, handlers);
+          setConfirming(false);
+        } else if (l.dirty) {
+          openLayer(id, handlers);
+          setConfirming(true);
+        } else {
+          l.onOpenChange(false);
+        }
+      },
+      // Leaving the page (a navigation) closes the sheet without asking: the person chose to go.
+      onLeave: () => { latest.current.onOpenChange(false); },
+    };
+    openLayer(id, handlers);
     return () => {
       active.current = false;
       // Deferred, so a re-run of this effect (StrictMode, a re-render) keeps the entry it already has.

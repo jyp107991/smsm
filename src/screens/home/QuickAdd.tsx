@@ -3,7 +3,7 @@
  * the live reading as a button ("£42.50 · Tesco · Groceries · Jae paid · 50/50") that opens the full form
  * prefilled. Enter during composition (Hangul) never saves. A reading that isn't clear opens the form instead.
  */
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type SyntheticEvent } from 'react';
 import { formatPlainPounds } from '../../core/money';
 import {
   addExpense, deleteExpense, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold,
@@ -12,6 +12,7 @@ import { tickSaved } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
 import { useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
+import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { blankForm, withSplit, type FormState } from '../entry/form';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
@@ -23,8 +24,8 @@ export function QuickAdd() {
   const toast = useToast();
   const sheets = useSheets();
   const people = usePeople();
-  const categories = useCategories().data ?? [];
-  const entries = useEntries().data ?? [];
+  const categories = useCategories().data ?? NO_CATEGORIES;
+  const entries = useEntries().data ?? NO_ENTRIES;
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const [text, setText] = useState('');
@@ -52,7 +53,7 @@ export function QuickAdd() {
     setText('');
   };
 
-  const save = (e: FormEvent) => {
+  const save = (e: SyntheticEvent) => {
     e.preventDefault();
     if (!reading) return;
     if (!reading.confident || reading.saveAs.trim() === '') {

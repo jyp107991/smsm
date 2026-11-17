@@ -5,11 +5,13 @@
  */
 import type { KeyboardEvent } from 'react';
 
-export function isComposingKey(e: Pick<KeyboardEvent, 'keyCode'> & { nativeEvent: { isComposing?: boolean } }): boolean {
+export function isComposingKey(e: { keyCode: number; nativeEvent: { isComposing?: boolean } }): boolean {
+  // keyCode is deprecated, but 229 is the only sign of composing that some Android keyboards give.
   return e.nativeEvent.isComposing === true || e.keyCode === 229;
 }
 
 /** onKeyDown for a field inside a form: an Enter while composing never submits it. */
 export function holdEnterWhileComposing(e: KeyboardEvent<HTMLElement>): void {
-  if (e.key === 'Enter' && isComposingKey(e)) e.preventDefault();
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- keyCode 229: see isComposingKey
+  if (e.key === 'Enter' && isComposingKey({ keyCode: e.keyCode, nativeEvent: e.nativeEvent })) e.preventDefault();
 }

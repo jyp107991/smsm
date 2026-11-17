@@ -5,7 +5,7 @@
  * under More. Save is instant and works offline; its toast offers Undo for 5 seconds.
  */
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
-import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import {
   addExpense, deleteExpense, editExpense, EntryInvalidError, rememberChoice, useCategories, useCategoryMemory, useDataLayer,
@@ -16,6 +16,7 @@ import { holdEnterWhileComposing } from '../../ui/keys';
 import { Button, Chip, Field, Segmented, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
+import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import type { CategoryColourName } from '../../ui/tokens';
 import { CATEGORY_COLOUR_NAMES } from '../../ui/tokens';
 import { Head } from '../shared/Head';
@@ -45,9 +46,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const layer = useDataLayer();
   const toast = useToast();
   const people = usePeople();
-  const categories = useCategories().data ?? [];
+  const categories = useCategories().data ?? NO_CATEGORIES;
   const live = useMemo(() => categories.filter((c) => !c.archived), [categories]);
-  const entries = useEntries().data ?? [];
+  const entries = useEntries().data ?? NO_ENTRIES;
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const today = layer.today();
@@ -105,7 +106,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const other = pair.find((p) => p.id !== s.payer) ?? null;
   const isBack = s.kind === 'money_back';
 
-  const save = (e?: FormEvent) => {
+  const save = (e?: SyntheticEvent) => {
     e?.preventDefault();
     const description = s.description.trim() !== '' ? s.description : (live.find((c) => c.id === s.categoryId)?.name ?? '');
     const result = draftOf({ ...s, description }, pair);

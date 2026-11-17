@@ -3,9 +3,9 @@
  * with Monzo" when the person owed has saved a monzo.me name, then "Did it go through?" on return; or
  * "Record it". Editing a settle-up (from its page) uses the same sheet with "Save".
  */
-import { useState, type FormEvent } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 import { formatDay } from '../../core/dates';
-import { formatPence, formatPlainPounds, parseAmount, pence, type Pence } from '../../core/money';
+import { formatPence, formatPlainPounds, parseAmount, pence } from '../../core/money';
 import {
   addSettlement, deleteSettlement, editSettlement, EntryInvalidError, useBalance, useDataLayer, type SettlementDraft,
 } from '../../data';
@@ -87,7 +87,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
     onDone();
   };
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: SyntheticEvent) => {
     e.preventDefault();
     if (editing) {
       const d = draft(request.row.method === 'monzo' ? 'monzo' : 'other');
@@ -130,7 +130,7 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
   };
 
   if (asking) {
-    const amount = formatPence(pence(asking.amount) as Pence);
+    const amount = formatPence(pence(asking.amount));
     return (
       <Sheet
         open={open}

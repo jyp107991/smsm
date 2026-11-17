@@ -3,10 +3,10 @@ import { LoaderCircle, type LucideIcon } from 'lucide-react';
 import { strings } from '../strings';
 import { cx, ICON } from './util';
 
-export type ButtonVariant = 'primary' | 'plain' | 'destructive';
+export type ButtonVariant = 'primary' | 'plain' | 'quiet' | 'destructive';
 
 export interface ButtonProps extends ComponentPropsWithRef<'button'> {
-  /** primary: forest fill, one per screen. plain: a quiet sunk fill. destructive: berry text. */
+  /** primary: forest fill, one per screen. plain: a quiet sunk fill. quiet: forest text only. destructive: berry text. */
   variant?: ButtonVariant;
   /** Shows a spinner in place of the label, keeps the button's size, and ignores presses. */
   loading?: boolean;
@@ -20,6 +20,7 @@ export interface ButtonProps extends ComponentPropsWithRef<'button'> {
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-forest text-on-forest',
   plain: 'bg-sunk text-ink',
+  quiet: 'bg-transparent text-forest',
   destructive: 'bg-transparent text-berry',
 };
 

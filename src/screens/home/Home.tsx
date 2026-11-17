@@ -12,6 +12,7 @@ import { Button, ICON } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
+import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { copyForm } from '../entry/form';
 import { ApprovalBanners } from '../shared/Approvals';
 import { usePeople } from '../shared/people';
@@ -90,7 +91,7 @@ function SyncLine() {
 function Today() {
   const layer = useDataLayer();
   const entries = useEntries().data;
-  const categories = useCategories().data ?? [];
+  const categories = useCategories().data ?? NO_CATEGORIES;
   const people = usePeople();
   const { pendingIds } = useSyncStatus();
   const today = layer.today();
@@ -131,7 +132,7 @@ const LONG_PRESS_MS = 500;
 function AddButton() {
   const sheets = useSheets();
   const layer = useDataLayer();
-  const entries = useEntries().data ?? [];
+  const entries = useEntries().data ?? NO_ENTRIES;
   const people = usePeople();
   const [menu, setMenu] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

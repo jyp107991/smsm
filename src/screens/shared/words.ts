@@ -110,7 +110,7 @@ function field(summary: unknown, key: string): { before: unknown; after: unknown
   if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return null;
   const v = (summary as Record<string, unknown>)[key];
   if (!v || typeof v !== 'object' || Array.isArray(v) || !('before' in v) || !('after' in v)) return null;
-  return v as { before: unknown; after: unknown };
+  return { before: v.before, after: v.after };
 }
 
 function same(a: unknown, b: unknown): boolean {

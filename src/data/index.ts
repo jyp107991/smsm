@@ -1,5 +1,7 @@
 /** The data layer's public face: what screens and the app shell import. */
 export { DataProvider } from './DataProvider';
+export { backupJson, BACKUP_FORMAT } from './backup';
+export { build } from './build';
 export { createAppDataLayer, phoneToday } from './app';
 export { createStore, storeOver, type Store, type StoreDeps, type RefusedChange } from './store';
 export { createDataLayer, type DataLayer, type DataLayerOptions } from './queryClient';
@@ -18,7 +20,7 @@ export {
   decideChange, rememberChoice, OfflineError, NotSignedInError, NotInHouseholdError, NotReadyError, EntryNotFoundError, ChangesWaitingError,
   NAME_MAX, type ChangeRequest,
 } from './mutations';
-export { EntryInvalidError, PartnerNotJoinedError, type ExpenseDraft, type SettlementDraft } from './writes';
+export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, type ExpenseDraft, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
   type ActivityRow, type CategoryMemoryRow,
