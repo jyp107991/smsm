@@ -8,6 +8,7 @@ import { demoHousehold, JAE } from '../../../../tests/fixtures/household';
 import { formatDay, todayIn } from '../../../core/dates';
 import { formatPence, pence } from '../../../core/money';
 import { AddSheetExample } from './AddSheet';
+import { Section } from './Section';
 
 type Slot = (who: string) => ReactNode;
 
@@ -36,13 +37,11 @@ export function InUseSection({ head }: { head?: Slot }) {
   const bars = [...top4.map(([id, v]) => ({ label: cat(id)?.name ?? 'Other', colour: `var(--cat-${cat(id)?.colour ?? 'stone'}, var(--oak))`, v })), { label: 'The rest', colour: 'var(--sunk)', v: rest }];
 
   return (
-    <section aria-labelledby="g-inuse" className="flex flex-col gap-4">
-      <h2 id="g-inuse" className="text-[1.375rem] leading-tight font-semibold">In use</h2>
-      <p className="text-ink-2">Entries as they will look in Home and Activity, from the demo household.</p>
+    <Section id="g-inuse" title="On the page" ask="A week of Jae and Sam’s spending, the add sheet and last month’s recap.">
       <div className="bg-paper rounded-[20px] px-4 py-2">
         {days.map((d) => (
           <div key={d}>
-            <p className="text-ink-2 mt-3 mb-1 text-[0.9375rem] font-semibold">{formatDay(d, today)}</p>
+            <h3 className="text-subtitle text-ink-2 mt-4 mb-1">{formatDay(d, today)}</h3>
             <ul className="m-0 list-none p-0">
               {recent.filter((e) => e.date === d).map((e) => (
                 <li key={e.id} className="border-line flex min-h-11 items-center gap-3 border-b py-2 last:border-b-0">
@@ -54,7 +53,7 @@ export function InUseSection({ head }: { head?: Slot }) {
                     {e.kind === 'money_back' && <span className="text-ink-2 ml-2 text-[0.8125rem]">money back</span>}
                   </span>
                   {head ? head(payerOf(e.paid)) : <span className="text-ink-2 text-[0.8125rem]">{name(payerOf(e.paid))}</span>}
-                  <span className="w-24 text-right tabular-nums">{formatPence(pence(e.amount_pence))}</span>
+                  <span className="nums-list w-24 text-right">{formatPence(pence(e.amount_pence))}</span>
                 </li>
               ))}
             </ul>
@@ -65,18 +64,17 @@ export function InUseSection({ head }: { head?: Slot }) {
       <AddSheetExample />
 
       <article aria-label={`${monthName} recap`} className="bg-surface shadow-float flex flex-col gap-3 rounded-[20px] p-5">
-        <p className="text-ink-2 text-[0.9375rem]">The month</p>
-        <h3 className="text-[1.375rem] leading-tight font-semibold">{monthName}</h3>
-        <p className="text-[1.0625rem]">{monthName} cost {formatPence(pence(total))} together.</p>
+        <h3 className="text-title rule-ledger m-0">{monthName}</h3>
+        <p className="text-note m-0">Together, {monthName} came to {formatPence(pence(total))}.</p>
         <div className="flex h-4 w-full overflow-hidden rounded-full" role="img" aria-label={bars.map((b) => `${b.label} ${formatPence(pence(b.v))}`).join(', ')}>
           {bars.map((b) => <span key={b.label} style={{ width: `${String((100 * b.v) / Math.max(total, 1))}%`, background: b.colour }} />)}
         </div>
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[0.9375rem]">
           {bars.map((b) => (
-            <li key={b.label} className="flex justify-between gap-3"><span>{b.label}</span><span className="tabular-nums">{formatPence(pence(b.v))}</span></li>
+            <li key={b.label} className="flex justify-between gap-3"><span>{b.label}</span><span className="nums-list">{formatPence(pence(b.v))}</span></li>
           ))}
         </ul>
       </article>
-    </section>
+    </Section>
   );
 }

@@ -19,19 +19,19 @@ const THEMES: Theme[] = ['light', 'dark'];
 
 // DESIGN §3.1, copied by hand from the table.
 const DESIGN_TABLE: Record<string, { light: string; dark: string }> = {
-  paper: { light: '#EEF0E5', dark: '#1D221A' },
-  surface: { light: '#FAFAF5', dark: '#272D23' },
-  sunk: { light: '#D6D9C7', dark: '#161A14' },
+  paper: { light: '#DCDFCD', dark: '#1D221A' },
+  surface: { light: '#E8E3D5', dark: '#272D23' },
+  sunk: { light: '#C8CCB6', dark: '#161A14' },
   ink: { light: '#2B2118', dark: '#E9EADC' },
-  'ink-2': { light: '#5E5446', dark: '#AFB19F' },
-  line: { light: '#D6D9C7', dark: '#3A4234' },
+  'ink-2': { light: '#4F463A', dark: '#AFB19F' },
+  line: { light: '#BCC0A8', dark: '#3A4234' },
   forest: { light: '#3E4938', dark: '#C3CFAE' },
-  'on-forest': { light: '#F4F5EC', dark: '#1D221A' },
-  moss: { light: '#57664A', dark: '#A3B58D' },
+  'on-forest': { light: '#ECE7DA', dark: '#1D221A' },
+  moss: { light: '#4A5840', dark: '#A3B58D' },
   walnut: { light: '#6F5138', dark: '#A8825F' },
   oak: { light: '#AA9071', dark: '#C9AE8C' },
-  honey: { light: '#85602A', dark: '#DDB978' },
-  berry: { light: '#9C4338', dark: '#E79283' },
+  honey: { light: '#74521F', dark: '#DDB978' },
+  berry: { light: '#8A3A30', dark: '#E79283' },
 };
 
 const CATEGORY_ORDER = ['moss', 'amber', 'walnut', 'honey', 'slate', 'plum', 'oak', 'berry', 'lake', 'clay', 'fern', 'stone'];
@@ -173,12 +173,12 @@ describe('contrast()', () => {
 
   it('matches known ratios', () => {
     expect(contrast('#777777', '#ffffff')).toBeCloseTo(4.478, 2);
-    // DESIGN §3.1 measured values, light theme, on paper.
-    expect(contrast(DESIGN_TABLE.ink!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(13.7, 1);
-    expect(contrast(DESIGN_TABLE['ink-2']!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(6.4, 1);
-    expect(contrast(DESIGN_TABLE.forest!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(8.2, 1);
-    expect(contrast(DESIGN_TABLE.honey!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(4.9, 1);
-    expect(contrast(DESIGN_TABLE['on-forest']!.light, DESIGN_TABLE.forest!.light)).toBeCloseTo(8.6, 1);
+    // DESIGN §3.1 measured values, light theme, on paper (updated with the owner's no-white palette, 17 Nov).
+    expect(contrast(DESIGN_TABLE.ink!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(11.6, 1);
+    expect(contrast(DESIGN_TABLE['ink-2']!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(6.8, 1);
+    expect(contrast(DESIGN_TABLE.forest!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(7.0, 1);
+    expect(contrast(DESIGN_TABLE.honey!.light, DESIGN_TABLE.paper!.light)).toBeCloseTo(5.2, 1);
+    expect(contrast(DESIGN_TABLE['on-forest']!.light, DESIGN_TABLE.forest!.light)).toBeCloseTo(7.7, 1);
   });
 
   it('is symmetric and agrees with an independent WCAG implementation on every token pair', () => {

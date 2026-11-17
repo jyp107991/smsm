@@ -46,14 +46,14 @@ export default defineConfig(({ mode }) => ({
         id: '/',
         name: 'smsm',
         short_name: 'smsm',
-        description: 'Shared money for two',
+        description: 'A home ledger for two',
         lang: 'en-GB',
         start_url: '/',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#EEF0E5',
-        theme_color: '#EEF0E5',
+        background_color: '#DCDFCD',
+        theme_color: '#DCDFCD',
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -64,7 +64,16 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/version\.json$/],
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        // Latin font files are precached; the Korean slices (hundreds of small files, DESIGN §3.2) are not:
+        // each is cached the first time a name or note needs it, and works offline from then on.
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}', '**/*-latin-*.woff2'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/assets/') && url.pathname.endsWith('.woff2'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'fonts-korean', expiration: { maxEntries: 300 } },
+          },
+        ],
         cleanupOutdatedCaches: true,
       },
     }),

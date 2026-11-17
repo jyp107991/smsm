@@ -99,7 +99,8 @@ export const DOG: Anatomy = {
   head: [
     p('M30.6 46C30.6 28 43.6 19.6 60 19.6C76.4 19.6 89.4 28 89.4 46C89.4 63.4 76.4 71.4 60 71.4C43.6 71.4 30.6 63.4 30.6 46Z', 'coat'),
     p('M46.4 60.4C46.4 53.4 52.6 50 60 50C67.4 50 73.6 53.4 73.6 60.4C73.6 67 67.4 69.8 60 69.8C52.6 69.8 46.4 67 46.4 60.4Z', 'pale', false),
-    p('M54 52.6C54 49.8 56.8 49 60 49C63.2 49 66 49.8 66 52.6C66 55.6 62.4 57 60 57C57.6 57 54 55.6 54 52.6Z', 'ink', false),
+    // A small black dot of a nose (owner: smaller); its bottom stays where the mouth hangs from.
+    p(oval(60, 54.3, 3.3, 2.3), 'ink', false),
   ],
   // The left ear flops down in front of the head; the right one stands up.
   earLeft: [p('M47.4 22C38.6 18.2 28.4 20.4 24.6 28.6C21.4 35.6 21 48 23.4 56.6C25 62.2 31.2 63.6 33.8 58.4C36.4 52.8 36.6 43.4 39.2 35.6C41 30.4 44 25.6 47.4 22Z', 'dark')],

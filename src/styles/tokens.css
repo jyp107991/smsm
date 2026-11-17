@@ -9,19 +9,19 @@
  */
 :root,
 [data-scheme] {
-  --paper: light-dark(oklch(95.06% 0.0147 115.04), oklch(24.40% 0.0165 133.76)); /* #eef0e5, #1d221a */
-  --surface: light-dark(oklch(98.37% 0.0066 106.52), oklch(28.78% 0.0197 132.89)); /* #fafaf5, #272d23 */
-  --sunk: light-dark(oklch(87.80% 0.0245 114.58), oklch(21.13% 0.0131 135.15)); /* #d6d9c7, #161a14 */
+  --paper: light-dark(oklch(89.64% 0.0243 114.57), oklch(24.40% 0.0165 133.76)); /* #dcdfcd, #1d221a */
+  --surface: light-dark(oklch(91.59% 0.0195 90.55), oklch(28.78% 0.0197 132.89)); /* #e8e3d5, #272d23 */
+  --sunk: light-dark(oklch(83.61% 0.0302 115.42), oklch(21.13% 0.0131 135.15)); /* #c8ccb6, #161a14 */
   --ink: light-dark(oklch(25.67% 0.0223 63.57), oklch(93.25% 0.0186 110.07)); /* #2b2118, #e9eadc */
-  --ink-2: light-dark(oklch(45.14% 0.0256 76.24), oklch(75.37% 0.0252 112.15)); /* #5e5446, #afb19f */
-  --line: light-dark(oklch(87.80% 0.0245 114.58), oklch(36.72% 0.0257 131.89)); /* #d6d9c7, #3a4234 */
+  --ink-2: light-dark(oklch(39.95% 0.0229 74.97), oklch(75.37% 0.0252 112.15)); /* #4f463a, #afb19f */
+  --line: light-dark(oklch(79.81% 0.0332 114.84), oklch(36.72% 0.0257 131.89)); /* #bcc0a8, #3a4234 */
   --forest: light-dark(oklch(39.02% 0.0314 134.60), oklch(83.65% 0.0466 123.67)); /* #3e4938, #c3cfae */
-  --on-forest: light-dark(oklch(96.69% 0.0119 111.76), oklch(24.40% 0.0165 133.76)); /* #f4f5ec, #1d221a */
-  --moss: light-dark(oklch(48.95% 0.0469 130.89), oklch(74.85% 0.0590 127.48)); /* #57664a, #a3b58d */
+  --on-forest: light-dark(oklch(92.83% 0.0182 89.36), oklch(24.40% 0.0165 133.76)); /* #ece7da, #1d221a */
+  --moss: light-dark(oklch(44.11% 0.0419 132.56), oklch(74.85% 0.0590 127.48)); /* #4a5840, #a3b58d */
   --walnut: light-dark(oklch(46.05% 0.0551 60.63), oklch(63.47% 0.0678 63.77)); /* #6f5138, #a8825f */
   --oak: light-dark(oklch(66.90% 0.0535 71.62), oklch(76.57% 0.0559 73.23)); /* #aa9071, #c9ae8c */
-  --honey: light-dark(oklch(51.66% 0.0852 74.08), oklch(80.29% 0.0928 81.55)); /* #85602a, #ddb978 */
-  --berry: light-dark(oklch(49.83% 0.1214 29.21), oklch(74.33% 0.1061 30.62)); /* #9c4338, #e79283 */
+  --honey: light-dark(oklch(46.50% 0.0805 74.21), oklch(80.29% 0.0928 81.55)); /* #74521f, #ddb978 */
+  --berry: light-dark(oklch(45.49% 0.1116 29.31), oklch(74.33% 0.1061 30.62)); /* #8a3a30, #e79283 */
 
   /* Category colours: small dots and chart fills only (CATEGORY_COLOURS in src/ui/tokens.ts). */
   --cat-moss: light-dark(oklch(39.88% 0.0697 125.92), oklch(57.93% 0.0465 130.04)); /* #3e4e22, #718063 */
