@@ -168,7 +168,8 @@ test.describe('Q-L2: one "selected" language; outlines only for keyboard focus',
       const surface = await token(page, 'var(--surface)');
       const sunk = await token(page, 'var(--sunk)');
       const forest = await token(page, 'var(--forest)');
-      const tonal = await token(page, 'color-mix(in oklch, var(--forest) 14%, var(--sunk))');
+      // Forest 14 % into sunk by day; 28 % by night, where 14 % hardly showed inside a sheet (owner review, 17 Nov).
+      const tonal = await token(page, `color-mix(in oklch, var(--forest) ${theme === 'dark' ? '28%' : '14%'}, var(--sunk))`);
 
       await addExpense(page).click();
       const sheet = page.getByRole('dialog', { name: 'Add expense' });
@@ -193,7 +194,8 @@ test.describe('Q-L2: one "selected" language; outlines only for keyboard focus',
       const chip = chips.filter({ hasText: 'Transport' });
       await chip.click();
       await expect(chip).toHaveAttribute('aria-pressed', 'true');
-      expect(sameColour(await rgba(page, await style(chip, 'background-color')), tonal, 4), `selected chip fill ${await style(chip, 'background-color')} is not the tonal forest`).toBe(true);
+      // Polled: the fill eases to its new colour (a short colour transition); the settled colour is what counts.
+      await expect.poll(async () => sameColour(await rgba(page, await style(chip, 'background-color')), tonal, 4), { message: `selected chip fill ${await style(chip, 'background-color')} is not the tonal forest` }).toBe(true);
       expect(sameColour(await rgba(page, await style(chip, 'color')), forest), 'selected chip text is forest').toBe(true);
       const chipBorder = cssNumber(await style(chip, 'border-top-width'));
       const chipBorderColour = await rgba(page, await style(chip, 'border-top-color'));
@@ -235,7 +237,7 @@ test.describe('Q-L2: one "selected" language; outlines only for keyboard focus',
       await page.getByRole('radio', { name: 'Sam' }).click();
       const active = page.getByRole('button', { name: 'Who paid: Sam' });
       await expect(active).toBeVisible();
-      expect(sameColour(await rgba(page, await style(active, 'background-color')), tonal, 4), `active filter fill ${await style(active, 'background-color')} is not the tonal forest`).toBe(true);
+      await expect.poll(async () => sameColour(await rgba(page, await style(active, 'background-color')), tonal, 4), { message: `active filter fill ${await style(active, 'background-color')} is not the tonal forest` }).toBe(true);
       expect(sameColour(await rgba(page, await style(active, 'color')), forest), 'active filter text is forest').toBe(true);
       const activeBorder = cssNumber(await style(active, 'border-top-width'));
       expect(activeBorder === 0 || !sameColour(await rgba(page, await style(active, 'border-top-color')), forest), 'an active filter has no forest outline').toBe(true);

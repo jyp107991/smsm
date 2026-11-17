@@ -62,14 +62,18 @@ function over(under: RGB, top: RGB, alpha: number): RGB {
 }
 
 describe('derived tokens (S2 polish 1b)', () => {
-  it('Q-L2: --forest-tint is forest washed 14 % into sunk, declared once', () => {
-    expect(tokensCss).toMatch(/--forest-tint:\s*color-mix\(in oklch, var\(--forest\) 14%, var\(--sunk\)\);/);
+  // By day 14 %; by night 28 %: at 14 % a chosen chip hardly differed from the others inside a sheet at night
+  // (1.29:1 against sunk); at 28 % it is 1.8:1 and forest text on it is still well above AA.
+  const TINT = { light: 0.14, dark: 0.28 } as const;
+  it('Q-L2: --forest-tint is forest washed into sunk, 14 % by day and 28 % by night, declared once', () => {
+    expect(tokensCss).toMatch(/--forest-tint:\s*light-dark\(color-mix\(in oklch, var\(--forest\) 14%, var\(--sunk\)\), color-mix\(in oklch, var\(--forest\) 28%, var\(--sunk\)\)\);/);
   });
 
   for (const theme of THEMES) {
-    it(`Q-L2 ${theme}: forest text on --forest-tint meets AA (4.5)`, () => {
-      const tint = mixOklch(rgb(TOKENS.forest[theme]), rgb(TOKENS.sunk[theme]), 0.14);
+    it(`Q-L2 ${theme}: forest text on --forest-tint meets AA (4.5), and the chip stands out from an unchosen one`, () => {
+      const tint = mixOklch(rgb(TOKENS.forest[theme]), rgb(TOKENS.sunk[theme]), TINT[theme]);
       expect(ratio(rgb(TOKENS.forest[theme]), tint)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(tint, rgb(TOKENS.sunk[theme]))).toBeGreaterThanOrEqual(1.2);
     });
 
     it(`${theme}: text keeps AA under the pressed film (--wash-strong) on every fill it is used on`, () => {
