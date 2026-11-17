@@ -2,6 +2,13 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~14:30 UTC: polish wave 1b LIVE
+- PR #6 merged (CI run 44100028955 all green, two-user 21/21); deploy run 44101794646 green; live version.json commit c4c8601.
+- Live now: the owner-approved look (one toast layer with a visible update prompt; tonal selected states; warm scrim; Add button inside Quick add; centred tabs; sign-in with the plank and auto-submitting code; grounded plank; approval banner; offline pill), quick add cat/dog as ordinary words, the plain "sign-ups closed" message, the "Forget it" persistence fix, and the edit-mode discard question.
+- On the way: CI failed once because closing sign-ups also closed them on the CI test stack (fixed: the two-user job opens them in its own workspace).
+- Owner decision: lighter process for low-risk changes; small, frequent releases (DECISIONS).
+- Running: wave 2 builder.
+
 ## 2026-11-17 ~13:45 UTC: sign-ups closed; 1b release blocked on one CI test; wave 2 building
 - **Sign-ups closed** (owner yes): `enable_signup = false`, auth-config diff run 44095092073 (1 update), push run 44095233212; the live service now answers a new email with 422 signup_disabled. The app's message for it ("This email isn’t one of the two…") ships with the next release. Reopen = set true + auth-config push with the owner's approval.
 - Both people have joined and are already adding real entries (owner's partner hit the hidden "Updated. Tap to refresh" prompt — fixed in 1b, Q-L1; workaround: fully close and reopen the app).
