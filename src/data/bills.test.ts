@@ -463,7 +463,7 @@ describe('the Inbox (INB-1, INB-2, INB-3)', () => {
     const item = tablesOf(c).inboxItems[0];
     if (item) Object.assign(item, { status: 'kept', expense_id: expense.id });
     act(() => {
-      c.controls.emitChange('inbox_items' as WatchedTable);
+      c.controls.emitChange('inbox_items');
       c.controls.emitChange('expenses');
     });
     await waitFor(() => { expect(view.result.current.inbox.data).toEqual([]); });
@@ -477,7 +477,7 @@ describe('the Inbox (INB-1, INB-2, INB-3)', () => {
     const view = watch(c.layer);
     await waitFor(() => { expect(view.result.current.recurring.data).toEqual([]); });
     tablesOf(c).recurring.push(storedRecurring());
-    act(() => { c.controls.emitChange('recurring' as WatchedTable); });
+    act(() => { c.controls.emitChange('recurring'); });
     await waitFor(() => { expect(view.result.current.recurring.data?.map((r) => r.id)).toEqual([storedRecurring().id]); });
     view.unmount();
   });

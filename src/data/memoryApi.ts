@@ -259,7 +259,7 @@ export function createMemoryApi(
             fx_rate: null, receipt_path: null, external_id: null, merchant: null, external_category: null, account_id: null,
             recurring_id: r.id, occurrence_date: d, created_by: r.created_by, created_at: stamp, updated_by: r.created_by,
             updated_at: stamp, deleted_at: null,
-          } as ExpenseRow);
+          });
           log('expense', id, 'created', { after: { description: r.description, amount_pence: r.amount_pence } }, hid);
         }
         r.posted_count += 1;
