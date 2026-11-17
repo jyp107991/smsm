@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17: two-user suite, first run diagnosed and fixed
+- **What went wrong** (CI run 44032201912): 20 of 21 scenarios stopped at the very first step, signing in. The app asked for a code and the local auth server said "sent" (it answered 200), and the email did reach the test mailbox, but it held only a sign-in link: the auth server's built-in email (GoTrue 2.198) no longer prints the 6-digit code. smsm signs in with the code only, so the tests had nothing to type. The one scenario that passed (OFF-4) never signs in. Nothing after sign-in was reached, so the run says nothing yet about the screens.
+- **Fix:** the CI job now uses smsm's own code email (`supabase/templates/code.html`, the one already proposed for the live project) on the local test stack only. The committed `config.toml` and the live project are unchanged. Checked by sending both emails through the same Mailpit version the stack uses and reading them with the suite's own mail reader (link-only email: no code, the exact CI error; code email: code read). New unit test `tests/unit/sign-in-email.test.ts` keeps the CI job and the mail reader in step.
+- **For the owner:** this confirms the live project needs the code email too before real use: the built-in email sends a link only. That is the open question of who sends the sign-in email (owner answers still outstanding, below); nothing changes there without your approval.
+- **Next:** push and let the two-user job run to the end; any later failures (setup, screens, sync) only show up once sign-in works.
+
 ## 2026-11-17 (resumed): two-user failures being diagnosed; backup built
 - An agent is diagnosing and fixing the two-user suite's failures from CI run 44032201912 (branch `worktree-agent-aa04c1aaf3ed66e75`).
 - EXP-2 built: `.github/workflows/backup.yml` (nightly 02:23 UTC; data-only export of public + auth users, gzip, gpg AES-256 with the `BACKUP_PASSPHRASE` secret, 30-day Actions artifact) and `scripts/restore-backup.sh` (pauses triggers so history isn't duplicated); restore drill test `tests/unit/backup-restore.test.ts` passes (balances and history identical, wrong passphrase refused). Needs the owner to add `BACKUP_PASSPHRASE` (DEPLOY §1b).

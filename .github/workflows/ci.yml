@@ -84,9 +84,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Local sign-in limits high enough for the suite (CI workspace only, never committed)
+      - name: Local sign-in settings for the suite (CI workspace only, never committed)
         run: |
           sed -i -E 's/^(sign_in_sign_ups|token_verifications) = .*/\1 = 1000/' supabase/config.toml
+          # The local auth server's own sign-in email (GoTrue 2.198) holds only a link, no code, so the suite
+          # could never read one (CI run 44032201912). Send the app's code email instead: the template that
+          # config.toml proposes for the live project, still commented there until the owner approves it.
+          cat >> supabase/config.toml <<'EOF'
+
+          [auth.email.template.magic_link]
+          subject = "Your smsm code"
+          content_path = "./supabase/templates/code.html"
+
+          [auth.email.template.confirmation]
+          subject = "Your smsm code"
+          content_path = "./supabase/templates/code.html"
+          EOF
           git diff --stat supabase/config.toml
       - name: Supabase local stack (applies supabase/migrations)
         run: npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta

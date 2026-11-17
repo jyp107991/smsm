@@ -6,7 +6,7 @@ Written by the S2 tests-first writer. The workflow itself is not edited here; th
 - The **Supabase local stack** (CLI 3.2.0, pinned in `package.json`), started from this repo's `supabase/` folder. `supabase start` applies every file in `supabase/migrations/` to a fresh database on first start, so the tests run against exactly the migrations that will be pushed.
 - The **mail catcher**: CLI 3.2.0 runs **Mailpit** (`axllent/mailpit:v1.31.3`, the `[local_smtp]` section of `config.toml`, web/API port 54324 by default; our `config.toml` declares no `[local_smtp]`, so the default, enabled, applies). `supabase status -o env` prints its address as `MAILPIT_URL` (`INBUCKET_URL` is accepted as an old alias). The suite reads sign-in codes from Mailpit's HTTP API (`tests/e2e/two-users/mail.ts`):
   - `GET  $MAILPIT_URL/api/v1/search?query=to:"<address>"` → `{ messages: [{ ID, To, Subject, Created }] }`, newest first
-  - `GET  $MAILPIT_URL/api/v1/message/<ID>` → `{ Text, HTML, … }`; the 6-digit code is taken from "…enter the code: 123456" (GoTrue's default templates) or from `supabase/templates/code.html` if that template is enabled
+  - `GET  $MAILPIT_URL/api/v1/message/<ID>` → `{ Text, HTML, … }`; the 6-digit code is taken from `supabase/templates/code.html` (the code alone in a large paragraph) or from "…enter the code: 123456"
   - `DELETE $MAILPIT_URL/api/v1/search?query=…` after each test
   (Checked against Mailpit's own `swagger.json` at v1.31.3 and the CLI binary's `status` output names.)
 - `psql` (preinstalled on `ubuntu-latest`) for `member_net` and `auth.users` lookups; the service key for row fetches through REST.
@@ -15,6 +15,9 @@ Written by the S2 tests-first writer. The workflow itself is not edited here; th
 
 ## Rate limits
 `config.toml` sets `[auth.rate_limit] sign_in_sign_ups = 30` and `token_verifications = 30` (per 5 minutes per IP). The suite signs in about 30 people from one IP (2 per scenario, plus a third person, plus retries). The job raises these **in the CI workspace only**, before `supabase start`; the committed file and the live project are untouched. (`email_sent` applies only with custom SMTP, which the local stack doesn't use.) Every person has a unique address per run, so `max_frequency = "60s"` never bites.
+
+## The sign-in email
+The local auth server (GoTrue 2.198 in CLI 3.2.0) sends, by default, a sign-in email that holds **only a link, no code** ("Your sign-in link … Sign in"); its old "Alternatively, enter the code" line is gone. The app signs in with the 6-digit code only, so with the defaults no scenario could get past sign-in (CI run 44032201912: 20 of 21 scenarios failed with "No sign-in code reached … within 30000 ms" although `/auth/v1/otp` answered 200). The job therefore turns on, **in the CI workspace only**, the app's own code email for both new and returning sign-ins (`[auth.email.template.magic_link]` and `[auth.email.template.confirmation]` with `content_path = "./supabase/templates/code.html"`, the block `config.toml` already proposes for the live project). CLI 3.2.0 reads a template's `content_path` from the project root and serves it to the local auth server through the gateway; no SMTP is needed locally. The committed `config.toml` and the live project are untouched: the live project gets this template only through the owner-approved auth push.
 
 ## The job
 ```yaml
@@ -28,9 +31,22 @@ Written by the S2 tests-first writer. The workflow itself is not edited here; th
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Local sign-in limits high enough for the suite (CI workspace only, never committed)
+      - name: Local sign-in settings for the suite (CI workspace only, never committed)
         run: |
           sed -i -E 's/^(sign_in_sign_ups|token_verifications) = .*/\1 = 1000/' supabase/config.toml
+          # The local auth server's own sign-in email (GoTrue 2.198) holds only a link, no code, so the suite
+          # could never read one (CI run 44032201912). Send the app's code email instead: the template that
+          # config.toml proposes for the live project, still commented there until the owner approves it.
+          cat >> supabase/config.toml <<'EOF'
+
+          [auth.email.template.magic_link]
+          subject = "Your smsm code"
+          content_path = "./supabase/templates/code.html"
+
+          [auth.email.template.confirmation]
+          subject = "Your smsm code"
+          content_path = "./supabase/templates/code.html"
+          EOF
           git diff --stat supabase/config.toml
       - name: Supabase local stack (applies supabase/migrations)
         run: npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta

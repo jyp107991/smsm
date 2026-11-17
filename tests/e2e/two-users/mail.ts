@@ -22,8 +22,9 @@ async function getJson<T>(path: string): Promise<T> {
 const query = (address: string) => `query=${encodeURIComponent(`to:"${address}"`)}`;
 
 /**
- * The 6-digit code in a sign-in email. Works for GoTrue's default templates ("…enter the code: 123456") and
- * for supabase/templates/code.html (the code alone in a large paragraph).
+ * The 6-digit code in a sign-in email: supabase/templates/code.html (the code alone in a large paragraph), which
+ * the CI job turns on, or the older GoTrue wording "…enter the code: 123456". GoTrue 2.198's own default
+ * sign-in email holds only a link, so without the template there is no code to read (docs/slices/S2-ci.md).
  */
 export function extractCode(text: string): string | null {
   const labelled = /code(?:\s+is)?\s*:?\s*(?:<[^>]*>\s*)*(\d{6})(?!\d)/i.exec(text);
