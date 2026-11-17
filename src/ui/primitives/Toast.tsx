@@ -264,8 +264,8 @@ function ToastSlot({ toast, reduce, onDismiss, announced }: {
   const present = useIsPresent();
   return (
     <motion.div
-      // Size only: where the toast sits is placed before it paints (useClearPlace), never slid into place.
-      layout={reduce ? false : 'size'}
+      // No layout animation: the layer is moved clear of the tab bar as the toast arrives (useClearPlace),
+      // and animating that move slid the toast up over the tab bar for a moment (owner, 17 Nov: "clipping").
       // It rises less than the room it keeps (CLEARANCE), so even arriving it never touches what it avoids.
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}

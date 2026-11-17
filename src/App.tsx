@@ -1,6 +1,7 @@
 import { lazy, Suspense, use } from 'react';
 import { Shell } from './screens/shell/Shell';
 import { UpdatePrompt } from './ui/UpdatePrompt';
+import { LaunchUpdate } from './ui/LaunchUpdate';
 import { ToastProvider } from './ui/primitives';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { createAppDataLayer, DataProvider, type DataLayer } from './data';
@@ -17,6 +18,9 @@ function dataLayer(): Promise<DataLayer | null> {
   starting ??= createAppDataLayer();
   return starting;
 }
+
+/** Save the waiting writes and the cache before the page reloads for an update. */
+const beforeReload = (): Promise<void> => dataLayer().then((l) => l?.flush()).catch(() => undefined);
 
 function Started() {
   const layer = use(dataLayer());
@@ -45,7 +49,8 @@ export function App() {
             <Started />
           </Suspense>
         )}
-        <UpdatePrompt />
+        <UpdatePrompt beforeReload={beforeReload} />
+        {onGallery ? null : <LaunchUpdate beforeReload={beforeReload} />}
       </ToastProvider>
     </ErrorBoundary>
   );

@@ -2,6 +2,11 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~16:05 UTC: polish wave 2 LIVE; S3 building
+- PR #7 merged (CI run 44117239902 all green, two-user 21/21); deploy run 44119135248 green; live version.json commit 1943cee. The owner said yes to the screenshots.
+- Live now: the Add sheet (hero amount, sums inline, recent descriptions, in-app calendar, named splits incl. 70/30, More details), quick add Save in the box and tidy descriptions, Home "Recent", toasts that name things (Duplicate offers Undo — owner), the entry page "owes … for this" line and "came back" links, Activity grid/filters, Settings monzo check line, settle-up wording.
+- S2 polish is complete. S3 (recurring, bills, inbox, categories): tests first done (8c65d18); builder running.
+
 ## 2026-11-17 ~14:30 UTC: polish wave 1b LIVE
 - PR #6 merged (CI run 44100028955 all green, two-user 21/21); deploy run 44101794646 green; live version.json commit c4c8601.
 - Live now: the owner-approved look (one toast layer with a visible update prompt; tonal selected states; warm scrim; Add button inside Quick add; centred tabs; sign-in with the plank and auto-submitting code; grounded plank; approval banner; offline pill), quick add cat/dog as ordinary words, the plain "sign-ups closed" message, the "Forget it" persistence fix, and the edit-mode discard question.

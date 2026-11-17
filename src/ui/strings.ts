@@ -12,6 +12,9 @@ export const strings = {
     ready: 'A new version is ready',
     refresh: 'Refresh',
     offlineReady: 'Ready to work offline',
+    updating: 'Updating smsm',
+    updatingNote: 'Getting the latest version. Anything you’ve entered is kept.',
+    progress: 'Update progress',
   },
   /** smsm open twice on one phone: only one window saves (src/data/windows.ts). */
   windows: {
