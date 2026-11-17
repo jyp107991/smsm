@@ -62,6 +62,11 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
+        // A new version takes over as soon as it is installed, even with an old window open (owner, 17 Nov:
+        // a phone stayed on an old build because the old worker waited for every window to close). The app
+        // checks for it on launch and restarts with a progress bar (src/ui/LaunchUpdate.tsx).
+        skipWaiting: true,
+        clientsClaim: true,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/version\.json$/],
         // Latin font files are precached; the Korean slices (hundreds of small files, DESIGN §3.2) are not:
