@@ -86,6 +86,7 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - Logo A/B/C, type A/B/C, fifth colour A/B.
 - Approve the 4 Auth changes (site address, 6-digit codes, 15-minute expiry, secure password change).
 - Sign-in email: recommended a new Gmail account just for smsm with an app password (two GitHub secrets: SUPABASE_SMTP_USER, SUPABASE_SMTP_PASS). Then uncomment the SMTP block in `supabase/config.toml`, run `auth-config` diff, then push.
+- 2026-11-17: owner created the smsm Gmail account (address deliberately not written here: the repo is public; it goes only into the SUPABASE_SMTP_USER secret). Next owner steps: 2-Step Verification → app password → two GitHub secrets.
 
 ## 2026-11-16: S0 and S1 in progress (handoff)
 **Done**
