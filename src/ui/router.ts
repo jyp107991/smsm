@@ -15,6 +15,9 @@ export type Route =
   | { name: 'inbox' }
   | { name: 'categories' }
   | { name: 'chapters' }
+  | { name: 'insights' }
+  | { name: 'recap'; month: string }
+  | { name: 'year'; year: string }
   | { name: 'chapter'; id: string };
 
 export function parseRoute(path: string): Route {
@@ -22,6 +25,11 @@ export function parseRoute(path: string): Route {
   if (clean === '/activity') return { name: 'activity' };
   if (clean === '/settings') return { name: 'settings' };
   if (clean === '/bills') return { name: 'bills' };
+  if (clean === '/insights') return { name: 'insights' };
+  const recap = /^\/recap\/(\d{4}-\d{2})$/.exec(clean);
+  if (recap?.[1]) return { name: 'recap', month: recap[1] };
+  const year = /^\/year\/(\d{4})$/.exec(clean);
+  if (year?.[1]) return { name: 'year', year: year[1] };
   if (clean === '/inbox') return { name: 'inbox' };
   if (clean === '/settings/categories') return { name: 'categories' };
   if (clean === '/settings/chapters') return { name: 'chapters' };
@@ -42,6 +50,12 @@ export function pathOf(route: Route): string {
       return '/settings';
     case 'bills':
       return '/bills';
+    case 'insights':
+      return '/insights';
+    case 'recap':
+      return `/recap/${route.month}`;
+    case 'year':
+      return `/year/${route.year}`;
     case 'inbox':
       return '/inbox';
     case 'categories':

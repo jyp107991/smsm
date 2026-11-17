@@ -448,7 +448,14 @@ test.describe('Q-L4: one way to add — the Add expense button lives in the Quic
         expect(overlaps(toast, field), `the Saved toast ${JSON.stringify(toast)} covers Quick add ${JSON.stringify(field)}`).toBe(false);
         expect(overlaps(toast, box0), 'the Saved toast covers where Quick add was').toBe(false);
         if (await tabBar(page).isVisible()) {
-          expect(overlaps(toast, await box(tabBar(page))), 'the Saved toast covers the tab bar').toBe(false);
+          const bar = await box(tabBar(page));
+          // What the toast was avoiding, should this fail (it has failed only on CI's runners).
+          const seen = await page.evaluate(() => ({
+            openDialogs: document.querySelectorAll('[role="dialog"][data-state="open"]').length,
+            layer: document.querySelector<HTMLElement>('[role="status"][aria-label="Notifications"]')?.getAttribute('style'),
+            scrollY: window.scrollY, inner: window.innerHeight, visual: window.visualViewport?.height,
+          }));
+          expect(overlaps(toast, bar), `the Saved toast ${JSON.stringify(toast)} covers the tab bar ${JSON.stringify(bar)} ${JSON.stringify(seen)}`).toBe(false);
         }
         // An open sheet while the toast is still up: the toast never covers Save.
         await expect(addExpense(page), 'Add expense stays in the box after a quick-add save').toBeVisible({ timeout: 2000 });

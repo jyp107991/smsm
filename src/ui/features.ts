@@ -4,5 +4,5 @@
  */
 export const FEATURES = {
   bills: true,
-  insights: false,
+  insights: true,
 } as const;

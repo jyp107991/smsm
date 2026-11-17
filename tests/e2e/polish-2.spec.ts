@@ -318,6 +318,9 @@ test.describe('Q-U6 ADD-2: quick add while typing', () => {
       await home(page);
       // Whatever comes after the quick-add form on Home.
       const next = quickAdd(page).locator('xpath=ancestor::form[1]/following-sibling::*[1]');
+      // Quick add may sit below the fold on a small phone (a banner above the plank): bring it into view first, so
+      // the browser's scroll-to-the-box on typing isn't mistaken for a layout shift.
+      await quickAdd(page).scrollIntoViewIfNeeded();
       const y0 = (await box(next)).y;
       await quickAdd(page).fill('4 gum');
       await expect(page.getByRole('button', { name: /^£4\.00 · / })).toBeVisible();

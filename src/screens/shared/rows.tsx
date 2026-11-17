@@ -8,6 +8,7 @@
  * emoji sits on a small sunk disc. Rows carry `data-row` with their id, so the toast that reports one keeps
  * clear of it (Q-U8).
  */
+import { MessageCircle } from 'lucide-react';
 import type { MouseEvent, ReactNode } from 'react';
 import { formatPence, pence } from '../../core/money';
 import type { CategoryRow, ExpenseRow, SettlementRow } from '../../data';
@@ -31,8 +32,10 @@ function Tag({ children }: { children: ReactNode }) {
   return <span className="text-caption text-ink-2 bg-sunk shrink-0 rounded-[8px] px-1.5 py-px">{children}</span>;
 }
 
-export function EntryRowView({ row, categories, people, pending = false }: {
+export function EntryRowView({ row, categories, people, pending = false, comments = 0 }: {
   row: ExpenseRow;
+  /** S5b (ACT-4): live comments on it, from the list's `useCommentCounts()`. */
+  comments?: number;
   categories: readonly CategoryRow[];
   people: readonly Person[];
   pending?: boolean;
@@ -46,7 +49,9 @@ export function EntryRowView({ row, categories, people, pending = false }: {
     : row.split_mode === 'for_other' && beneficiary ? strings.entry.forTag(beneficiary.name)
     : row.split_mode === 'treat' ? strings.entry.treatTag : null;
   const who = payer ? (back ? strings.reading.gotBack(payer.name) : strings.reading.paid(payer.name)) : null;
-  const name = strings.activity.row([row.description, amount, ...(tag ? [tag] : []), ...(who ? [who] : [])]);
+  const name = strings.activity.row([
+    row.description, amount, ...(tag ? [tag] : []), ...(who ? [who] : []), ...(comments > 0 ? [strings.comments.count(comments)] : []),
+  ]);
   return (
     <a
       href={pathOf({ name: 'entry', id: row.id })}
@@ -61,6 +66,7 @@ export function EntryRowView({ row, categories, people, pending = false }: {
         {back ? <Tag>{strings.entry.moneyBackTag}</Tag> : null}
         {!back && row.split_mode === 'for_other' && beneficiary ? <Tag>{strings.entry.forTag(beneficiary.name)}</Tag> : null}
         {!back && row.split_mode === 'treat' ? <Tag>{strings.entry.treatTag}</Tag> : null}
+        {comments > 0 ? <span aria-hidden="true" className="text-caption text-ink-2 nums-list inline-flex shrink-0 items-center gap-0.5"><MessageCircle size={13} strokeWidth={2} />{comments}</span> : null}
         {pending ? <span aria-hidden="true" className="bg-oak size-1.5 shrink-0 rounded-full" /> : null}
       </span>
       {payer ? <Head animal={payer.animal} size={22} /> : <span aria-hidden="true" />}

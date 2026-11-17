@@ -7,7 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { formatPence, pence } from '../../core/money';
 import {
-  closeChapter, setCurrentChapter, useCategories, useChapters, useCurrentChapter, useDataLayer, useEntries, useSyncStatus,
+  closeChapter, setCurrentChapter, useCategories, useChapters, useCurrentChapter, useDataLayer, useEntries, useSyncStatus, useCommentCounts,
 } from '../../data';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { go } from '../../ui/router';
@@ -28,6 +28,7 @@ export function ChapterPage({ id }: { id: string }) {
   const people = usePeople();
   const current = useCurrentChapter();
   const { pendingIds, otherWindow } = useSyncStatus();
+  const commentCounts = useCommentCounts();
   const toast = useToast();
   const [editing, setEditing] = useState<ChapterEditing>(null);
   const ids = useMemo(() => people.list.map((p) => p.id), [people.list]);
@@ -123,7 +124,7 @@ export function ChapterPage({ id }: { id: string }) {
           <ul aria-labelledby={entriesId} className="m-0 list-none p-0">
             {rows.map((r) => (
               <li key={r.id} className="border-line border-b last:border-b-0">
-                <EntryRowView row={r} categories={categories} people={people.list} pending={pendingIds.has(r.id)} />
+                <EntryRowView row={r} categories={categories} people={people.list} pending={pendingIds.has(r.id)} comments={commentCounts.get(r.id) ?? 0} />
               </li>
             ))}
           </ul>

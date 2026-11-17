@@ -2,6 +2,13 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-17 ~23:00 UTC: S4 LIVE; S5a held by one browser check, fixed; S5b built
+- S4 is live (deploy run 44182659599; version.json 2531ba5).
+- S5a (PR #12): CI's browser check at 320×640 failed: the new "This month" line sat above quick add, pushing it below the fold, so typing scrolled the page. Fixed to DESIGN's order (quick add first, then the month so far); pushed, CI re-running, releases on green.
+- S5b built: the monthly recap (`/recap/YYYY-MM`), settle day in Settings, year in review (`/year/YYYY`), "On this day" on Home, comments on entries (offline too, Undo on delete, count on rows). Tests first by a separate agent (core 28, data 12, screens 33, SQL 25 + 13 refusals, e2e 5); all pass. Suite and SQL (141/141) green.
+- Fresh review: no blockers; 10 should-fix items (recap banners that reappeared or never showed, negative figures in a money-back-only month, a cache that never hit, one-tap comment delete, tap targets, the settle-day select snapping back) fixed with regression tests.
+- Next: S5a release, then S5b's PR and release; then S6 (smart features).
+
 ## 2026-11-17 ~21:15 UTC: S4b places and currencies built; S4 as one release (PR #11)
 - S4b: current country and location per phone; town and country captured on new entries (with permission); Paid in another currency with the day's rate (Frankfurter) and exact conversion; trip suggestion and Welcome home; Country and Place filters; entry page details. Tests first by a separate agent (95), all pass.
 - Fresh review: 3 blockers (late rate overwriting typing; stale original on unsynced edits; place/original edits not saved) and 6 smaller items, all fixed with regression tests.

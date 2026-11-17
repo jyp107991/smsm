@@ -43,6 +43,8 @@ export function Choices<T extends string>({ label, options, value, onValueChange
           <ToggleGroup.Item
             key={o.value}
             value={o.value}
+            // Named once (the chip also lays its label out invisibly to keep its width).
+            aria-label={o.label}
             className={cx(
               'relative inline-grid h-9 max-w-full min-w-11 place-items-center rounded-[12px] border-2 border-transparent px-3',
               'text-secondary press font-medium select-none active:scale-[0.97]',

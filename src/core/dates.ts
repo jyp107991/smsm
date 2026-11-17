@@ -89,6 +89,14 @@ export function formatDay(d: IsoDate, today: IsoDate): string {
   return formatDate(d, today);
 }
 
+/** Day and month only: "10 Oct", or "10 Oct 2025" for another year (recap moments, S5b). */
+export function formatShortDate(d: IsoDate, today: IsoDate): string {
+  const [y, m, day] = parts(d);
+  const [ty] = parts(today);
+  const month = MONTHS[m - 1] ?? '';
+  return y === ty ? `${String(day)} ${month}` : `${String(day)} ${month} ${String(y)}`;
+}
+
 /** The date itself, never "Today": "Mon 10 Nov", or "10 Nov 2025" for another year (DESIGN §5; the date grid's days). */
 export function formatDate(d: IsoDate, today: IsoDate): string {
   const [y, m, day] = parts(d);

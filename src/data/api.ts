@@ -19,6 +19,10 @@ export type CategoryMemoryRow = Tables['category_memory']['Row'];
 export type RecurringRow = Tables['recurring']['Row'];
 export type InboxItemRow = Tables['inbox_items']['Row'];
 export type ChapterRow = Tables['chapters']['Row'];
+export type CommentRow = Tables['comments']['Row'];
+/** The columns the phone owns on a comment (ACT-4). */
+export type CommentWrite = Pick<CommentRow, 'id' | 'household_id' | 'expense_id' | 'author' | 'body' | 'deleted_at'>;
+export type CommentColumn = 'body' | 'deleted_at';
 /** What the phone writes to `category_memory` (CAT-3, CAT-4); the server stamps `updated_at`. */
 export type CategoryMemoryWrite = Pick<CategoryMemoryRow, 'household_id' | 'key' | 'category_id' | 'split_mode' | 'split_params' | 'uses' | 'source'>;
 
@@ -58,7 +62,7 @@ export type CategoryWrite = Pick<CategoryRow, 'id' | 'household_id' | 'name' | '
 export interface AuthUser { userId: string; email: string | null }
 
 /** Tables whose changes the partner's phone needs to hear about (DATA_MODEL §6). */
-export type WatchedTable = 'households' | 'members' | 'categories' | 'expenses' | 'settlements' | 'change_requests' | 'recurring' | 'inbox_items' | 'chapters';
+export type WatchedTable = 'households' | 'members' | 'categories' | 'expenses' | 'settlements' | 'change_requests' | 'recurring' | 'inbox_items' | 'chapters' | 'comments';
 export type ChannelStatus = 'subscribed' | 'error' | 'closed';
 
 /**
@@ -108,6 +112,11 @@ export interface Api {
   chapters(householdId: string): Promise<ChapterRow[]>;
   /** With `columns`, an existing chapter's other columns stay as the server has them (a partner's edit stays). */
   upsertChapter(row: ChapterWrite, columns?: readonly ChapterColumn[]): Promise<ChapterRow>;
+  /** S5b (ACT-4): the household's comments; a new one is inserted, an edit or delete updates only its columns. */
+  comments(householdId: string): Promise<CommentRow[]>;
+  upsertComment(row: CommentWrite, columns?: readonly CommentColumn[]): Promise<CommentRow>;
+  /** SET-4: the household's settle day (1–28) or null. */
+  setSettleDay(day: number | null): Promise<void>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
   watchHousehold(householdId: string, onChange: (table: WatchedTable) => void, onStatus: (s: ChannelStatus) => void): () => void;
 }
@@ -175,7 +184,7 @@ function authError(err: { message: string; status?: number | undefined; name?: s
 
 const TABLE_FILTER: Record<WatchedTable, string> = {
   households: 'id', members: 'household_id', categories: 'household_id', expenses: 'household_id',
-  settlements: 'household_id', change_requests: 'household_id', recurring: 'household_id', inbox_items: 'household_id', chapters: 'household_id',
+  settlements: 'household_id', change_requests: 'household_id', recurring: 'household_id', inbox_items: 'household_id', chapters: 'household_id', comments: 'household_id',
 };
 
 /** The Api over the real Supabase client. Row-level security limits every read to the person's household. */
@@ -237,6 +246,16 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     },
     patchInboxItem: async (id, patch) => must(await db.from('inbox_items').update(patch).eq('id', id).select().single(), 'inbox item'),
     upsertCategory: async (row) => must(await db.from('categories').upsert(row, { onConflict: 'id' }).select().single(), 'category'),
+    comments: async (hid) => allRows<CommentRow>((from, to) => db.from('comments').select('*').eq('household_id', hid).order('created_at').range(from, to)),
+    upsertComment: async (row, columns) => {
+      if (columns) {
+        const patch = Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<CommentWrite>;
+        const updated = await db.from('comments').update(patch).eq('id', row.id).select().maybeSingle();
+        if (updated.error || updated.data) return must(updated, 'comment');
+      }
+      return must(await db.from('comments').upsert(row, { onConflict: 'id' }).select().single(), 'comment');
+    },
+    setSettleDay: async (day) => { unwrap(await db.rpc('set_settle_day', { p_day: day as number })); },
     chapters: async (hid) => unwrap(await db.from('chapters').select('*').eq('household_id', hid).order('created_at')) ?? [],
     upsertChapter: async (row, columns) => {
       if (columns) {

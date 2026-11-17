@@ -9,7 +9,7 @@ import { useId, useMemo } from 'react';
 import { Settings as Gear } from 'lucide-react';
 import { formatDay } from '../../core/dates';
 import {
-  dismissProblem, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus, type ExpenseDraft, type ExpenseRow, type SettlementRow,
+  dismissProblem, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus, type ExpenseDraft, type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
 import { Logo } from '../../ui/Logo';
 import { Button, ICON } from '../../ui/primitives';
@@ -25,6 +25,8 @@ import { BalanceRegion } from './Balance';
 import { InboxButton, SuggestRecurring } from './BillsBanners';
 import { CurrentChapterChip } from './CurrentChapter';
 import { TripBanner } from '../places/TripBanner';
+import { ThisMonth } from '../insights/ThisMonth';
+import { RecapBanners } from '../insights/RecapLinks';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
@@ -47,9 +49,11 @@ export function Home() {
       <Problems />
       <InboxButton />
       <TripBanner />
+      <RecapBanners />
       <BalanceRegion />
       <CurrentChapterChip />
       <QuickAdd />
+      <ThisMonth />
       <SuggestRecurring />
       <RecentRows />
     </div>
@@ -102,6 +106,7 @@ function RecentRows() {
   const categories = useCategories().data ?? NO_CATEGORIES;
   const people = usePeople();
   const { pendingIds } = useSyncStatus();
+  const commentCounts = useCommentCounts();
   const today = layer.today();
   const id = useId();
   const days = useMemo(() => {
@@ -143,7 +148,7 @@ function RecentRows() {
                 {d.items.map((item) => (
                   <li key={item.row.id} className="border-line border-b last:border-b-0">
                     {item.kind === 'expense' ? (
-                      <EntryRowView row={item.row} categories={categories} people={people.list} pending={pendingIds.has(item.row.id)} />
+                      <EntryRowView row={item.row} categories={categories} people={people.list} pending={pendingIds.has(item.row.id)} comments={commentCounts.get(item.row.id) ?? 0} />
                     ) : (
                       <SettlementRowView row={item.row} people={people.list} />
                     )}

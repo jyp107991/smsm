@@ -18,6 +18,7 @@ export type RecurringRow = Tables['recurring']['Row'];
 export type ExpenseRow = Tables['expenses']['Row'];
 export type SettlementRow = Tables['settlements']['Row'];
 export type InboxItemRow = Tables['inbox_items']['Row'];
+export type CommentRow = Tables['comments']['Row'];
 
 export interface DemoHousehold {
   household: HouseholdRow;
@@ -27,6 +28,8 @@ export interface DemoHousehold {
   recurring: RecurringRow[];
   /** S3: the open Inbox bill (the latest energy bill, asking for its amount). */
   inboxItems: InboxItemRow[];
+  /** S5b: a short thread on last month's biggest shop. */
+  comments: CommentRow[];
   expenses: ExpenseRow[];
   settlements: SettlementRow[];
 }
@@ -69,7 +72,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
 
   const household: HouseholdRow = {
     id: DEMO_HOUSEHOLD_ID, join_code: 'DEMO42', home_country: 'GB', default_ratio: null,
-    joint_enabled: false, joint_ratio: null, created_at: stamp(start),
+    joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp(start),
   };
   const members: [MemberRow, MemberRow] = [
     { household_id: DEMO_HOUSEHOLD_ID, user_id: JAE, display_name: 'Jae', animal: 'dog', locked_at: stamp(start), monzo_me: 'jae-demo', joined_at: stamp(start) },
@@ -226,5 +229,13 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   for (const e of expenses) {
     if (e.chapter_id === null && e.category_id === cat('Household') && e.date >= sofaStart && e.kind === 'expense' && e.source !== 'recurring') e.chapter_id = sofa.id;
   }
-  return { household, members, categories, chapters: [japan, sofa], recurring, inboxItems, expenses, settlements };
+  // S5b: a comment thread on last month's biggest grocery shop (the recap's "one moment").
+  const lastMonth = addMonths(today, -1).slice(0, 7);
+  const shop = expenses.filter((e) => e.date.startsWith(lastMonth) && e.category_id === cat('Groceries') && e.kind === 'expense')
+    .sort((a, b) => b.amount_pence - a.amount_pence)[0];
+  const comments: CommentRow[] = shop ? [
+    { id: id(9101), household_id: DEMO_HOUSEHOLD_ID, expense_id: shop.id, author: SAM, body: 'Was this the big shop for the party?', created_at: stamp(shop.date), deleted_at: null },
+    { id: id(9102), household_id: DEMO_HOUSEHOLD_ID, expense_id: shop.id, author: JAE, body: 'Yes, and the wine.', created_at: stamp(shop.date), deleted_at: null },
+  ] : [];
+  return { household, members, categories, chapters: [japan, sofa], recurring, inboxItems, comments, expenses, settlements };
 }

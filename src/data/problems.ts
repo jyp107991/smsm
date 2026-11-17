@@ -74,7 +74,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
   };
 }
 
-const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories', 'chapters']), rowId: z.string(), label: z.string() }));
+const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories', 'chapters', 'comments']), rowId: z.string(), label: z.string() }));
 
 export interface ProblemStore {
   load: () => Promise<void>;
