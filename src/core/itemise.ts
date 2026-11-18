@@ -32,20 +32,22 @@ function shareOut(total: number, weights: readonly number[]): number[] {
 }
 
 /** SCAN-2: each ticked line's figure after its part of the discount and service (0 when unticked), and their sum. */
-export function itemise(items: readonly ReceiptLine[], ticked: readonly boolean[], discount: Pence, service: Pence): { amount: Pence; perLine: Pence[] } {
+export function itemise(items: readonly ReceiptLine[], ticked: readonly boolean[], discount: Pence, service: Pence, tax: Pence = pence(0)): { amount: Pence; perLine: Pence[] } {
   const weights = items.map((l) => Math.max(0, l.pence));
   // A discount can't take off more than the lines come to (each line's part then never exceeds the line).
   const off = shareOut(Math.min(Math.max(0, discount), weights.reduce((t, w) => t + w, 0)), weights);
   const on = shareOut(Math.max(0, service), weights);
+  // S6b: tax added on top of the lines (a bill abroad) is shared out the same way as service.
+  const taxed = shareOut(Math.max(0, tax), weights);
   // An unticked line is one person's own: it shares nothing (0).
-  const perLine = items.map((_l, i) => pence(ticked[i] === true ? Math.max(0, (weights[i] ?? 0) - (off[i] ?? 0) + (on[i] ?? 0)) : 0));
+  const perLine = items.map((_l, i) => pence(ticked[i] === true ? Math.max(0, (weights[i] ?? 0) - (off[i] ?? 0) + (on[i] ?? 0) + (taxed[i] ?? 0)) : 0));
   return { amount: pence(perLine.reduce((t, p) => t + p, 0)), perLine };
 }
 
 /** SCAN-3: do the lines (− discount + service) make the receipt's total? */
-export function checkTotal(items: readonly ReceiptLine[], discount: Pence, service: Pence, total: Pence): { adds: boolean; lines: Pence } {
-  const lines = pence(items.reduce((t, l) => t + l.pence, 0) - discount + service);
-  return { adds: lines === total, lines };
+export function checkTotal(items: readonly ReceiptLine[], discount: Pence, service: Pence, total: Pence | null, tax: Pence = pence(0)): { adds: boolean; lines: Pence } {
+  const lines = pence(items.reduce((t, l) => t + l.pence, 0) - discount + service + tax);
+  return { adds: total !== null && lines === total, lines };
 }
 
 export interface ScanRaw {
@@ -56,6 +58,8 @@ export interface ScanRaw {
   items: readonly { label: string; pence: number }[];
   discount_pence: number;
   service_pence: number;
+  /** S6b: tax added on top of the lines (0 or absent when it is inside the prices, as with UK VAT). */
+  tax_pence?: number;
   category: string | null;
   confidence: 'high' | 'medium' | 'low';
 }
@@ -91,6 +95,7 @@ export function scanGuards(raw: ScanRaw, today: IsoDate, categoryNames: readonly
     items: raw.items.filter((l) => typeof l.label === 'string' && isPence(l.pence)).map((l) => ({ label: l.label, pence: l.pence })),
     discount_pence: isPence(raw.discount_pence) ? raw.discount_pence : 0,
     service_pence: isPence(raw.service_pence) ? raw.service_pence : 0,
+    ...(raw.tax_pence === undefined ? {} : { tax_pence: isPence(raw.tax_pence) ? raw.tax_pence : 0 }),
     category: typeof raw.category === 'string' && categoryNames.includes(raw.category) ? raw.category : null,
     confidence: raw.confidence,
   };

@@ -124,7 +124,7 @@ const userText = (req: AiRequest): string => {
 
 describe('models, caps and time (SCAN-5; AI.md §2)', () => {
   it('SCAN-5: the models, in the order they are tried', () => {
-    expect(core().MODELS).toEqual({
+    expect(core().MODELS).toMatchObject({ // S6b adds recap and ask; these three are unchanged
       scan: ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'],
       parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
       categorise: ['@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'],

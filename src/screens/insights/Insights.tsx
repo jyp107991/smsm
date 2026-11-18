@@ -15,6 +15,7 @@ import {
   type SettlementRow,
 } from '../../data';
 import { Choices, Sheet } from '../../ui/primitives';
+import { AskSmsm } from './AskSmsm';
 import { strings } from '../../ui/strings';
 import { countryName } from '../chapters/model';
 import { Toggle } from '../entry/RecurringParts';
@@ -86,6 +87,8 @@ export function Insights() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-8 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
       <h1 className="text-title m-0 flex min-h-12 items-center">{strings.insights.title}</h1>
+      {/* S6b (INS-9): only with smart features on and a connection. */}
+      <AskSmsm />
       <div className="flex flex-col gap-3">
         <Choices label={strings.insights.period} options={options} value={chapter ? ('' as Choice) : choice} onValueChange={setChoice} />
         {chapters.length > 0 ? (

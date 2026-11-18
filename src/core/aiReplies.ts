@@ -15,6 +15,7 @@ export const scanSchema = z.object({
   items: z.array(z.object({ label: z.string().min(1).max(200), pence }).strict()).max(200),
   discount_pence: pence,
   service_pence: pence,
+  tax_pence: pence.optional(),
   category: z.string().max(80).nullable(),
   confidence: z.enum(['high', 'medium', 'low']),
 }).strict();
@@ -36,7 +37,30 @@ export const categoriseSchema = z.object({ category: z.string().max(80).nullable
 export type CategoriseReply = z.infer<typeof categoriseSchema>;
 
 
-export const REPLY_SCHEMAS = { scan: scanSchema, parse: parseSchema, categorise: categoriseSchema } as const;
+/** S6b (INS-2): the recap's two sentences; the phone's wordingGuard checks every number in them. */
+export const recapSchema = z.object({ headline: z.string().min(1).max(140), aside: z.string().max(140).nullable() }).strict();
+export type RecapReply = z.infer<typeof recapSchema>;
+
+/** S6b (INS-9): a question as a filter, never a figure (a reply carrying one is invalid), or "can't answer that". */
+const askQuery = z.object({
+  measure: z.enum(['total', 'count', 'average', 'largest']),
+  filters: z.object({
+    categories: z.array(z.string().max(80)).max(20).optional(),
+    chapters: z.array(z.string().max(80)).max(20).optional(),
+    countries: z.array(z.string().regex(/^[A-Z]{2}$/)).max(20).optional(),
+    payer: z.enum(['A', 'B']).optional(),
+    from: day.optional(),
+    to: day.optional(),
+    text: z.string().max(100).optional(),
+    tags: z.array(z.string().max(40)).max(10).optional(),
+    mode: z.array(z.enum(['ratio', 'exact', 'for_other', 'treat'])).max(4).optional(),
+  }).strict(),
+  group_by: z.enum(['category', 'month', 'country', 'payer', 'chapter']).optional(),
+}).strict();
+export const askSchema = z.union([askQuery, z.object({ unsupported: z.literal(true) }).strict()]);
+export type AskReply = z.infer<typeof askSchema>;
+
+export const REPLY_SCHEMAS = { scan: scanSchema, parse: parseSchema, categorise: categoriseSchema, recap: recapSchema, ask: askSchema } as const;
 export type ReplyTask = keyof typeof REPLY_SCHEMAS;
 
 /** The reply as its task's shape, or null (a string is read as JSON first). */

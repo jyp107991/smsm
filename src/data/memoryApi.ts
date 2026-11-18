@@ -11,7 +11,7 @@ import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type Use
 import {
   ApiError,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
-  type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
+  type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecapRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
 } from './api';
 import type { Json } from './database.types';
 
@@ -31,6 +31,8 @@ export interface MemoryTables {
   chapters: ChapterRow[];
   /** S5b: comments on entries. */
   comments: CommentRow[];
+  /** S6b: a finished month's AI wording, kept once per household. */
+  recaps?: RecapRow[];
   /** S6a: receipt photos in the private bucket (what was uploaded, not the bytes). */
   receipts?: { path: string; size: number; type: string }[];
   minClientVersion: string | null;
@@ -113,6 +115,7 @@ export function createMemoryApi(
     inboxItems: clone(seed.inboxItems ?? []),
     chapters: clone(seed.chapters ?? []),
     comments: clone(seed.comments ?? []),
+    recaps: clone(seed.recaps ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
   /** The server's UK date (DAT-2: post_due_recurring posts by London's date). */
@@ -498,6 +501,20 @@ export function createMemoryApi(
           log('comment', next.id, existing.deleted_at === null && next.deleted_at !== null ? 'deleted' : 'edited', changes, next.household_id);
         }
         return next;
+      }),
+    recapProse: (hid, period) =>
+      call('recapProse', { period }, () => (tables.recaps ?? []).find((r) => r.household_id === hid && hid === myHousehold() && r.period === period)?.prose ?? null),
+    saveRecapProse: (period, stats, prose) =>
+      call('saveRecapProse', { period, stats, prose }, () => {
+        const hid = myHousehold();
+        if (!hid) return refuse('not in a household', 'P0001');
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period) || period >= today().slice(0, 7)) return refuse('only a finished month has its wording kept', 'P0001');
+        if (prose.trim() === '') return refuse('no wording', 'P0001');
+        tables.recaps ??= [];
+        const kept = tables.recaps.find((r) => r.household_id === hid && r.period === period);
+        if (kept) return kept.prose ?? prose;
+        tables.recaps.push({ household_id: hid, period, stats: stats ?? {}, prose, created_at: now().toISOString() });
+        return prose;
       }),
     uploadReceipt: (path, photo) =>
       call('uploadReceipt', { path, size: photo.size, type: photo.type }, () => {

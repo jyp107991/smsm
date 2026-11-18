@@ -4,7 +4,12 @@
  * caps, timeouts and the models asked in order. No Worker or browser APIs, so Vitest runs it, and the phone reuses
  * the same validation (AI.md rule 3: validated on the server and again on the phone).
  */
-import { categoriseSchema, parseSchema, scanSchema, type CategoriseReply, type ParseReply, type ScanReply } from '../src/core/aiReplies';
+import { z } from 'zod';
+import { askSchema, categoriseSchema, parseSchema, recapSchema, scanSchema, type AskReply, type CategoriseReply, type ParseReply, type RecapReply, type ScanReply } from '../src/core/aiReplies';
+import askText from './prompts/ask.md';
+import askSchemaJson from './prompts/ask.schema.json';
+import recapText from './prompts/recap.md';
+import recapSchemaJson from './prompts/recap.schema.json';
 import categoriseText from './prompts/categorise.md';
 import categoriseSchemaJson from './prompts/categorise.schema.json';
 import parseText from './prompts/parse.md';
@@ -12,8 +17,8 @@ import parseSchemaJson from './prompts/parse.schema.json';
 import scanText from './prompts/scan.md';
 import scanSchemaJson from './prompts/scan.schema.json';
 
-export type Task = 'scan' | 'parse' | 'categorise';
-export type { CategoriseReply, ParseReply, ScanReply };
+export type Task = 'scan' | 'parse' | 'categorise' | 'recap' | 'ask';
+export type { AskReply, CategoriseReply, ParseReply, RecapReply, ScanReply };
 export type Reason = 'off' | 'limit' | 'timeout' | 'invalid' | 'error';
 export type Outcome<T> = { ok: true; data: T } | { ok: false; reason: Reason };
 
@@ -26,6 +31,9 @@ export const MODELS: Record<Task, readonly string[]> = {
   scan: ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'],
   parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
   categorise: ['@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'],
+  // S6b: wording that only copies figures, and a question read into a closed filter (accurate with numbers first).
+  recap: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
+  ask: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
 };
 /** Options a model needs (thinking off or low where a model thinks; MacroPy's settings). */
 export const MODEL_OPTIONS: Record<string, Record<string, unknown>> = {
@@ -42,14 +50,34 @@ export function isDailyLimit(message: string): boolean {
 
 /** AI.md §2: per household per day. */
 export function capFor(task: Task): number {
-  return task === 'scan' ? 30 : 100;
+  switch (task) {
+    case 'scan': return 30;
+    case 'recap': return 3;
+    case 'ask': return 50;
+    default: return 100;
+  }
 }
 /** The whole time a task may take, across its models (Workers AI's image models are slower than AI.md's 10 s). */
 export function timeoutFor(task: Task): number {
   return task === 'scan' ? 25_000 : 8_000;
 }
 
-const SCHEMAS = { scan: scanSchema, parse: parseSchema, categorise: categoriseSchema } as const;
+const SCHEMAS = { scan: scanSchema, parse: parseSchema, categorise: categoriseSchema, recap: recapSchema, ask: askSchema } as const;
+
+/** S6b: the month's figures as the phone sends them (core/wording recapStats); exactly these keys. */
+const shown = z.string().max(40);
+export const recapStatsSchema = z.object({
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  month: z.string().max(12),
+  total: shown,
+  everyday: shown,
+  usual: shown.nullable(),
+  comparison: z.object({ direction: z.enum(['less', 'more', 'same']), amount: shown.nullable() }).strict().nullable(),
+  bar: z.array(z.object({ name: z.string().max(80), total: shown }).strict()).max(5),
+  notes: z.array(z.string().max(200)).max(3),
+  paid: z.object({ A: shown, B: shown }).strict(),
+}).strict();
+export type RecapStatsInput = z.infer<typeof recapStatsSchema>;
 
 /** A prompt file: its first line is "version: n"; the rest is the system message. */
 function prompt(text: string, schema: unknown): { system: string; version: number } {
@@ -59,12 +87,15 @@ function prompt(text: string, schema: unknown): { system: string; version: numbe
 }
 const PROMPTS: Record<Task, { system: string; version: number }> = {
   scan: prompt(scanText, scanSchemaJson), parse: prompt(parseText, parseSchemaJson), categorise: prompt(categoriseText, categoriseSchemaJson),
+  recap: prompt(recapText, recapSchemaJson), ask: prompt(askText, askSchemaJson),
 };
 
 export type TaskInput =
   | { task: 'scan'; image: string; categories: readonly string[]; today: string; country: string }
   | { task: 'parse'; text: string; categories: readonly string[]; chapters: readonly string[]; today: string }
-  | { task: 'categorise'; description: string; categories: readonly string[] };
+  | { task: 'categorise'; description: string; categories: readonly string[] }
+  | { task: 'recap'; stats: RecapStatsInput }
+  | { task: 'ask'; question: string; categories: readonly string[]; chapters: readonly string[]; countries: readonly string[]; today: string };
 
 /** The `env.AI.run` input for a task and model (AI.md rule 4: only what the task needs; people as A and B). */
 export function buildRequest(input: TaskInput, model: string): Record<string, unknown> {
@@ -84,10 +115,17 @@ export function buildRequest(input: TaskInput, model: string): Record<string, un
     case 'categorise':
       user = [`Categories: ${JSON.stringify(input.categories)}`, `Description: ${JSON.stringify(input.description)}`].join('\n');
       break;
+    case 'recap':
+      user = `The month's figures: ${JSON.stringify(input.stats)}`;
+      break;
+    case 'ask':
+      user = [`Categories: ${JSON.stringify(input.categories)}`, `Chapters: ${JSON.stringify(input.chapters)}`,
+        `Countries: ${JSON.stringify(input.countries)}`, `Today: ${input.today}`, `Question from A: ${JSON.stringify(input.question)}`].join('\n');
+      break;
   }
   return {
     messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: user }],
-    max_tokens: input.task === 'scan' ? 2048 : 400,
+    max_tokens: input.task === 'scan' ? 2048 : input.task === 'recap' ? 300 : 400,
     temperature: 0,
     ...(MODEL_OPTIONS[model] ?? {}),
   };
@@ -119,8 +157,10 @@ export function extractText(reply: unknown): string | null {
 export function validate(task: 'scan', json: unknown): Outcome<ScanReply>;
 export function validate(task: 'parse', json: unknown): Outcome<ParseReply>;
 export function validate(task: 'categorise', json: unknown): Outcome<CategoriseReply>;
-export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseReply | CategoriseReply>;
-export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseReply | CategoriseReply> {
+export function validate(task: 'recap', json: unknown): Outcome<RecapReply>;
+export function validate(task: 'ask', json: unknown): Outcome<AskReply>;
+export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseReply | CategoriseReply | RecapReply | AskReply>;
+export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseReply | CategoriseReply | RecapReply | AskReply> {
   let value = json;
   if (typeof json === 'string') {
     try { value = JSON.parse(json); } catch { return { ok: false, reason: 'invalid' }; }
@@ -130,7 +170,7 @@ export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseRe
 }
 
 /** The whole reading of a Gemini reply for a task: completed, text, JSON, schema; else `invalid`. */
-export function readReply(task: Task, reply: unknown): Outcome<ScanReply | ParseReply | CategoriseReply> {
+export function readReply(task: Task, reply: unknown): Outcome<ScanReply | ParseReply | CategoriseReply | RecapReply | AskReply> {
   const text = extractText(reply);
   if (text === null) return { ok: false, reason: 'invalid' };
   return validate(task, text);

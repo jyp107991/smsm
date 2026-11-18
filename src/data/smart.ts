@@ -4,6 +4,7 @@
  * uploaded) and the photo shrinker. All injectable through the data layer's options, so tests and the demo use fakes.
  */
 import { createStore, del, get, set } from 'idb-keyval';
+import type { RecapStats } from '../core/wording';
 import { shrink } from './photos';
 
 export type AiReason = 'off' | 'limit' | 'timeout' | 'invalid' | 'error';
@@ -13,6 +14,10 @@ export interface AiService {
   scan(image: Blob, ctx: { categories: string[]; today: string; country: string }): Promise<AiResult>;
   parse(text: string, ctx: { categories: string[]; chapters: string[]; today: string }): Promise<AiResult>;
   categorise(description: string, categories: string[]): Promise<AiResult>;
+  /** S6b (INS-2): two sentences about a finished month, from its figures as shown (people as A and B). */
+  recap(stats: RecapStats): Promise<AiResult>;
+  /** S6b (INS-9): a question read into a closed filter (never a figure). */
+  ask(question: string, ctx: { categories: string[]; chapters: string[]; countries: string[]; today: string }): Promise<AiResult>;
 }
 
 export interface PhotoStore {
@@ -31,6 +36,8 @@ export const offAi: AiService = {
   scan: () => Promise.resolve({ ok: false, reason: 'off' }),
   parse: () => Promise.resolve({ ok: false, reason: 'off' }),
   categorise: () => Promise.resolve({ ok: false, reason: 'off' }),
+  recap: () => Promise.resolve({ ok: false, reason: 'off' }),
+  ask: () => Promise.resolve({ ok: false, reason: 'off' }),
 };
 
 async function base64(photo: Blob): Promise<string> {
@@ -69,6 +76,8 @@ export function workerAi(accessToken: () => Promise<string | null>, endpoint = '
     scan: async (image, ctx) => ask({ task: 'scan', image: await base64(image), ...ctx }, 30_000),
     parse: (text, ctx) => ask({ task: 'parse', text, ...ctx }, 10_000),
     categorise: (description, categories) => ask({ task: 'categorise', description, categories }, 10_000),
+    recap: (stats) => ask({ task: 'recap', stats }, 10_000),
+    ask: (question, ctx) => ask({ task: 'ask', question, ...ctx }, 10_000),
   };
 }
 

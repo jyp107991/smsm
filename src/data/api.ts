@@ -10,6 +10,7 @@ import type { Database, Json } from './database.types';
 type Tables = Database['public']['Tables'];
 export type HouseholdRow = Tables['households']['Row'];
 export type MemberRow = Tables['members']['Row'];
+export type RecapRow = Tables['recaps']['Row'];
 export type CategoryRow = Tables['categories']['Row'];
 export type ExpenseRow = Tables['expenses']['Row'];
 export type SettlementRow = Tables['settlements']['Row'];
@@ -122,6 +123,9 @@ export interface Api {
   upsertComment(row: CommentWrite, columns?: readonly CommentColumn[]): Promise<CommentRow>;
   /** SET-4: the household's settle day (1–28) or null. */
   setSettleDay(day: number | null): Promise<void>;
+  /** S6b (INS-2): a finished month's stored AI wording (JSON text, people as A/B), and keeping it once. */
+  recapProse(householdId: string, period: string): Promise<string | null>;
+  saveRecapProse(period: string, stats: Json, prose: string): Promise<string>;
   /** S6a: a receipt photo into the private bucket (never replaced or deleted), and an address to show one. */
   uploadReceipt(path: string, photo: Blob): Promise<void>;
   receiptUrl(path: string): Promise<string>;
@@ -266,6 +270,14 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
       return must(await db.from('comments').upsert(row, { onConflict: 'id' }).select().single(), 'comment');
     },
     setSettleDay: async (day) => { unwrap(await db.rpc('set_settle_day', { p_day: day as number })); },
+    recapProse: async (hid, period) => {
+      const rows = unwrap(await db.from('recaps').select('prose').eq('household_id', hid).eq('period', period).limit(1)) ?? [];
+      return rows[0]?.prose ?? null;
+    },
+    saveRecapProse: async (period, stats, prose) => {
+      const kept = unwrap(await db.rpc('save_recap_prose', { p_period: period, p_stats: stats, p_prose: prose }));
+      return typeof kept === 'string' ? kept : prose;
+    },
     uploadReceipt: async (path, photo) => {
       const res = await db.storage.from('receipts').upload(path, photo, { contentType: 'image/jpeg', upsert: false });
       if (!res.error) return;

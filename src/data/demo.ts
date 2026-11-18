@@ -14,7 +14,8 @@ import { memoryStorage } from './storage';
 
 /**
  * S6a: the demo's smart features never touch the network: every photo reads as the same Tesco receipt (five lines,
- * £1.00 off, £13.99), loose words as dinner at Dishoom, and no category is guessed. Off until switched on, as in the app.
+ * £1.00 off, £13.99), loose words as dinner at Dishoom, and no category is guessed. S6b: a recap is worded from its own
+ * figures, and every question is read as "eating out in Japan". Off until switched on, as in the app.
  */
 function demoAi(today: string): AiService {
   const receipt = {
@@ -31,6 +32,12 @@ function demoAi(today: string): AiService {
     scan: () => later(receipt),
     parse: () => later(loose),
     categorise: () => Promise.resolve({ ok: true, data: { category: null } }),
+    // S6b: a month's wording from its own figures, and every question read as eating out in Japan.
+    recap: (stats) => later({
+      headline: `${stats.month} came to ${stats.total} together.`,
+      aside: stats.bar[0] ? `${stats.bar[0].name} was the biggest part, at ${stats.bar[0].total}.` : null,
+    }),
+    ask: () => later({ measure: 'total', filters: { categories: ['Eating out'], countries: ['JP'] } }),
   };
 }
 

@@ -518,6 +518,9 @@ isOneToOne: false
 "request_change":
 { Args: { "p_kind": string,"p_payload": Json }; Returns: string
                            },
+"save_recap_prose":
+{ Args: { "p_period": string,"p_prose": string,"p_stats": Json }; Returns: string
+                           },
 "set_identity":
 { Args: { "p_animal": string,"p_name": string }; Returns: undefined
                            },

@@ -5,14 +5,19 @@
  * only sets a category, marked as a guess, and never over a person's choice.
  */
 import seedList from '../../content/merchants.json';
-import { checkReply, type ParseReply, type ScanReply } from '../core/aiReplies';
+import { checkReply, type AskReply, type ParseReply, type ScanReply } from '../core/aiReplies';
+import { recapOf } from '../core/recap';
+import { recapStats, wordingGuard, type Wording } from '../core/wording';
+import { createStore, del, get } from 'idb-keyval';
+import type { Json } from './database.types';
+import { toInsight, toSettle, toTemplate } from './insightRows';
 import { suggest } from '../core/categorise';
 import type { IsoDate } from '../core/dates';
 import { scanGuards } from '../core/itemise';
 import { pence, type Pence } from '../core/money';
 import type { UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
-import type { CategoryRow, ChapterRow, InboxItemRow } from './api';
+import type { CategoryRow, ChapterRow, InboxItemRow, RecurringRow } from './api';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
 import { currentCountry, editExpense } from './mutations';
@@ -264,3 +269,99 @@ export async function guessCategory(expenseId: string, layer = activeDataLayer()
     }
   } catch { /* the entry stays as saved */ }
 }
+
+// ───────── S6b, INS-2: the recap's wording ─────────
+
+/** Months whose wording failed on this phone while the app runs (not asked again). */
+const unworded = new WeakMap<DataLayer, Set<string>>();
+
+/** The two people as the wording names them: A joined first, so both phones read the same sentence. */
+function inJoinOrder(layer: DataLayer): [{ id: UserId; name: string }, { id: UserId; name: string }] | null {
+  const [a, b] = [...layer.members()].sort((x, y) => (x.joined_at < y.joined_at ? -1 : x.joined_at > y.joined_at ? 1 : 0));
+  return a && b ? [{ id: a.user_id, name: a.display_name ?? '' }, { id: b.user_id, name: b.display_name ?? '' }] : null;
+}
+
+function wordingOf(prose: string | null): Wording | null {
+  if (prose === null) return null;
+  return checkReply('recap', prose);
+}
+
+/**
+ * INS-2: a finished month's wording by the AI, guarded (every number is one of the month's own; no advice), with the
+ * names put in; null for the template. Stored once per household (the first phone to ask keeps it, the other reads it).
+ */
+export async function recapWording(month: string, layer = activeDataLayer()): Promise<Wording | null> {
+  if (!storedSmart()) return null;
+  const today = layer.today();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month >= today.slice(0, 7)) return null;
+  const failed = unworded.get(layer) ?? new Set<string>();
+  unworded.set(layer, failed);
+  const hid = layer.householdId();
+  const people = inJoinOrder(layer);
+  if (!hid || !people || failed.has(month)) return null;
+  const categories = liveCategories(layer);
+  const templates = layer.client.getQueryData<RecurringRow[]>(keys.recurring(layer.me() ?? '')) ?? [];
+  const recap = recapOf(
+    layer.entries().map(toInsight), layer.settlements().map(toSettle), [people[0].id, people[1].id], month,
+    { today, names: { [people[0].id]: people[0].name, [people[1].id]: people[1].name }, categories: categories.map((c) => ({ id: c.id, name: c.name })), templates: templates.map(toTemplate) },
+  );
+  const stats = recapStats(recap, [people[0].id, people[1].id]);
+  const names = { A: people[0].name, B: people[1].name };
+  const shown = (w: Wording | null) => (w === null ? null : wordingGuard(stats, w, names));
+  const give = (w: Wording | null) => { if (w === null) failed.add(month); return w; };
+  if (!layer.network.online) return null;
+  try {
+    const kept = wordingOf(await layer.api.recapProse(hid, month));
+    if (kept) return give(shown(kept));
+    const res = await layer.ai.recap(stats);
+    const reply = res.ok ? checkReply('recap', res.data) : null;
+    if (!reply || shown(reply) === null) return give(null);
+    // Kept once for the household; the wording shown is whichever got there first.
+    let prose = JSON.stringify(reply);
+    try { prose = await layer.api.saveRecapProse(month, stats as unknown as Json, prose); } catch { /* shown anyway */ }
+    return give(shown(wordingOf(prose)));
+  } catch {
+    return give(null);
+  }
+}
+
+// ───────── S6b, INS-9: Ask smsm ─────────
+
+/** INS-9: a question read by the AI into a closed filter (the app works out the figure); or why not. */
+export async function askSmsm(question: string, layer = activeDataLayer()): Promise<Result<AskReply>> {
+  if (!ready(layer)) return { ok: false, reason: 'off' };
+  const countries = [...new Set(layer.entries().filter((e) => e.deleted_at === null).map((e) => e.country))].sort();
+  try {
+    const res = await layer.ai.ask(masked(question, layer), {
+      categories: liveCategories(layer).map((c) => c.name),
+      chapters: rowsOf<ChapterRow>(layer, keys.chapters(layer.me() ?? ''), 'chapters').map((c) => c.name),
+      countries,
+      today: layer.today(),
+    });
+    if (!res.ok) return res;
+    const reply = checkReply('ask', res.data);
+    return reply ? { ok: true, data: reply } : { ok: false, reason: 'invalid' };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+// ───────── S6b, ADD-8: shared into the app ─────────
+
+/** ADD-8: what the service worker kept from the share sheet, read once and cleared (nothing is sent anywhere). */
+export async function takeShared(layer = activeDataLayer()): Promise<{ photo?: Blob; text?: string } | null> {
+  const store = createStore('smsm-shared', 'shared');
+  let kept: { photo?: string | null; text?: string | null } | undefined;
+  try { kept = await get(SHARED_KEY, store); } catch { return null; }
+  if (!kept) return null;
+  await del(SHARED_KEY, store).catch(() => undefined);
+  const out: { photo?: Blob; text?: string } = {};
+  if (kept.photo) {
+    const photo = await layer.photos.get(kept.photo).catch(() => null);
+    if (photo) out.photo = photo;
+    void layer.photos.remove?.(kept.photo).catch(() => undefined);
+  }
+  if (kept.text && kept.text.trim() !== '') out.text = kept.text.trim();
+  return out.photo || out.text ? out : null;
+}
+const SHARED_KEY = 'latest';

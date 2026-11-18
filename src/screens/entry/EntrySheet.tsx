@@ -152,11 +152,13 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [photo, setPhoto] = useState<{ path: string; url: string | null; queued: boolean } | null>(
     () => (fromInboxScan ? { path: fromInboxScan, url: null, queued: true } : null));
   const [reading, setReading] = useState<ReadingState>('idle');
-  const [receipt, setReceipt] = useState<{ discount: Pence; service: Pence; currency: string | null } | null>(null);
+  const [receipt, setReceipt] = useState<{ discount: Pence; service: Pence; tax: Pence; currency: string | null } | null>(null);
   const touched = useRef({ amount: false, description: false, date: false });
   const scanRun = useRef(0);
   const [errors, setErrors] = useState<string[]>([]);
-  const [showMore, setShowMore] = useState(initial.notes !== '');
+  // ADD-8: the "Scan receipt" shortcut with smart features off (or offline) offers "Add photo", under More details.
+  const startScan = request.mode === 'add' && request.start === 'scan';
+  const [showMore, setShowMore] = useState(initial.notes !== '' || (startScan && !(smart && online)));
   const [pickingDate, setPickingDate] = useState(false);
   // Q-U5: "Other" stays chosen once picked, or when the split started off the chips, even when its stepper
   // passes a preset (otherwise the stepper vanishes under the finger and the next tap lands on the date).
@@ -228,7 +230,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     const items = reply.items.map((l) => ({ label: l.label, pence: pence(l.pence), shared: true }));
     const discount = pence(reply.discount_pence);
     const service = pence(reply.service_pence);
-    setReceipt({ discount, service, currency: receiptCurrency(reply.currency) });
+    const tax = pence(reply.tax_pence ?? 0);
+    setReceipt({ discount, service, tax, currency: receiptCurrency(reply.currency) });
     setS((prev) => {
       const t = touched.current;
       let next: FormState = { ...prev, items: items.length > 0 ? items : null, billTotal: total };
@@ -248,7 +251,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         // One in any other currency fills no amount: the person sets it (never pounds that are really euros).
         const code = receiptCurrency(reply.currency);
         const local = code !== null && code !== 'GBP' && currencyOf(next.country ?? home) === code ? code : null;
-        const adds = items.length === 0 || (total !== null && checkTotal(items, discount, service, total).adds);
+        const adds = items.length === 0 || (total !== null && checkTotal(items, discount, service, total, tax).adds);
         const usable = total !== null && adds && (code === null || code === 'GBP' || local !== null);
         if (local) next = { ...next, foreign: { currency: local, rateText: '' } };
         next = { ...next, amountText: usable ? (local ? foreignText(total) : formatPlainPounds(total)) : '' };
@@ -270,7 +273,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     });
   };
   /** SCAN-1: the photo is kept on this phone at once (shown straight away); read too when scanning. */
-  const pick = (file: File, read: boolean) => {
+  const pick = (file: Blob, read: boolean) => {
     const url = URL.createObjectURL(file);
     setPhoto({ path: '', url, queued: false });
     const kept = keepPhoto(file).then(
@@ -322,6 +325,14 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     toast.show({ message: strings.smart.sortedLater });
     onDone();
   };
+  // ADD-8: a photo shared into the app is attached at once, and read as a scan when it can be.
+  const sharedPhoto = request.mode === 'add' ? request.shared?.photo : undefined;
+  useEffect(() => {
+    // Just after the sheet's first render (never a render cascade inside it).
+    if (sharedPhoto) void Promise.resolve().then(() => { pick(sharedPhoto, smart && online); });
+    // Once, when the sheet opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // SCAN-4: a receipt sorted later shows its photo, and is read now if it can be.
   useEffect(() => {
     if (!fromInboxScan) return;
@@ -337,16 +348,16 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     setS((prev) => {
       const items = prev.items?.map((l, i) => (i === index ? { ...l, shared: !l.shared } : l)) ?? null;
       let next: FormState = { ...prev, items };
-      if (items && receipt && prev.billTotal != null && !touched.current.amount && checkTotal(items, receipt.discount, receipt.service, prev.billTotal).adds) {
-        const { amount } = itemise(items, items.map((l) => l.shared), receipt.discount, receipt.service);
+      if (items && receipt && prev.billTotal != null && !touched.current.amount && checkTotal(items, receipt.discount, receipt.service, prev.billTotal, receipt.tax).adds) {
+        const { amount } = itemise(items, items.map((l) => l.shared), receipt.discount, receipt.service, receipt.tax);
         next = { ...next, amountText: prev.foreign ? foreignText(amount) : formatPlainPounds(amount) };
       }
       return followExact(next);
     });
     setErrors([]);
   };
-  const mismatch = s.items && s.items.length > 0 && receipt && s.billTotal != null && !checkTotal(s.items, receipt.discount, receipt.service, s.billTotal).adds
-    ? { lines: checkTotal(s.items, receipt.discount, receipt.service, s.billTotal).lines, total: s.billTotal } : null;
+  const mismatch = s.items && s.items.length > 0 && receipt && s.billTotal != null && !checkTotal(s.items, receipt.discount, receipt.service, s.billTotal, receipt.tax).adds
+    ? { lines: checkTotal(s.items, receipt.discount, receipt.service, s.billTotal, receipt.tax).lines, total: s.billTotal } : null;
 
   const title = rec ? (template ? strings.recurring.edit : strings.recurring.title)
     : request.mode === 'refund' ? strings.entry.moneyBack
@@ -578,7 +589,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           onSortLater={request.inboxItem === undefined ? () => { sortLaterNow(); } : null}
         />
       ) : photoMode && smart && online ? (
-        <div><PhotoButton label={strings.smart.scan} scan onPicked={(file) => { pick(file, true); }} /></div>
+        <div><PhotoButton label={strings.smart.scan} scan autoOpen={startScan} onPicked={(file) => { pick(file, true); }} /></div>
       ) : null}
 
       <div className="flex flex-col gap-2">
@@ -725,7 +736,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
       <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
         {photoMode && !photo ? (
-          <div className="mb-4"><PhotoButton label={strings.smart.addPhoto} scan={false} onPicked={(file) => { pick(file, false); }} /></div>
+          <div className="mb-4"><PhotoButton label={strings.smart.addPhoto} scan={false} autoOpen={startScan && !(smart && online)} onPicked={(file) => { pick(file, false); }} /></div>
         ) : null}
         {photoMode && s.items && s.items.length > 0 ? <Itemise items={s.items} mismatch={mismatch} currency={receipt?.currency ?? null} onToggle={toggleItem} /> : null}
         {!rec ? (
