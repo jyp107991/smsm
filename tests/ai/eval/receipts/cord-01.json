@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #0",
+ "currency": "IDR",
+ "total_pence": 6000000,
+ "items": [
+  {
+   "label": "-TICKET CP",
+   "pence": 6000000
+  }
+ ]
+}

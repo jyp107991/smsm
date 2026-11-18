@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #11",
+ "currency": "IDR",
+ "total_pence": 23000000,
+ "items": [
+  {
+   "label": "BANABERRY FRESH CREAM CAK",
+   "pence": 23000000
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #18",
+ "currency": "IDR",
+ "total_pence": 15600000,
+ "items": [
+  {
+   "label": "Propolis Cair",
+   "pence": 15600000
+  }
+ ]
+}

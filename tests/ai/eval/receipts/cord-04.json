@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #3",
+ "currency": "IDR",
+ "total_pence": 1100000,
+ "items": [
+  {
+   "label": "DONAT GULA",
+   "pence": 1100000
+  }
+ ]
+}

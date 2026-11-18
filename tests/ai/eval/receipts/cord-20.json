@@ -1,0 +1,15 @@
+{
+ "source": "CORD v2 test #21",
+ "currency": "IDR",
+ "total_pence": 3800000,
+ "items": [
+  {
+   "label": "NASI GOR SFD TLR",
+   "pence": 3500000
+  },
+  {
+   "label": "ES TEH TAWAR",
+   "pence": 300000
+  }
+ ]
+}

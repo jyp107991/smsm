@@ -1,0 +1,19 @@
+{
+ "source": "CORD v2 test #4",
+ "currency": "IDR",
+ "total_pence": 17460000,
+ "items": [
+  {
+   "label": "ICE BLACKCOFFE",
+   "pence": 8200000
+  },
+  {
+   "label": "AVOCADO COFFEE",
+   "pence": 6100000
+  },
+  {
+   "label": "CHIKEN KATSU FF",
+   "pence": 5100000
+  }
+ ]
+}

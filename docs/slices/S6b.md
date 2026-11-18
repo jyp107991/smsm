@@ -35,4 +35,7 @@ INS-2 (the AI wording of the recap; the template stays the fallback), INS-9 (Ask
 - Core: `recapStats`, `wordingGuard` (`src/core/wording.ts`); `askFilter`, `answer` (`src/core/ask.ts`).
 
 ## Owner (★ BUILD_PLAN)
-The ten real receipt photos for the eval: this repository is public, so they must not be committed. Options for the owner when S6b reaches the eval: keep them in a private place the eval workflow can read, or skip them and rely on the 20 generated receipts plus real use. Asked at that point; nothing else in S6b needs the owner.
+None. The owner asked for receipts found online instead of their own (18 Nov): `tests/ai/eval/receipts/` holds 20 real receipt photos from CORD v2 (CC BY 4.0; attribution beside them) with their labelled totals and lines, and the 20 generated UK receipts make up the rest.
+
+## Found while choosing them
+Many receipts add **tax** (and service) on top of the lines (CORD's restaurant bills: subtotal + service + tax = total). The scan schema has `service_pence` but no tax, so such a receipt would read as "the lines don't add up". S6b adds `tax_pence` to the scan reply (default 0), counted like service in `checkTotal` and `itemise` (shared out over the lines in proportion); UK receipts, where VAT is inside the prices, read 0.

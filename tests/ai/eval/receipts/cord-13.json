@@ -1,0 +1,31 @@
+{
+ "source": "CORD v2 test #14",
+ "currency": "IDR",
+ "total_pence": 28143500,
+ "items": [
+  {
+   "label": "RedVelvet Cheese Slc",
+   "pence": 3800000
+  },
+  {
+   "label": "Chicken Baked Rice",
+   "pence": 5500000
+  },
+  {
+   "label": "Fish n Chips",
+   "pence": 6500000
+  },
+  {
+   "label": "Mushroom Soup",
+   "pence": 3500000
+  },
+  {
+   "label": "Chamomile",
+   "pence": 2500000
+  },
+  {
+   "label": "Iced Tea",
+   "pence": 2000000
+  }
+ ]
+}

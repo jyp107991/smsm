@@ -1,0 +1,15 @@
+{
+ "source": "CORD v2 test #13",
+ "currency": "IDR",
+ "total_pence": 5130000,
+ "items": [
+  {
+   "label": "BASO KUAH",
+   "pence": 4363600
+  },
+  {
+   "label": "A.MINERAL GELAS",
+   "pence": 300000
+  }
+ ]
+}

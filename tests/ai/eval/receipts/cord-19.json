@@ -1,0 +1,27 @@
+{
+ "source": "CORD v2 test #20",
+ "currency": "IDR",
+ "total_pence": 37785900,
+ "items": [
+  {
+   "label": "cashew nuts chkn",
+   "pence": 6450000
+  },
+  {
+   "label": "garlic pepper beef",
+   "pence": 7950000
+  },
+  {
+   "label": "red curry beef",
+   "pence": 6950000
+  },
+  {
+   "label": "phad thai",
+   "pence": 6450000
+  },
+  {
+   "label": "steamed rice",
+   "pence": 4760000
+  }
+ ]
+}

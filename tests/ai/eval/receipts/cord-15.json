@@ -1,0 +1,15 @@
+{
+ "source": "CORD v2 test #16",
+ "currency": "IDR",
+ "total_pence": 7000000,
+ "items": [
+  {
+   "label": "[LG] BLACK SAKURA",
+   "pence": 5909100
+  },
+  {
+   "label": "IVINERAL WATER (bundling) 5k",
+   "pence": 454500
+  }
+ ]
+}
