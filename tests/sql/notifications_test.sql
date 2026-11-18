@@ -374,9 +374,11 @@ select count(*) = 1 as ok_not1_kim_saves_this_phone from (select save_push_subsc
 select count(*) = 1 and bool_and(user_id = :'K' and p256dh = 'p256dh-kim' and auth = 'auth-kim') as ok_not1_kim_reads_her_subscription from push_subscriptions;
 set request.jwt.claim.sub = :'L';
 select count(*) = 0 as ok_not1_lee_reads_none_of_kims from push_subscriptions;
-select count(*) = 1 as ok_not1_lee_signs_in_on_the_same_phone from (select save_push_subscription(:'ep', 'p256dh-lee', 'auth-lee')) x;
+-- (Review fix 8: the same phone's subscription has the same keys; an endpoint presented with other keys isn't taken.)
+select save_push_subscription(:'ep', 'p256dh-lee', 'auth-lee');                             -- expect error: not this phone's subscription
+select count(*) = 1 as ok_not1_lee_signs_in_on_the_same_phone from (select save_push_subscription(:'ep', 'p256dh-kim', 'auth-kim')) x;
 reset role;
-select count(*) = 1 and bool_and(user_id = :'L' and p256dh = 'p256dh-lee' and auth = 'auth-lee')
+select count(*) = 1 and bool_and(user_id = :'L' and p256dh = 'p256dh-kim' and auth = 'auth-kim')
    as ok_not1_the_endpoint_moves_to_whoever_is_signed_in from push_subscriptions where endpoint = :'ep';
 set role authenticated;
 set request.jwt.claim.sub = :'K';

@@ -54,6 +54,7 @@ import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
 import { claimQueue, OtherWindowError, type QueueLocks, type WindowRole } from './windows';
 import { runForget } from './forget';
+import { dropThisPhone, within } from './push';
 import {
   categoryWrite, chapterWrite, commentWrite, completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, recurringWrite, settlementWrite,
   type ExpenseUpsert, type MemoryOp, type MoneyOp, type PrefsOp, type QueuedRow,
@@ -1003,6 +1004,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       // Signing out clears storage the window that owns the queue relies on.
       if (role !== 'owner') throw new OtherWindowError();
       const me = uid();
+      // NOT-1: notifications stop on this phone; done while still signed in, never holding sign-out up for long.
+      await within(dropThisPhone(api), 4000);
       await api.auth.signOut();
       await forget(me);
     },

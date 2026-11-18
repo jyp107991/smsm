@@ -47,6 +47,13 @@ export interface MemoryTables {
   minClientVersion: string | null;
 }
 
+/** The push services browsers use (save_push_subscription's allowlist, the migration's push_endpoint_ok). */
+function pushEndpointOk(endpoint: string): boolean {
+  const host = /^https:\/\/([^/:?#\s]+)\//.exec(endpoint)?.[1] ?? '';
+  return endpoint.length <= 2048
+    && /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+push\.apple\.com|([a-z0-9-]+\.)+notify\.windows\.com)$/.test(host);
+}
+
 /** notification_prefs' column defaults (the migration). */
 const PREF_SWITCHES = ['entries', 'settle_ups', 'comments', 'bills_today', 'bills_tomorrow', 'recap', 'balance'] as const;
 function defaultPrefs(userId: string, at: string): NotificationPrefsRow {
@@ -846,10 +853,15 @@ export function createMemoryApi(
     savePushSubscription: (sub) =>
       call('savePushSubscription', sub, () => {
         const uid = me().userId;
-        if (!/^https:\/\/[^/\s]+\//.test(sub.endpoint) || sub.endpoint.length > 2048) refuse('that is not a push address');
+        if (!pushEndpointOk(sub.endpoint)) refuse('that is not a push address');
         if (sub.p256dh === '' || sub.auth === '') refuse('the subscription\u2019s keys are missing');
         tables.pushSubscriptions ??= [];
-        // An endpoint another account had on this phone moves to whoever saves it now.
+        const old = tables.pushSubscriptions.find((s) => s.endpoint === sub.endpoint);
+        // Another account's endpoint moves only on the same phone handed over within the household (its own keys).
+        if (old && old.user_id !== uid) {
+          const theirs = tables.members.find((m) => m.user_id === old.user_id)?.household_id ?? null;
+          if (theirs === null || theirs !== myHousehold() || old.p256dh !== sub.p256dh || old.auth !== sub.auth) refuse('that push address belongs to someone else');
+        }
         tables.pushSubscriptions = tables.pushSubscriptions.filter((s) => s.endpoint !== sub.endpoint);
         tables.pushSubscriptions.push({ user_id: uid, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth });
       }),

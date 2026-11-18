@@ -51,6 +51,10 @@ export function supabasePushDb(db: SupabaseClient): PushDb {
       const { error } = await db.from('push_subscriptions').delete().eq('endpoint', endpoint);
       failed('push_subscriptions', error);
     },
+    async noteResult(endpoint, ok) {
+      const { error } = await db.rpc('note_push_result', { p_endpoint: endpoint, p_ok: ok });
+      failed('note_push_result', error);
+    },
   };
 }
 

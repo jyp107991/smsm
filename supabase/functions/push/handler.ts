@@ -12,7 +12,7 @@
  *   push was accepted, every phone was gone, or the recipient has none. Anything else: 401.
  */
 import { encryptNotification } from '@block65/webcrypto-web-push';
-import { notificationText, type NotificationData, type NotificationKind } from '../_shared/notify.ts';
+import { BATCH_FROM, batchText, ENTRY_KINDS, notificationText, type NotificationData, type NotificationKind } from '../_shared/notify.ts';
 
 export interface PushConfig { vapid_public: string | null; vapid_private: string | null; token: string | null; function_url: string | null }
 
@@ -36,6 +36,11 @@ export interface PushDb {
   subscriptions(userIds: readonly string[]): Promise<SubscriptionRow[]>;
   markSent(ids: readonly string[]): Promise<void>;
   removeSubscription(endpoint: string): Promise<void>;
+  /**
+   * What a push service said (note_push_result): taken, or refused in a way that counts against the subscription
+   * (it is forgotten after 24 hours of that). Optional: a database that doesn't keep it simply isn't told.
+   */
+  noteResult?(endpoint: string, ok: boolean): Promise<void>;
 }
 
 export interface PushDeps {
@@ -47,7 +52,7 @@ export interface PushDeps {
 }
 
 /** What public/push.js shows. */
-export interface PushPayload { title: string; body: string; path: string; tag: string; icon: string; count: number }
+export interface PushPayload { title: string; body: string; path: string; tag: string; icon: string; count: number; renotify?: boolean }
 
 const BATCH = 100;
 /** How long a push service keeps a push for a phone that is off (seconds). */
@@ -55,6 +60,8 @@ const TTL = 24 * 60 * 60;
 /** The VAPID token's life (RFC 8292: at most 24 hours). */
 const VAPID_LIFE = 12 * 60 * 60;
 const APP_ICON = '/icons/icon-192.png';
+/** How long one push service may take to answer (ms). */
+const PUSH_TIMEOUT = 10_000;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -112,7 +119,8 @@ function tagOf(row: Outgoing): string {
     case 'settle_added': case 'settle_changed': case 'settle_deleted':
       return `settle:${ref ?? row.id}`;
     case 'comment':
-      return `comment:${ref ?? row.id}`;
+      // Each comment its own notification (a reply never silently replaces the one before).
+      return `comment:${row.data.commentId ?? ref ?? row.id}`;
     case 'approval_waiting': case 'approval_decided':
       return `approval:${ref ?? row.id}`;
     case 'bill_posted': case 'bill_tomorrow':
@@ -124,13 +132,52 @@ function tagOf(row: Outgoing): string {
   }
 }
 
+const iconOf = (row: Outgoing) => (row.animal === 'cat' || row.animal === 'dog' ? `/icons/head-${row.animal}.png` : APP_ICON);
+const countOf = (row: Outgoing) => Math.max(0, Math.trunc(row.badge));
+
 export function payloadOf(row: Outgoing): PushPayload {
   const { title, body, path } = notificationText(row.kind, row.data, row.names);
-  const icon = row.animal === 'cat' || row.animal === 'dog' ? `/icons/head-${row.animal}.png` : APP_ICON;
-  return { title, body, path, tag: tagOf(row), icon, count: Math.max(0, Math.trunc(row.badge)) };
+  const tag = tagOf(row);
+  // A tag that comes back (a request waiting, then decided) alerts again rather than replacing quietly.
+  return { title, body, path, tag, icon: iconOf(row), count: countOf(row), ...(tag.startsWith('approval:') ? { renotify: true } : {}) };
 }
 
-type Outcome = 'ok' | 'gone' | 'failed';
+/** One notification and the outbox rows it stands for. */
+interface Message { ids: string[]; recipient: string; payload: PushPayload }
+
+/**
+ * The rows as notifications: one each, except a batch of one person's entry changes for the same person (a bank
+ * import, a phone's queue synced at once) of BATCH_FROM or more, which is one ("Kim added 30 entries").
+ */
+export function messagesOf(rows: readonly Outgoing[]): Message[] {
+  const batches = new Map<string, Outgoing[]>();
+  const keyOf = (r: Outgoing) => (ENTRY_KINDS.includes(r.kind) && r.data.actor ? `${r.recipient}|${r.data.actor}` : null);
+  for (const r of rows) {
+    const k = keyOf(r);
+    if (k) batches.set(k, [...(batches.get(k) ?? []), r]);
+  }
+  const out: Message[] = [];
+  const done = new Set<string>();
+  for (const r of rows) {
+    const k = keyOf(r);
+    const batch = k ? batches.get(k) ?? [] : [];
+    if (k && batch.length >= BATCH_FROM) {
+      if (done.has(k)) continue;
+      done.add(k);
+      const last = batch[batch.length - 1] ?? r;
+      const { title, body, path } = batchText(batch.map((b) => b.kind), last.data, last.names);
+      out.push({
+        ids: batch.map((b) => b.id), recipient: r.recipient,
+        payload: { title, body, path, tag: `entries:${r.data.actor ?? ''}`, icon: iconOf(last), count: countOf(last), renotify: true },
+      });
+    } else {
+      out.push({ ids: [r.id], recipient: r.recipient, payload: payloadOf(r) });
+    }
+  }
+  return out;
+}
+
+type Outcome = 'ok' | 'gone' | 'failed' | 'refused';
 
 async function sendOne(sub: SubscriptionRow, payload: PushPayload, config: PushConfig, deps: PushDeps): Promise<Outcome> {
   let body: Uint8Array;
@@ -154,12 +201,23 @@ async function sendOne(sub: SubscriptionRow, payload: PushPayload, config: PushC
         'content-type': 'application/octet-stream',
       },
       body: body as BodyInit,
+      signal: AbortSignal.timeout(PUSH_TIMEOUT),
     });
     if (res.status >= 200 && res.status < 300) return 'ok';
     if (res.status === 404 || res.status === 410) return 'gone';
-    return 'failed';
+    // Busy or down: try again next minute. Anything else (400, 401, 403, 413…) counts against the subscription.
+    if (res.status === 429 || res.status >= 500) return 'failed';
+    return 'refused';
   } catch {
     return 'failed';
+  }
+}
+
+async function quietly(p: Promise<void> | undefined): Promise<void> {
+  try {
+    await p;
+  } catch (err) {
+    console.error('push:', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -168,33 +226,39 @@ async function drain(deps: PushDeps, config: PushConfig): Promise<{ sent: number
   if (rows.length === 0) return { sent: 0, waiting: 0 };
   const recipients = [...new Set(rows.map((r) => r.recipient))];
   let subs = await deps.db.subscriptions(recipients);
-  const done: string[] = [];
+  let sent = 0;
   let waiting = 0;
-  for (const row of rows) {
-    const payload = payloadOf(row);
-    const mine = subs.filter((s) => s.user_id === row.recipient);
+  for (const message of messagesOf(rows)) {
+    const mine = subs.filter((s) => s.user_id === message.recipient);
     const outcomes: Outcome[] = [];
     for (const sub of mine) {
-      const outcome = await sendOne(sub, payload, config, deps);
+      const outcome = await sendOne(sub, message.payload, config, deps);
       outcomes.push(outcome);
       if (outcome === 'gone') {
-        await deps.db.removeSubscription(sub.endpoint);
+        await quietly(deps.db.removeSubscription(sub.endpoint));
         subs = subs.filter((s) => s.endpoint !== sub.endpoint);
+      } else if (outcome === 'ok' || outcome === 'refused') {
+        await quietly(deps.db.noteResult?.(sub.endpoint, outcome === 'ok'));
       }
     }
     // Sent once a phone took it; done too when every phone was gone or there are none. Otherwise it waits for
-    // the next minute's run (the database drops it after 2 days).
-    if (outcomes.includes('ok') || outcomes.every((o) => o === 'gone')) done.push(row.id);
-    else waiting += 1;
+    // the next minute's run (the database drops it after 2 days). Marked at once, so a failure later in this run
+    // never sends it again.
+    if (outcomes.includes('ok') || outcomes.every((o) => o === 'gone')) {
+      await deps.db.markSent(message.ids);
+      sent += message.ids.length;
+    } else waiting += message.ids.length;
   }
-  if (done.length > 0) await deps.db.markSent(done);
-  return { sent: done.length, waiting };
+  return { sent, waiting };
 }
 
 export async function handle(req: Request, deps: PushDeps): Promise<Response> {
   const url = new URL(req.url);
   try {
     if (url.searchParams.get('init') === '1') {
+      // Anyone may call it, so once it is set up it does nothing at all: a read, no write, an empty answer.
+      const stored = await deps.db.config();
+      if (stored?.vapid_public && stored.vapid_private && stored.function_url) return new Response(null, { status: 204 });
       await setUp(deps);
       return json(200, { ok: true });
     }

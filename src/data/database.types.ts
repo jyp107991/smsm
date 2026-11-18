@@ -459,14 +459,14 @@ isOneToOne: false
                   ]
                 },"push_subscriptions": {
                   Row: {
-                    "auth": string,"created_at": string,"endpoint": string,"last_ok_at": string | null,"p256dh": string,"user_id": string
+                    "auth": string,"created_at": string,"endpoint": string,"failing_since": string | null,"last_ok_at": string | null,"p256dh": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "auth": string,"created_at"?: string,"endpoint": string,"last_ok_at"?: string | null,"p256dh": string,"user_id": string
+                    "auth": string,"created_at"?: string,"endpoint": string,"failing_since"?: string | null,"last_ok_at"?: string | null,"p256dh": string,"user_id": string
                   }
                   Update: {
-                    "auth"?: string,"created_at"?: string,"endpoint"?: string,"last_ok_at"?: string | null,"p256dh"?: string,"user_id"?: string
+                    "auth"?: string,"created_at"?: string,"endpoint"?: string,"failing_since"?: string | null,"last_ok_at"?: string | null,"p256dh"?: string,"user_id"?: string
                   }
                   Relationships: [
                     
@@ -627,6 +627,9 @@ isOneToOne: false
               "animal": string,"badge": number,"data": Json,"id": string,"kind": string,"names": Json,"recipient": string
             }[]
                            },
+"note_push_result":
+{ Args: { "p_endpoint": string,"p_ok": boolean }; Returns: undefined
+                           },
 "notification_data":
 { Args: { "o": Omit<Database["public"]['Tables']["notification_outbox"]['Row'], Database["public"]['Tables']["notification_outbox"]['ComputedFields']> }; Returns: Json
                            },
@@ -641,6 +644,9 @@ isOneToOne: false
                            },
 "post_due_recurring_all":
 { Args: Record<PropertyKey, never>; Returns: number
+                           },
+"push_endpoint_ok":
+{ Args: { "p_endpoint": string }; Returns: boolean
                            },
 "push_public_key":
 { Args: Record<PropertyKey, never>; Returns: string

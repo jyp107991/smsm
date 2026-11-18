@@ -268,8 +268,11 @@ describe('push function ?init=1: the keys are made once, with nothing for the ow
     const { db, state } = fakeDb({ config: { vapid_public: null, vapid_private: null, token: TOKEN, function_url: null } });
     await handle()(init(), deps(db, pushServices().fetch));
     const first = { ...state.config };
+    const saves = state.saves.length;
     const res = await handle()(init(), deps(db, pushServices().fetch));
-    expect(res.status).toBe(200);
+    // Review fix 8: once set up, ?init=1 does nothing at all (a fast 204, no write); it was 200.
+    expect(res.status).toBe(204);
+    expect(state.saves).toHaveLength(saves);
     expect(state.config).toEqual(first);
   });
 
@@ -379,10 +382,15 @@ describe('push function: draining the outbox (NOT-1, NOT-2, NOT-3, INB-2)', () =
     const added = row({ id: 'out-1' });
     const changed = row({ id: 'out-2', kind: 'entry_changed', data: { ...row().data, amount: 4520 } });
     const other = row({ id: 'out-3', data: { ...row().data, ref: OTHER_ENTRY, description: 'Boots' } });
-    const { db, state } = fakeDb({ rows: [added, changed, other], subs: [jae.row] });
+    // Review fix 2: three of Sam's entry changes waiting at once are one notification, so the three rows are sent
+    // in two runs here (two, then one) to see each one's own tag.
+    const { db, state } = fakeDb({ rows: [added, other], subs: [jae.row] });
     const services = pushServices();
     await handle()(fromDatabase(), deps(db, services.fetch));
-    const payloads = services.sent.map((s) => payloadOf(s, jae));
+    state.rows.push(changed);
+    await handle()(fromDatabase(), deps(db, services.fetch));
+    const [first, second, third] = services.sent.map((s) => payloadOf(s, jae));
+    const payloads = [first, third, second];
     expect(payloads).toHaveLength(3);
     const [a, b, c] = payloads;
     expect(a?.tag).toBeTruthy();

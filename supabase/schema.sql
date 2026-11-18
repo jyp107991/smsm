@@ -389,6 +389,11 @@ begin
   delete from notification_outbox o where o.sent_at is null and o.created_at < now() - interval '2 days';
   delete from notification_outbox o where o.sent_at is not null and o.sent_at < now() - interval '7 days';
   update notification_outbox o set sent_at = now() where o.sent_at is null and not notification_enabled(o.recipient, o.kind);
+  -- A balance reminder whose balance has come back within the person's amount since it was queued says nothing.
+  update notification_outbox o set sent_at = now()
+   where o.sent_at is null and o.kind = 'balance_reminder'
+     and coalesce((select abs(b.net_pence) from member_net b where b.household_id = o.household_id and b.user_id = o.recipient), 0)
+         <= coalesce((o.payload ->> 'threshold')::bigint, 0);
   return query
   with picked as (
     select o.id from notification_outbox o
@@ -406,6 +411,22 @@ begin
           + (select count(*) from change_requests q where q.household_id = c.household_id and q.status = 'pending' and q.requested_by <> c.recipient))::int
     from claimed c
    order by c.created_at, c.id;
+end $$;
+
+--
+-- Name: note_push_result(text, boolean); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.note_push_result(p_endpoint text, p_ok boolean) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if p_ok then
+    update push_subscriptions set last_ok_at = now(), failing_since = null where endpoint = p_endpoint;
+  else
+    update push_subscriptions set failing_since = coalesce(failing_since, now()) where endpoint = p_endpoint;
+    delete from push_subscriptions where endpoint = p_endpoint and failing_since < now() - interval '24 hours';
+  end if;
 end $$;
 
 --
@@ -439,19 +460,29 @@ begin
   if o.kind in ('entry_added', 'entry_changed', 'entry_deleted', 'entry_restored', 'bill_posted') then
     select * into e from expenses where id = o.ref_id;
     d := d || jsonb_build_object('description', e.description, 'amount', e.amount_pence);
+    -- A change: the amount (the words give the new one), only the category, or other details.
+    if o.kind = 'entry_changed' and jsonb_typeof(o.payload -> 'fields') = 'array' then
+      if o.payload -> 'fields' ? 'amount_pence' then
+        d := d || jsonb_build_object('change', 'amount');
+      elsif o.payload -> 'fields' = '["category_id"]'::jsonb then
+        d := d || jsonb_build_object('change', 'category', 'category', (select c.name from categories c where c.id = e.category_id));
+      else
+        d := d || jsonb_build_object('change', 'details');
+      end if;
+    end if;
   elsif o.kind in ('settle_added', 'settle_changed', 'settle_deleted') then
     select * into s from settlements where id = o.ref_id;
     d := d || jsonb_build_object('amount', s.amount_pence, 'from', s.from_user);
   elsif o.kind = 'comment' then
     select * into e from expenses where id = o.ref_id;
     select body into v_body from comments where id = (o.payload ->> 'comment_id')::uuid;
-    d := d || jsonb_build_object('description', e.description, 'comment', v_body);
+    d := d || jsonb_build_object('description', e.description, 'comment', v_body, 'commentId', o.payload ->> 'comment_id');
   elsif o.kind in ('approval_waiting', 'approval_decided') then
     select * into cr from change_requests where id = o.ref_id;
     d := d || jsonb_build_object('request', cr.kind, 'approved', cr.status = 'approved');
   elsif o.kind = 'bill_tomorrow' then
     select * into r from recurring where id = o.ref_id;
-    d := d || jsonb_build_object('description', r.description, 'amount', r.amount_pence);
+    d := d || jsonb_build_object('description', r.description, 'amount', r.amount_pence, 'varies', r.amount_varies);
   elsif o.kind = 'recap_ready' then
     d := d || jsonb_build_object('month', o.payload ->> 'month');
   elsif o.kind = 'balance_reminder' then
@@ -517,11 +548,11 @@ CREATE FUNCTION public.notify_expense() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-declare v_kind text;
+declare v_kind text; v_payload jsonb := '{}'; v_fields jsonb;
 begin
   if auth.uid() is null then return null; end if;
   if tg_op = 'INSERT' then
-    if new.source = 'recurring' or new.deleted_at is not null then return null; end if;
+    if current_setting('smsm.posting', true) = 'on' or new.deleted_at is not null then return null; end if;
     v_kind := 'entry_added';
   elsif old.deleted_at is null and new.deleted_at is not null then
     v_kind := 'entry_deleted';
@@ -533,8 +564,12 @@ begin
     return null;
   else
     v_kind := 'entry_changed';
+    select coalesce(jsonb_agg(n.key order by n.key), '[]') into v_fields
+      from jsonb_each(to_jsonb(new) - 'updated_at' - 'updated_by' - 'category_guess') n
+     where n.value is distinct from to_jsonb(old) -> n.key;
+    v_payload := jsonb_build_object('fields', v_fields);
   end if;
-  perform queue_notification(new.household_id, auth.uid(), v_kind, new.id);
+  perform queue_notification(new.household_id, auth.uid(), v_kind, new.id, v_payload);
   return null;
 end $$;
 
@@ -573,7 +608,7 @@ CREATE FUNCTION public.post_due_recurring(p_household uuid DEFAULT NULL::uuid) R
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-declare r recurring; d date; step interval; posted int := 0; hid uuid; home char(2);
+declare r recurring; d date; step interval; posted int := 0; hid uuid; home char(2); v_id uuid; v_late boolean;
         uk_today date := (now() at time zone 'Europe/London')::date;
 begin
   if auth.uid() is not null and p_household is not null and p_household is distinct from my_household() then
@@ -584,6 +619,9 @@ begin
   end if;
   hid := coalesce(p_household, my_household());
   if hid is null then return 0; end if;
+  perform set_config('smsm.posting', 'on', true);
+  v_late := exists (select 1 from notification_daily_runs where day = uk_today)
+            and (select count(*) from members x where x.household_id = hid) = 2;
   select home_country into home from households where id = hid;
   for r in select * from recurring where household_id = hid and active order by id for update loop
     step := case r.frequency when 'weekly' then make_interval(weeks => r.every)
@@ -598,17 +636,25 @@ begin
                 'estimate_pence', r.amount_pence, 'date', d, 'category_id', r.category_id))
         on conflict do nothing;
       else
+        v_id := null;
         insert into expenses(household_id, description, amount_pence, date, category_id, chapter_id, paid, paid_via,
                              split_mode, split_params, shares, notes, country, source, recurring_id, occurrence_date)
         values (r.household_id, r.description, r.amount_pence, d, r.category_id, null, r.paid, r.paid_via,
                 r.split_mode, r.split_params, r.shares, r.notes, coalesce(home, 'GB'), 'recurring', r.id, d)
-        on conflict do nothing;
+        on conflict do nothing
+        returning id into v_id;
+        if v_late and v_id is not null and d = uk_today then
+          insert into notification_outbox(household_id, recipient, kind, ref_id, payload)
+          select hid, m.user_id, 'bill_posted', v_id, jsonb_build_object('recurring_id', r.id) from members m where m.household_id = hid;
+        end if;
       end if;
       r.posted_count := r.posted_count + 1;
       posted := posted + 1;
     end loop;
     update recurring set posted_count = r.posted_count where id = r.id and posted_count is distinct from r.posted_count;
   end loop;
+  perform set_config('smsm.posting', 'off', true);
+  if v_late then perform kick_push(); end if;
   return posted;
 end $$;
 
@@ -630,6 +676,18 @@ begin
   end loop;
   return total;
 end $$;
+
+--
+-- Name: push_endpoint_ok(text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.push_endpoint_ok(p_endpoint text) RETURNS boolean
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO 'public'
+    AS $_$
+  select coalesce(length(p_endpoint) <= 2048
+    and substring(p_endpoint from '^https://([^/:?#\s]+)/') ~ '^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+push\.apple\.com|([a-z0-9-]+\.)+notify\.windows\.com)$',
+    false)
+$_$;
 
 --
 -- Name: push_public_key(); Type: FUNCTION; Schema: public; Owner: -
@@ -661,7 +719,8 @@ begin
   select e.household_id, m.user_id, 'bill_posted', e.id, jsonb_build_object('recurring_id', e.recurring_id)
     from expenses e join members m on m.household_id = e.household_id
    where e.recurring_id is not null and e.source = 'recurring' and e.occurrence_date = d and e.deleted_at is null
-     and (select count(*) from members x where x.household_id = e.household_id) = 2;
+     and (select count(*) from members x where x.household_id = e.household_id) = 2
+     and not exists (select 1 from notification_outbox a where a.kind = 'bill_posted' and a.ref_id = e.id);
   get diagnostics c = row_count; n := n + c;
 
   -- A shared bill posts tomorrow (its next occurrence): both (most have the switch off).
@@ -1115,19 +1174,28 @@ CREATE FUNCTION public.save_push_subscription(p_endpoint text, p_p256dh text, p_
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-declare uid uuid := auth.uid();
+declare uid uuid := auth.uid(); old push_subscriptions;
 begin
   if uid is null then raise exception 'not signed in'; end if;
-  if p_endpoint is null or p_endpoint !~ '^https://[^/\s]+/' or length(p_endpoint) > 2048 then
-    raise exception 'that is not a push address';
-  end if;
+  if not push_endpoint_ok(p_endpoint) then raise exception 'that is not a push address'; end if;
   if coalesce(length(p_p256dh), 0) not between 1 and 200 or coalesce(length(p_auth), 0) not between 1 and 200 then
     raise exception 'the subscription''s keys are missing';
   end if;
-  insert into push_subscriptions(endpoint, user_id, p256dh, auth) values (p_endpoint, uid, p_p256dh, p_auth)
-  on conflict (endpoint) do update
-    set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth,
-        created_at = case when push_subscriptions.user_id = excluded.user_id then push_subscriptions.created_at else now() end;
+  select * into old from push_subscriptions where endpoint = p_endpoint for update;
+  if old.endpoint is null then
+    insert into push_subscriptions(endpoint, user_id, p256dh, auth) values (p_endpoint, uid, p_p256dh, p_auth)
+    on conflict (endpoint) do nothing;
+  elsif old.user_id = uid then
+    update push_subscriptions set p256dh = p_p256dh, auth = p_auth where endpoint = p_endpoint;
+  else
+    if (select household_id from members where user_id = old.user_id) is distinct from my_household() or my_household() is null then
+      raise exception 'that push address belongs to someone else';
+    end if;
+    if old.p256dh <> p_p256dh or old.auth <> p_auth then
+      raise exception 'that push address belongs to someone else';
+    end if;
+    update push_subscriptions set user_id = uid, created_at = now(), failing_since = null where endpoint = p_endpoint;
+  end if;
 end $$;
 
 --
@@ -1699,8 +1767,9 @@ CREATE TABLE public.push_subscriptions (
     auth text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     last_ok_at timestamp with time zone,
+    failing_since timestamp with time zone,
     CONSTRAINT push_subscriptions_auth_check CHECK (((length(auth) >= 1) AND (length(auth) <= 200))),
-    CONSTRAINT push_subscriptions_endpoint_check CHECK (((endpoint ~ '^https://[^/\s]+/'::text) AND (length(endpoint) <= 2048))),
+    CONSTRAINT push_subscriptions_endpoint_check CHECK (public.push_endpoint_ok(endpoint)),
     CONSTRAINT push_subscriptions_p256dh_check CHECK (((length(p256dh) >= 1) AND (length(p256dh) <= 200)))
 );
 
@@ -2857,6 +2926,12 @@ REVOKE ALL ON FUNCTION public.next_notifications(p_limit integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.next_notifications(p_limit integer) TO service_role;
 
 --
+-- Name: FUNCTION note_push_result(p_endpoint text, p_ok boolean); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.note_push_result(p_endpoint text, p_ok boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.note_push_result(p_endpoint text, p_ok boolean) TO service_role;
+
+--
 -- Name: FUNCTION notification_data(o public.notification_outbox); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.notification_data(o public.notification_outbox) FROM PUBLIC;
@@ -2906,6 +2981,11 @@ GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO service_rol
 --
 REVOKE ALL ON FUNCTION public.post_due_recurring_all() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.post_due_recurring_all() TO service_role;
+
+--
+-- Name: FUNCTION push_endpoint_ok(p_endpoint text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.push_endpoint_ok(p_endpoint text) FROM PUBLIC;
 
 --
 -- Name: FUNCTION push_public_key(); Type: ACL; Schema: public; Owner: -

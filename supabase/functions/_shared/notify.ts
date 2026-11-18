@@ -42,6 +42,14 @@ export interface NotificationData {
   threshold?: Pence;
   /** A settle-up: who paid it. */
   from?: UserId | null;
+  /** entry_changed: what changed (none given: the amount, as the words always said). */
+  change?: 'amount' | 'category' | 'details';
+  /** entry_changed with change 'category': the category's name now. */
+  category?: string | null;
+  /** comment: the comment's own id (each comment its own notification). */
+  commentId?: string | null;
+  /** bill_tomorrow: the amount varies (the template's usual amount is given). */
+  varies?: boolean;
 }
 
 export interface NotificationText { title: string; body: string; path: string }
@@ -157,8 +165,14 @@ function bodyFor(kind: NotificationKind, data: NotificationData, names: Record<U
   switch (kind) {
     case 'entry_added':
       return fitted((d) => `${who} added ${d} ${amount}`, description, tail);
-    case 'entry_changed':
+    case 'entry_changed': {
+      const category = oneLine(data.category);
+      if (data.change === 'category' && category !== '') {
+        return fitted((d) => `${who} moved ${d} to ${cut(category, 40)}`, description, tail);
+      }
+      if (data.change === 'details' || data.change === 'category') return fitted((d) => `${who} changed ${d}`, description, tail);
       return fitted((d) => `${who} changed ${d} to ${amount}`, description, tail);
+    }
     case 'entry_deleted':
       return fitted((d) => `${who} deleted ${d} ${amount}`, description, tail);
     case 'entry_restored':
@@ -185,6 +199,7 @@ function bodyFor(kind: NotificationKind, data: NotificationData, names: Record<U
     case 'bill_posted':
       return fitted((d) => `${d} ${amount} posted today`, oneLine(data.description) || 'A regular payment', tail);
     case 'bill_tomorrow':
+      if (data.varies === true) return fitted((d) => `${d} is due tomorrow (usually ${amount})`, oneLine(data.description) || 'A regular payment', '');
       return fitted((d) => `${d} ${amount} posts tomorrow`, oneLine(data.description) || 'A regular payment', '');
     case 'recap_ready':
       return `${monthName(data.month)}’s recap is ready`;
@@ -204,4 +219,27 @@ function bodyFor(kind: NotificationKind, data: NotificationData, names: Record<U
 /** The notification for one outbox row: its title, its one line, and the path a tap opens. */
 export function notificationText(kind: NotificationKind, data: NotificationData, names: Record<UserId, string>): NotificationText {
   return { title: NOTIFICATION_TITLE, body: bodyFor(kind, data, names), path: pathFor(kind, data) };
+}
+
+/** The entry kinds a batch of the partner's changes is made of (S8 review: a bank import or a synced batch). */
+export const ENTRY_KINDS: readonly NotificationKind[] = ['entry_added', 'entry_changed', 'entry_deleted', 'entry_restored'];
+/** From this many of one person's entry changes waiting for the same person at once, they become one notification. */
+export const BATCH_FROM = 3;
+
+const BATCH_VERB: Partial<Record<NotificationKind, string>> = {
+  entry_added: 'added', entry_changed: 'changed', entry_deleted: 'deleted', entry_restored: 'restored',
+};
+
+/**
+ * One notification for a batch of the partner's entry changes ("each one at once" is for single changes): "Kim added
+ * 30 entries · Sam owes Kim £…", "Kim changed 4 entries", or "Kim made 7 changes" when they are of different kinds.
+ * The balance is the one given (the database's, at send time); a tap opens Activity.
+ */
+export function batchText(kinds: readonly NotificationKind[], data: NotificationData, names: Record<UserId, string>): NotificationText {
+  const who = nameOf(names, data.actor);
+  const n = kinds.length;
+  const first = kinds[0];
+  const verb = first !== undefined && kinds.every((k) => k === first) ? BATCH_VERB[first] : undefined;
+  const what = verb ? `${who} ${verb} ${String(n)} ${n === 1 ? 'entry' : 'entries'}` : `${who} made ${String(n)} ${n === 1 ? 'change' : 'changes'}`;
+  return { title: NOTIFICATION_TITLE, body: cut(`${what} · ${balanceWords(data.balance ?? {}, names)}`, MAX_BODY), path: '/activity' };
 }

@@ -48,7 +48,11 @@ self.addEventListener('push', (event) => {
     badge: SMSM_BADGE,
     data: { path: smsmPath(p.path) },
   };
-  if (typeof p.tag === 'string' && p.tag !== '') options.tag = p.tag;
+  if (typeof p.tag === 'string' && p.tag !== '') {
+    options.tag = p.tag;
+    // A tag that comes back on purpose (a batch of entries, an approval) alerts again rather than replacing quietly.
+    if (p.renotify === true) options.renotify = true;
+  }
   event.waitUntil(Promise.all([self.registration.showNotification(title, options), smsmSetBadge(p.count)]));
 });
 

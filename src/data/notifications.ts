@@ -21,6 +21,7 @@ import { keys, PREFS_KEY } from './keys';
 import { notificationPrefsQuery } from './queries';
 import type { DataLayer } from './queryClient';
 import { EntryInvalidError, newId, overlay, type PrefsOp } from './writes';
+import { fromB64u, keyOf, permission, support, writeOf } from './push';
 
 export const PREF_KEYS = ['entries', 'settle_ups', 'comments', 'bills_today', 'bills_tomorrow', 'recap', 'balance'] as const;
 export type PrefKey = (typeof PREF_KEYS)[number];
@@ -85,58 +86,6 @@ export function useNotificationPrefs(): NotificationPrefs {
 }
 
 // ───────────────────────────── this phone ─────────────────────────────
-
-interface Push { registration(wait: boolean): Promise<ServiceWorkerRegistration | null> }
-
-/** The browser's notification and push support, or null (an iPhone outside an installed app; an old browser). */
-function support(): Push | null {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return null;
-  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) return null;
-  const container = navigator.serviceWorker;
-  return {
-    async registration(wait) {
-      const found = await container.getRegistration().catch(() => undefined);
-      if (found?.pushManager) return found;
-      if (!wait) return null;
-      // Still installing: give it a few seconds.
-      const ready = await Promise.race([container.ready, new Promise<null>((r) => { setTimeout(() => { r(null); }, 4000); })]);
-      return ready?.pushManager ? ready : null;
-    },
-  };
-}
-
-function permission(): NotificationPermission {
-  try {
-    return Notification.permission;
-  } catch {
-    return 'default';
-  }
-}
-
-function b64u(bytes: ArrayBuffer | Uint8Array | null | undefined): string {
-  if (!bytes) return '';
-  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let s = '';
-  for (const x of b) s += String.fromCharCode(x);
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function fromB64u(s: string): Uint8Array<ArrayBuffer> {
-  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '='));
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** The key a subscription was made with, as base64url. */
-function keyOf(sub: PushSubscription): string {
-  return b64u(sub.options.applicationServerKey);
-}
-
-function writeOf(sub: PushSubscription): { endpoint: string; p256dh: string; auth: string } {
-  const json = sub.toJSON();
-  return { endpoint: sub.endpoint, p256dh: json.keys?.['p256dh'] ?? '', auth: json.keys?.['auth'] ?? '' };
-}
 
 /** The push function hasn't made its keys yet (it does on its first run, right after a deploy). */
 export class PushNotReadyError extends Error {
