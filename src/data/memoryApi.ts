@@ -312,7 +312,24 @@ export function createMemoryApi(
   const restoreIds = new Map<string, string>();
 
   /** What restore_backup() does (migration …_import_export.sql): only adds; ids here are left alone. */
+  /** restore_backup is one transaction: a refused part undoes the call, and the error names that part. */
   function restore(people: Record<string, string>, rows: RestoreRows): RestoreCounts {
+    const lengths = {
+      categories: tables.categories.length, chapters: tables.chapters.length, recurring: tables.recurring.length, expenses: tables.expenses.length,
+      settlements: tables.settlements.length, comments: tables.comments.length, categoryMemory: tables.categoryMemory.length, importRules: rules().length,
+      activity: tables.activity.length,
+    };
+    const part = { name: '' };
+    try {
+      return restoreRows(people, rows, part);
+    } catch (err) {
+      for (const [k, n] of Object.entries(lengths)) (k === 'importRules' ? rules() : (tables[k as keyof typeof lengths & keyof MemoryTables] as unknown[])).length = n;
+      if (part.name !== '' && err instanceof ApiError) throw new ApiError(err.kind, `restore ${part.name}: ${err.message}`, err.status, err.code);
+      throw err;
+    }
+  }
+
+  function restoreRows(people: Record<string, string>, rows: RestoreRows, part: { name: string }): RestoreCounts {
     const hid = myHousehold();
     if (!hid) return refuse('not in a household', '42501');
     const memberIds = mine(tables.members).map((m) => m.user_id).sort();
@@ -352,6 +369,18 @@ export function createMemoryApi(
     const objects = (t: RestoreTable) => (rows[t] ?? []).filter((r): r is Record<string, Json> => !!r && typeof r === 'object' && !Array.isArray(r));
     const stamp = now().toISOString();
 
+    /** A backup person's id as this household's member, or the person restoring (as stamp_author does). */
+    const author = (v: Json | undefined): string => {
+      const mapped = people[str(v)] ?? str(v);
+      return memberIds.includes(mapped) ? mapped : me().userId;
+    };
+    const checkSplit = (mode: Json | undefined, params: Json) => {
+      if (mode !== undefined && mode !== null && !['ratio', 'exact', 'for_other', 'treat'].includes(str(mode))) refuse(`unknown split ${str(mode)}`, '22023');
+      if (params && typeof params === 'object' && !Array.isArray(params) && Object.keys(params).some((k) => !memberIds.includes(k))) {
+        refuse('a split names someone who isn\'t one of you', '22023');
+      }
+    };
+    part.name = 'categories';
     for (const r of objects('categories')) {
       if (target(r['id'], 'categories') !== null) { skipped.categories += 1; continue; }
       const name = str(r['name']).trim().toLowerCase();
@@ -363,25 +392,28 @@ export function createMemoryApi(
       log('category', row.id, 'created', { after: row as unknown as Json }, hid);
       added.categories += 1;
     }
+    part.name = 'chapters';
     for (const r of objects('chapters')) {
       if (target(r['id'], 'chapters') !== null) { skipped.chapters += 1; continue; }
-      const row = { ...(r as unknown as ChapterRow), id: newId(r['id'], 'chapters'), household_id: hid };
+      const row = { ...(r as unknown as ChapterRow), id: newId(r['id'], 'chapters'), household_id: hid, created_by: author(r['created_by']) };
       tables.chapters.push(row);
       log('chapter', row.id, 'created', { after: row as unknown as Json }, hid);
       added.chapters += 1;
     }
+    part.name = 'recurring';
     for (const r of objects('recurring')) {
       if (target(r['id'], 'recurring') !== null) { skipped.recurring += 1; continue; }
       const row: RecurringRow = {
         ...(r as unknown as RecurringRow), id: newId(r['id'], 'recurring'), household_id: hid, active: false,
         category_id: ref(r['category_id'], 'categories'), paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {},
-        split_params: remap(r['split_params'] ?? null),
+        split_params: remap(r['split_params'] ?? null), created_by: author(r['created_by']),
       };
       checkMoney(row as unknown as ExpenseRow);
       tables.recurring.push(row);
       log('recurring', row.id, 'created', { after: row as unknown as Json }, hid);
       added.recurring += 1;
     }
+    part.name = 'expenses';
     const expenses = objects('expenses').sort((x, y) => Number(x['kind'] === 'money_back') - Number(y['kind'] === 'money_back') || str(x['created_at']).localeCompare(str(y['created_at'])));
     for (const r of expenses) {
       if (target(r['id'], 'expenses') !== null) { skipped.expenses += 1; continue; }
@@ -392,6 +424,9 @@ export function createMemoryApi(
         chapter_id: ref(r['chapter_id'], 'chapters'), recurring_id: recurringId, refund_of: ref(r['refund_of'], 'expenses'), account_id: null,
         receipt_path: receipt, paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {}, split_params: remap(r['split_params'] ?? null),
         occurrence_date: recurringId === null ? null : ((r['occurrence_date'] as string | null | undefined) ?? null),
+        created_by: author(r['created_by']), updated_by: author(r['updated_by'] ?? r['created_by']),
+        // A backup from before S6a has no category_guess (review fix 1): the column's default.
+        category_guess: r['category_guess'] === true,
       };
       checkMoney(row);
       const clash = (row.recurring_id !== null && tables.expenses.some((e) => e.recurring_id === row.recurring_id && e.occurrence_date === row.occurrence_date))
@@ -401,17 +436,21 @@ export function createMemoryApi(
       log('expense', row.id, 'created', { after: row as unknown as Json }, hid);
       added.expenses += 1;
     }
+    part.name = 'settlements';
     for (const r of objects('settlements')) {
       if (target(r['id'], 'settlements') !== null) { skipped.settlements += 1; continue; }
       const from = people[str(r['from_user'])] ?? str(r['from_user']);
       const to = people[str(r['to_user'])] ?? str(r['to_user']);
       if (!memberIds.includes(from) || !memberIds.includes(to)) refuse('a settle-up names someone who isn\'t one of you', '22023');
-      const row: SettlementRow = { ...(r as unknown as SettlementRow), id: newId(r['id'], 'settlements'), household_id: hid, from_user: from, to_user: to };
+      const row: SettlementRow = {
+        ...(r as unknown as SettlementRow), id: newId(r['id'], 'settlements'), household_id: hid, from_user: from, to_user: to, created_by: author(r['created_by']),
+      };
       if (row.from_user === row.to_user || row.amount_pence <= 0) refuse('new row violates check constraint "settlements_check"', '23514');
       tables.settlements.push(row);
       log('settlement', row.id, 'created', { after: row as unknown as Json }, hid);
       added.settlements += 1;
     }
+    part.name = 'comments';
     for (const r of objects('comments')) {
       const expenseId = ref(r['expense_id'], 'expenses');
       if (target(r['id'], 'comments') !== null || expenseId === null) { skipped.comments += 1; continue; }
@@ -422,7 +461,9 @@ export function createMemoryApi(
       log('comment', row.id, 'created', { after: row as unknown as Json }, hid);
       added.comments += 1;
     }
+    part.name = 'category_memory';
     for (const r of objects('category_memory')) {
+      checkSplit(r['split_mode'], remap(r['split_params'] ?? null));
       const key = str(r['key']);
       if (tables.categoryMemory.some((m) => m.household_id === hid && m.key === key)) { skipped.category_memory += 1; continue; }
       tables.categoryMemory.push({
@@ -432,15 +473,20 @@ export function createMemoryApi(
       });
       added.category_memory += 1;
     }
+    part.name = 'import_rules';
     for (const r of objects('import_rules')) {
+      // A skip rule is one person's, kept on their phone: never restored into the shared record.
+      if (r['decision'] !== 'keep') { skipped.import_rules += 1; continue; }
+      checkSplit(r['split_mode'], remap(r['split_params'] ?? null));
       const match = str(r['match_text']);
       if (rules().some((x) => x.household_id === hid && x.match_text === match)) { skipped.import_rules += 1; continue; }
       rules().push({
-        id: crypto.randomUUID(), household_id: hid, match_text: match, decision: str(r['decision'], 'skip'), category_id: ref(r['category_id'], 'categories'),
+        id: crypto.randomUUID(), household_id: hid, match_text: match, decision: 'keep', category_id: ref(r['category_id'], 'categories'),
         split_mode: (r['split_mode'] as string | null | undefined) ?? null, split_params: remap(r['split_params'] ?? null), created_at: stamp,
       });
       added.import_rules += 1;
     }
+    part.name = '';
     return { added, skipped };
   }
 
@@ -753,7 +799,8 @@ export function createMemoryApi(
     upsertImportRule: (row) =>
       call('upsertImportRule', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy for table "import_rules"', '42501');
-        if (!['keep', 'skip'].includes(row.decision)) refuse('new row violates check constraint "import_rules_decision_check"', '23514');
+        // Only keep rules are shared (a skip rule stays on the phone that made it).
+        if (row.decision !== 'keep') refuse('new row for relation "import_rules" violates check constraint "import_rules_decision_check"', '23514');
         if (row.category_id !== null && !mine(tables.categories).some((c) => c.id === row.category_id)) {
           refuse('insert or update on table "import_rules" violates foreign key constraint "import_rules_category_id_fkey"', '23503');
         }
@@ -764,9 +811,9 @@ export function createMemoryApi(
         else list[i] = next;
         return next;
       }),
-    deleteImportRule: (id) =>
-      call('deleteImportRule', id, () => {
-        tables.importRules = rules().filter((x) => !(x.id === id && x.household_id === myHousehold()));
+    deleteImportRule: (hid, matchText) =>
+      call('deleteImportRule', { household_id: hid, match_text: matchText }, () => {
+        tables.importRules = rules().filter((x) => !(x.household_id === hid && x.household_id === myHousehold() && x.match_text === matchText));
       }),
     restoreBackup: (people, rows) => call('restoreBackup', { people, rows }, () => restore(people, rows)),
     storageUsed: () =>

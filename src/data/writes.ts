@@ -13,7 +13,7 @@ import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type Split
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
   type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type CommentWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
-  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
+  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type ExpensePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
 export interface ExpenseDraft {
@@ -133,7 +133,7 @@ export type MoneyOp = OpBase & (
    * made before the partner joined (BAL-6); the shares are worked out once both people exist.
    */
   | ExpenseUpsert
-  | { table: 'expenses'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
+  | { table: 'expenses'; op: 'patch'; id: string; patch: ExpensePatch; label: string }
   | { table: 'settlements'; op: 'upsert'; isNew: boolean; row: SettlementRow; input: SettlementDraft }
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   /** S3: a regular payment (added, edited, paused, resumed, ended: always the whole template, never deleted). */
@@ -163,7 +163,7 @@ export type MoneyOp = OpBase & (
   | { table: 'import_ignores'; op: 'insert' | 'delete'; id: string; row: ImportIgnoreRow; label: string }
   /** S7 (IMP-3): an "always do this for …" rule made, or removed (rules aren't money: they are deleted outright). */
   | { table: 'import_rules'; op: 'upsert'; isNew: boolean; row: ImportRuleRow; input: null }
-  | { table: 'import_rules'; op: 'delete'; id: string; label: string }
+  | { table: 'import_rules'; op: 'delete'; id: string; row: Pick<ImportRuleRow, 'household_id' | 'match_text'>; label: string }
 );
 
 export function newId(): string {
@@ -579,7 +579,7 @@ export function overlayRules(rows: readonly ImportRuleRow[], ops: readonly Money
   for (const op of ops) {
     if (op.table !== 'import_rules') continue;
     if (op.op === 'upsert') out = [...out.filter((r) => r.id !== op.row.id && r.match_text !== op.row.match_text), op.row];
-    else out = out.filter((r) => r.id !== op.id);
+    else out = out.filter((r) => r.id !== op.id && r.match_text !== op.row.match_text);
   }
   return out;
 }

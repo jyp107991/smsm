@@ -53,6 +53,7 @@ import { expenseToLedger, settlementToLedger } from './rows';
 import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
 import { claimQueue, OtherWindowError, type QueueLocks, type WindowRole } from './windows';
+import { runForget } from './forget';
 import {
   categoryWrite, chapterWrite, commentWrite, completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, recurringWrite, settlementWrite,
   type ExpenseUpsert, type MemoryOp, type MoneyOp, type QueuedRow,
@@ -149,6 +150,8 @@ export interface DataLayer {
   subscribeStale(cb: () => void): () => void;
   /** Queue a money write; returns at once (the write is shown immediately and sent when possible). */
   enqueue(op: MoneyOp): void;
+  /** Take a waiting write out of the queue before it is ever sent; false if it has been (S7, Undo of Keep). */
+  withdraw(opId: string): boolean;
   /** Queue what a person's choice taught the app (CAT-3, CAT-4); not counted as a waiting change. Skipped in a read-only window. */
   remember(op: MemoryOp): void;
   /** The household's category memory with waiting choices applied. */
@@ -441,7 +444,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
         return null;
       case 'import_rules': {
         if (op.op === 'delete') {
-          await api.deleteImportRule(op.id);
+          await api.deleteImportRule(op.row.household_id, op.row.match_text);
           return null;
         }
         const { id, household_id, match_text, decision, category_id, split_mode, split_params } = op.row;
@@ -453,6 +456,24 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
   /** Still in the queue (not discarded by a sign-out). */
   function queued(op: { opId: string }): boolean {
     return client.getMutationCache().getAll().some((m) => isQueuedMutation(m) && opOf(m)?.opId === op.opId);
+  }
+
+  /** The writes that have been handed to the server (at least once). */
+  const sending = new Set<string>();
+
+  /**
+   * S7 (Undo of Keep): takes a write out of the queue if it has never been handed to the server, so nothing of it
+   * is sent. False when it has been (or is no longer waiting): the caller then undoes it with another write.
+   */
+  function withdraw(opId: string): boolean {
+    if (disposed || role !== 'owner' || sending.has(opId)) return false;
+    const cache = client.getMutationCache();
+    const m = cache.getAll().find((x) => isMoneyMutation(x) && x.state.status === 'pending' && opOf(x)?.opId === opId);
+    if (!m) return false;
+    cache.remove(m);
+    wake(); // its wait ends, and it stops without sending
+    void saveQueue();
+    return true;
   }
 
   async function send(op: MoneyOp): Promise<QueuedRow | null> {
@@ -473,6 +494,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
         if (v === 'stale') throw new ApiError('stale', 'this version of the app is too old to save; it is updating');
         if (v === 'unknown') throw new ApiError('network', 'could not check the app version');
         if (!queued(op)) throw new DiscardedError();
+        // From here it may reach the server: it can no longer be withdrawn (S7's Undo of Keep).
+        sending.add(op.opId);
         return await once();
       } catch (err) {
         if (!isTransient(err)) throw err;
@@ -510,7 +533,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       if (client.getQueryData(key) === undefined) return;
       const stored = row as ImportRuleRow | null;
       client.setQueryData<ImportRuleRow[]>(key, (old) => {
-        if (op.op === 'delete') return (old ?? []).filter((r) => r.id !== op.id);
+        if (op.op === 'delete') return (old ?? []).filter((r) => r.id !== op.id && r.match_text !== op.row.match_text);
         // A rule replaces the one for the same words (unique per household and match text).
         const next = stored ?? op.row;
         return [...(old ?? []).filter((r) => r.id !== next.id && r.match_text !== next.match_text), next];
@@ -865,9 +888,11 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     await persister.removeClient();
     await saveQueue();
     await owned.removeItem(RECURRING_DAY_KEY);
+    // S7: the bank rows waiting here and the phone-only import rules and ignores (imports.ts).
+    await runForget(self, me);
   }
 
-  return {
+  const self: DataLayer = {
     client,
     geo: opts.geo ?? browserGeo(),
     rates: opts.rates ?? frankfurterRates(),
@@ -916,6 +941,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       return () => { staleListeners.delete(cb); };
     },
     enqueue,
+    withdraw,
     remember,
     memory,
     flush,
@@ -927,4 +953,5 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       await forget(me);
     },
   };
+  return self;
 }

@@ -541,8 +541,14 @@ isOneToOne: false
 "restore_backup":
 { Args: { "p_people": Json,"p_rows": Json }; Returns: Json
                            },
+"restore_check_split":
+{ Args: { "p_members": (string)[],"p_mode": string,"p_params": Json }; Returns: undefined
+                           },
 "restore_new_id":
 { Args: { "p_hid": string,"p_old": string,"p_table": string }; Returns: string
+                           },
+"restore_person":
+{ Args: { "p_id": string,"p_members": (string)[],"p_people": Json }; Returns: string
                            },
 "restore_ref":
 { Args: { "p_hid": string,"p_old": string,"p_table": string }; Returns: string

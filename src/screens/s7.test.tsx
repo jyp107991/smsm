@@ -50,7 +50,8 @@ import {
   categoryId, couple, HID, JAE_ID, SAM_ID, storedChapter, storedExpense, storedInboxItem, storedSettlement,
 } from '../../tests/fixtures/couple';
 import { idbData } from '../../tests/fixtures/fake-idb-keyval';
-import { backupJson, DataProvider, type DataLayer } from '../data';
+import { backupJson, DataProvider, importQueue, skipImport, startImport, type DataLayer } from '../data';
+import { pence } from '../core/money';
 import type { ExpenseRow } from '../data/api';
 import type { Database } from '../data/database.types';
 import type { MemoryTables } from '../data/memoryApi';
@@ -143,6 +144,20 @@ const toasts = () => screen.getByRole('status', { name: 'Notifications', hidden:
 function offline(c: ReturnType<typeof household>) {
   act(() => { c.network.set(false); });
   c.controls.online = false;
+}
+
+/**
+ * Review fix 2 (changes the tests below that seeded a skip rule in import_rules): a skip rule lives on the importing
+ * phone only, made by "Always do this for …" on Not ours; seeded here that way, from a row without a bank id.
+ */
+async function phoneSkipRule(c: ReturnType<typeof household>, description: string) {
+  await c.layer.ready;
+  await settle(c.layer);
+  await startImport([{ bankId: `gen:seed-${description}`, date: '2026-10-01', description, amount: pence(1), categoryHint: null, note: null }], 'csv', c.layer);
+  const card = (await importQueue(c.layer)).find((x) => x.description === description);
+  if (!card) throw new Error(`no seed card for ${description}`);
+  await skipImport(card.id, { always: true }, c.layer);
+  await settle(c.layer);
 }
 
 async function goSettings() {
@@ -298,11 +313,9 @@ describe('Settings → "Import from a bank statement" (IMP-1, OFF-3)', () => {
 
   it('IMP-3: the summary says what the household’s rules will do, and Import N counts the rows a rule keeps', async () => {
     const c = household({
-      rules: [
-        rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' }),
-        rule({ match_text: 'noodle bar, soho', decision: 'skip' }),
-      ],
+      rules: [rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' })],
     });
+    await phoneSkipRule(c, 'Noodle Bar, Soho');
     show(c.layer);
     const dialog = await importDialogFor(MONZO_CSV);
     await waitFor(() => { expect(statusText(dialog)).toContain('Your rules will keep 1 and skip 1'); });
@@ -426,9 +439,12 @@ describe('the Inbox’s import cards (IMP-3, INB-1)', () => {
     fireEvent.click(within(noodle).getByRole('button', { name: 'Keep' }));
     await card('Café Lumière');
     await settle(c.layer);
+    // Review fix 2: only the keep rule is shared; the skip rule stays on this phone (Settings lists it there).
     const rules = tablesOf(c).importRules ?? [];
-    expect(rules.map((r) => [r.match_text, r.decision]).sort()).toEqual([['larder & leaf', 'skip'], ['noodle bar, soho', 'keep']]);
+    expect(rules.map((r) => [r.match_text, r.decision])).toEqual([['noodle bar, soho', 'keep']]);
     expect(rules.find((r) => r.decision === 'keep')).toMatchObject({ category_id: categoryId('Eating out'), split_mode: 'ratio' });
+    expect(JSON.stringify(c.controls.calls)).not.toContain('Larder');
+    expect(JSON.stringify(c.controls.calls)).not.toContain('larder');
   });
 
   it('IMP-3: Stop reviewing forgets the rest on this phone and records nothing; the same file offers them again', async () => {
@@ -702,16 +718,18 @@ describe('Settings → "Restore from a backup" (EXP-1)', () => {
 // ─────────────────────────────── IMP-3: Import rules ───────────────────────────────
 
 describe('Settings → "Import rules" (IMP-3)', () => {
-  it('IMP-3: lists the rules, each with Remove', async () => {
-    const skip = rule({ match_text: 'noodle bar, soho', decision: 'skip' });
+  it('IMP-3: lists the rules, each with Remove; a skip rule is marked as on this phone only', async () => {
     const keep = rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'ratio' });
-    const c = household({ rules: [skip, keep] });
+    const c = household({ rules: [keep] });
+    await phoneSkipRule(c, 'Noodle Bar, Soho');
     show(c.layer);
     await goSettings();
     const r = await region('Import rules');
     await waitFor(() => { expect(within(r).getAllByRole('listitem')).toHaveLength(2); });
     const noodle = within(r).getAllByRole('listitem').find((li) => text(li).toLowerCase().includes('noodle bar, soho'));
     if (!noodle) throw new Error('no Noodle Bar rule listed');
+    expect(text(noodle)).toContain('On this phone only');
+    expect(text(within(r).getAllByRole('listitem').find((li) => text(li).toLowerCase().includes('metro')) ?? noodle)).not.toContain('On this phone only');
     expect(within(r).getAllByRole('listitem').some((li) => text(li).toLowerCase().includes('metro ticket machine'))).toBe(true);
     fireEvent.click(within(noodle).getByRole('button', { name: /^Remove/ }));
     await waitFor(() => { expect(within(r).getAllByRole('listitem')).toHaveLength(1); });
@@ -775,5 +793,50 @@ describe('Settings → "Storage" (EXP-3)', () => {
     Object.assign(c.layer.api, { storageUsed: () => Promise.reject(new Error('TypeError: Failed to fetch')) });
     await goSettings();
     await waitFor(async () => { expect(figuresOk(text(await region('Storage')), 12_300_000, 40_200_000)).toBe(true); });
+  });
+});
+
+// ─────────────────────────────── fresh-review fixes ───────────────────────────────
+
+describe('fresh-review fixes on the screens (IMP-1, EXP-1)', () => {
+  it('IMP-1: a statement saved in windows-1252 reads, its pounds signs and accents intact (review fix 6)', async () => {
+    const c = household();
+    show(c.layer);
+    const latin = `${['Transaction ID', 'Date', 'Name', 'Amount'].join(',')}\r\ntx_1252,03/11/2026,Café Lumière £5 off,-5.00\r\n`;
+    const bytes = Uint8Array.from(Array.from(latin, (ch) => ({ '£': 0xa3, 'é': 0xe9, 'è': 0xe8 })[ch] ?? ch.charCodeAt(0)));
+    await goSettings();
+    choose(within(await region('Import from a bank statement')).getByLabelText('Choose a CSV file'), new File([bytes], 'statement.csv', { type: 'text/csv' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import a statement' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Import 1 row' }));
+    await settle(c.layer);
+    await openInbox(1);
+    expect(text(await card('Café Lumière £5 off'))).toContain('£5.00');
+  });
+
+  it('EXP-1: a refused part of the backup is named in plain words (review fix 9)', async () => {
+    const file = await backupFile();
+    const c = household();
+    c.controls.refuse = (name) => (name === 'restoreBackup' ? 'restore settlements: a settle-up names someone who isn\'t one of you' : null);
+    show(c.layer);
+    await goSettings();
+    choose(within(await region('Restore from a backup')).getByLabelText('Choose a backup file'), file);
+    const dialog = await screen.findByRole('dialog', { name: 'Restore from a backup' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Restore' }));
+    const alert = await within(dialog).findByRole('alert');
+    expect(text(alert)).toContain('settle-ups');
+    expect(text(alert)).not.toMatch(/restore settlements|isn't one of you/);
+  });
+
+  it('EXP-1: a backup person with no name is "The first person in the backup" / "The second person …" (review fix 11)', async () => {
+    const json = JSON.parse(await (await backupFile()).text()) as { members: { display_name: string | null }[] };
+    for (const m of json.members) m.display_name = null;
+    const c = household();
+    show(c.layer);
+    await goSettings();
+    choose(within(await region('Restore from a backup')).getByLabelText('Choose a backup file'), new File([JSON.stringify(json)], 'smsm-backup-2025-10-31.json', { type: 'application/json' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore from a backup' });
+    expect(within(dialog).getByRole('combobox', { name: 'The first person in the backup is' })).toBeTruthy();
+    expect(within(dialog).getByRole('combobox', { name: 'The second person in the backup is' })).toBeTruthy();
+    expect(within(dialog).queryByText(/Column \d/)).toBeNull();
   });
 });

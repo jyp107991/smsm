@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { addMonths, formatDate, isIsoDate, startOfMonth } from '../../core/dates';
 import {
-  backupJson, build, defaultPeopleMap, exportEntriesCsv, FREE_DATABASE_BYTES, FREE_PHOTO_BYTES, lastStorageUsed, NEARLY_FULL, restoreBackup,
+  backupJson, build, defaultPeopleMap, RestoreRefusedError, exportEntriesCsv, FREE_DATABASE_BYTES, FREE_PHOTO_BYTES, lastStorageUsed, NEARLY_FULL, restoreBackup,
   restorePlan, storageUsed, useDataLayer, useHousehold, useOnline, type RestorePlan, type StorageFigure,
 } from '../../data';
 import { Button, Field, Sheet, useToast } from '../../ui/primitives';
@@ -219,7 +219,8 @@ function RestoreForm({ plan, onDone }: { plan: RestorePlan; onDone: () => void }
       toast.show({ message: strings.restore.done(added) });
       onDone();
     } catch (err) {
-      setError(plainError(err));
+      // Review fix 9: the part of the backup the database refused, in plain words.
+      setError(err instanceof RestoreRefusedError ? strings.restore.refusedAt(strings.restore.parts[err.table]) : plainError(err));
     } finally {
       setBusy(false);
     }
@@ -242,7 +243,7 @@ function RestoreForm({ plan, onDone }: { plan: RestorePlan; onDone: () => void }
           {[p, q].map((who, i) => (
             <Select
               key={who.id}
-              label={strings.restore.is(who.name === '' ? strings.imports.column('', i + 1) : who.name)}
+              label={strings.restore.is(who.name.trim() !== '' ? who.name : i === 0 ? strings.restore.firstPerson : strings.restore.secondPerson)}
               value={map[who.id] ?? ''}
               onChange={(v) => { choose(who.id, v); }}
             >

@@ -28,9 +28,9 @@ export {
 export type { WindowRole } from './windows';
 export {
   idHash, previewImport, startImport, importQueue, keepImport, keepImportNow, undoKeep, skipImport, skipImportNow, undoSkip, stopReviewing,
-  importRules, removeImportRule, useImportQueue, exportEntriesCsv, restorePlan, restoreBackup, defaultPeopleMap, storageUsed, lastStorageUsed,
-  FREE_DATABASE_BYTES, FREE_PHOTO_BYTES, NEARLY_FULL, RESTORE_CHUNK,
-  type ImportCard, type ImportCounts, type RestorePlan, type RestoreRefusal, type StorageFigure,
+  importRules, removeImportRule, useImportQueue, useAllImportRules, exportEntriesCsv, restorePlan, restoreBackup, RestoreRefusedError, defaultPeopleMap,
+  storageUsed, lastStorageUsed, FREE_DATABASE_BYTES, FREE_PHOTO_BYTES, NEARLY_FULL, RESTORE_CHUNK,
+  type ImportCard, type ImportCounts, type ImportRuleView, type RestorePlan, type RestoreRefusal, type StorageFigure,
 } from './imports';
 export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, forgetPhoto, photoBlob, photoUrl, sortLater, sortPhotoLater, recapWording, askSmsm, takeShared, parseLoose, guessCategory, type LooseReading } from './smartActions';
 export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';

@@ -42,6 +42,7 @@
 \set r1 'b5000000-0000-4000-8000-000000000001'
 \set cm1 'b6000000-0000-4000-8000-000000000001'
 \set rule1 'b7000000-0000-4000-8000-000000000001'
+\set rule2 'b7000000-0000-4000-8000-000000000002'
 reset role;
 insert into auth.users values (:'F'), (:'G'), (:'H') on conflict do nothing;
 
@@ -88,7 +89,10 @@ insert into bk_recurring(id, household_id, description, amount_pence, paid, spli
 values (:'r1', :'OLD', 'Rent', 100000, jsonb_build_object(:'X1', 100000), 'ratio', jsonb_build_object(:'X1', 50, :'X2', 50), jsonb_build_object(:'X1', 50000, :'X2', 50000), 'monthly', 1, '2025-01-01', 3, true, :'X1');
 insert into bk_comments(id, household_id, expense_id, author, body) values (:'cm1', :'OLD', :'clash', :'X2', 'Was this the old lamp?');
 insert into bk_memory(household_id, key, category_id, source) values (:'OLD', 'tesco', :'cat1', 'user');
-insert into bk_rules(id, household_id, match_text, decision) values (:'rule1', :'OLD', 'pret', 'skip');
+-- Only keep rules are shared (review fix 2); a skip rule in an old backup is left out.
+alter table bk_rules drop constraint if exists import_rules_decision_check;
+insert into bk_rules(id, household_id, match_text, decision, category_id, split_mode) values (:'rule1', :'OLD', 'pret', 'keep', :'cat1', 'treat');
+insert into bk_rules(id, household_id, match_text, decision) values (:'rule2', :'OLD', 'larder & leaf', 'skip');
 
 select jsonb_build_object(
   'categories', (select jsonb_agg(to_jsonb(t)) from bk_categories t),
@@ -153,7 +157,18 @@ select deleted_at is not null as ok_exp1_deleted_entry_comes_back_deleted from e
 select split_mode = 'for_other' and (shares->>:'G')::bigint = 3000 as ok_exp1_for_other_restored from expenses where id = :'e2';
 select not active and (paid->>:'F')::bigint = 100000 as ok_exp1_regular_payment_comes_back_paused from recurring where id = :'r1' and household_id = :'fg';
 select category_id = :'cat1' as ok_exp1_category_memory_restored from category_memory where household_id = :'fg' and key = 'tesco';
-select decision = 'skip' as ok_imp3_import_rule_restored from import_rules where household_id = :'fg' and match_text = 'pret';
+select decision = 'keep' and category_id = :'cat1' as ok_imp3_import_rule_restored from import_rules where household_id = :'fg' and match_text = 'pret';
+select count(*) = 0 as ok_imp3_skip_rule_never_restored from import_rules where household_id = :'fg' and match_text = 'larder & leaf';
+select (:'res1'::jsonb->'skipped'->>'import_rules')::int = 1 as ok_imp3_skip_rule_counted_as_left_alone;
+-- Who made each row is the backup's person, mapped (review fix 9), not whoever restored it.
+reset role;
+select created_by = :'G' and updated_by = :'G' as ok_exp1_restored_entry_keeps_its_mapped_author from expenses where id = :'e3';
+select created_by = :'F' as ok_exp1_restored_entry_by_the_restorer_mapped from expenses where id = :'e1';
+select created_by = :'G' as ok_exp1_restored_settle_up_keeps_its_author from settlements where id = :'s1';
+select created_by = :'F' as ok_exp1_restored_chapter_keeps_its_author from chapters where id = :'ch1';
+select coalesce(current_setting('smsm.restoring', true), '') <> 'on' as ok_exp1_restoring_flag_ends_with_the_call;
+set role authenticated;
+set request.jwt.claim.sub = :'F';
 
 -- The clashing id: A and B's row untouched; ours under a new id; references followed.
 reset role;
@@ -245,6 +260,48 @@ select count(*) = 0 as ok_exp1_over_500_added_nothing from expenses where id::te
 select count(*) = 506 as ok_exp1_household_has_the_500_and_the_six from expenses where household_id = :'fg';
 select net_pence = :'backup_net_x1'::bigint as ok_exp1_treats_leave_the_balance from member_net where user_id = :'F';
 
+-- ───────── EXP-1: a format-1 backup (review fix 1): columns added since are missing, their defaults are used ─────────
+select jsonb_build_object('expenses', jsonb_build_array(jsonb_build_object(
+  'id', 'b3000000-0000-4000-8000-00000000000d', 'household_id', :'OLD', 'description', 'Old shop', 'amount_pence', 300,
+  'date', '2025-02-01', 'paid', jsonb_build_object(:'X1', 300), 'shares', jsonb_build_object(:'X1', 150, :'X2', 150),
+  'created_by', :'X1', 'deleted_at', null)))::text as format1 \gset
+set role authenticated;
+set request.jwt.claim.sub = :'G';
+select (restore_backup(:'people'::jsonb, :'format1'::jsonb)->'added'->>'expenses')::int = 1 as ok_exp1_format1_entry_restored;
+reset role;
+select kind = 'expense' and split_mode = 'ratio' and not category_guess and source = 'manual' and country = 'GB' and tags = '{}'
+   and paid_via = 'person' and created_by = :'F'
+  as ok_exp1_format1_entry_takes_the_defaults from expenses where id = 'b3000000-0000-4000-8000-00000000000d';
+
+-- ───────── EXP-1: a refused part names its table (review fix 9) ─────────
+create function pg_temp.restore_error(p jsonb, r jsonb) returns text language plpgsql as $$
+begin
+  perform restore_backup(p, r);
+  return 'no error';
+exception when others then
+  return sqlerrm;
+end $$;
+grant execute on function pg_temp.restore_error(jsonb, jsonb) to authenticated;
+set role authenticated;
+set request.jwt.claim.sub = :'F';
+select pg_temp.restore_error(:'people'::jsonb, :'bad_sum'::jsonb) like 'restore expenses: %' as ok_exp1_refusal_names_the_table;
+
+-- ───────── EXP-1: remembered splits and rules from a backup are checked (review fix 10) ─────────
+select restore_backup(:'people'::jsonb, jsonb_build_object('category_memory', jsonb_build_array(jsonb_build_object('key', 'odd mode', 'split_mode', 'halves'))));
+                                                                                                    -- expect error: an unknown split mode
+select restore_backup(:'people'::jsonb, jsonb_build_object('category_memory', jsonb_build_array(jsonb_build_object('key', 'stranger split', 'split_mode', 'ratio',
+  'split_params', jsonb_build_object(:'X1', 50, :'X3', 50)))));                                    -- expect error: a split naming someone unmapped
+select restore_backup(:'people'::jsonb, jsonb_build_object('import_rules', jsonb_build_array(jsonb_build_object('match_text', 'odd rule', 'decision', 'keep', 'split_mode', 'halves'))));
+                                                                                                    -- expect error: a rule with an unknown split mode
+select pg_temp.restore_error(:'people'::jsonb, jsonb_build_object('import_rules', jsonb_build_array(jsonb_build_object('match_text', 'odd rule', 'decision', 'keep', 'split_mode', 'halves'))))
+  like 'restore import_rules: %' as ok_exp1_rule_refusal_names_its_table;
+select (restore_backup(:'people'::jsonb, jsonb_build_object('category_memory', jsonb_build_array(jsonb_build_object('key', 'fair split', 'split_mode', 'ratio',
+  'split_params', jsonb_build_object(:'X1', 60, :'X2', 40)))))->'added'->>'category_memory')::int = 1 as ok_exp1_mapped_split_restored;
+reset role;
+select split_params = jsonb_build_object(:'F', 60, :'G', 40) as ok_exp1_restored_split_names_the_members
+  from category_memory where household_id = :'fg' and key = 'fair split';
+select count(*) = 0 as ok_exp1_refused_splits_added_nothing from category_memory where household_id = :'fg' and key in ('odd mode', 'stranger split');
+
 -- ───────── EXP-3: storage used ─────────
 set role authenticated;
 set request.jwt.claim.sub = :'A';
@@ -268,8 +325,9 @@ set request.jwt.claim.sub = :'A';
 insert into import_ignores(household_id, source, id_hash) values (my_household(), 'monzo', repeat('a', 64));
 insert into import_ignores(household_id, source, id_hash) values (:'fg', 'monzo', repeat('b', 64));                  -- expect error: not our household
 insert into import_ignores(household_id, source, id_hash) values (my_household(), 'paypal', repeat('c', 64));        -- expect error: not a source
-insert into import_rules(household_id, match_text, decision) values (my_household(), 'larder & leaf', 'skip') returning id as a_rule \gset
-insert into import_rules(household_id, match_text, decision) values (:'fg', 'larder & leaf', 'skip');                -- expect error: not our household
+insert into import_rules(household_id, match_text, decision) values (my_household(), 'larder & leaf', 'keep') returning id as a_rule \gset
+insert into import_rules(household_id, match_text, decision) values (:'fg', 'larder & leaf', 'keep');                -- expect error: not our household
+insert into import_rules(household_id, match_text, decision) values (my_household(), 'noodle bar', 'skip');         -- expect error: skip rules stay on the phone
 select count(*) = 1 as ok_imp3_members_read_their_ignores from import_ignores where id_hash = repeat('a', 64);
 set request.jwt.claim.sub = :'B';
 select count(*) = 1 as ok_imp3_partner_reads_the_ignores from import_ignores where id_hash = repeat('a', 64);
@@ -278,7 +336,7 @@ set request.jwt.claim.sub = :'F';
 select count(*) = 0 as ok_imp3_other_household_reads_none_of_our_ignores from import_ignores where id_hash = repeat('a', 64);
 select count(*) = 0 as ok_imp3_other_household_reads_none_of_our_rules from import_rules where id = :'a_rule';
 select count(*) = 1 as ok_imp3_other_household_reads_its_own_rule from import_rules where match_text = 'pret';
-update import_rules set decision = 'keep' where id = :'a_rule';
+update import_rules set match_text = 'changed' where id = :'a_rule';
 delete from import_ignores where id_hash = repeat('a', 64);
 delete from import_rules where id = :'a_rule';
 set request.jwt.claim.sub = :'C';
@@ -286,7 +344,7 @@ select count(*) = 0 as ok_imp3_outsider_reads_no_ignores from import_ignores;
 select count(*) = 0 as ok_imp3_outsider_reads_no_rules from import_rules;
 reset role;
 select count(*) = 1 as ok_imp3_others_cannot_delete_our_ignore from import_ignores where id_hash = repeat('a', 64);
-select decision = 'skip' as ok_imp3_others_cannot_change_our_rule from import_rules where id = :'a_rule';
+select match_text = 'larder & leaf' as ok_imp3_others_cannot_change_our_rule from import_rules where id = :'a_rule';
 select count(*) = 0 as ok_imp3_refused_ignores_not_written from import_ignores where id_hash in (repeat('b', 64), repeat('c', 64));
 -- Undo of Not ours, and Remove of a rule: the household's own member can take them away.
 set role authenticated;

@@ -63,6 +63,8 @@ export const SETTLEMENT_WRITE_COLUMNS = [
 export type SettlementWrite = Pick<SettlementRow, (typeof SETTLEMENT_WRITE_COLUMNS)[number]>;
 
 export interface SoftDeletePatch { deleted_at: string | null }
+/** An entry's soft delete or restore; S7's Undo of Keep also clears the bank's id, so the row can be imported again. */
+export interface ExpensePatch extends SoftDeletePatch { external_id?: null }
 
 /** The columns the phone owns on a regular payment (S3); the server owns posted_count and the stamps (REC-6). */
 export const RECURRING_WRITE_COLUMNS = [
@@ -113,7 +115,7 @@ export interface Api {
   upsertCategoryMemory(row: CategoryMemoryWrite): Promise<CategoryMemoryRow>;
   /** Insert or update by id (OFF-7: a replay can't duplicate). Returns the stored row. */
   upsertExpense(row: ExpenseWrite): Promise<ExpenseRow>;
-  patchExpense(id: string, patch: SoftDeletePatch): Promise<ExpenseRow>;
+  patchExpense(id: string, patch: ExpensePatch): Promise<ExpenseRow>;
   upsertSettlement(row: SettlementWrite): Promise<SettlementRow>;
   patchSettlement(id: string, patch: SoftDeletePatch): Promise<SettlementRow>;
   createHousehold(): Promise<string>;
@@ -156,7 +158,8 @@ export interface Api {
   importRules(householdId: string): Promise<ImportRuleRow[]>;
   /** Insert or replace by (household, match text): the latest choice for a description wins. */
   upsertImportRule(row: ImportRuleWrite): Promise<ImportRuleRow>;
-  deleteImportRule(id: string): Promise<void>;
+  /** By its words, not its id: the other phone's upsert of the same words may have given it a new id. */
+  deleteImportRule(householdId: string, matchText: string): Promise<void>;
   /** S7 (EXP-1): restore_backup: adds what isn't here (never changes or deletes); `people` maps backup ids to members. */
   restoreBackup(people: Record<string, string>, rows: RestoreRows): Promise<RestoreCounts>;
   /** S7 (EXP-3): storage_used. */
@@ -360,7 +363,7 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     importRules: async (hid) => unwrap(await db.from('import_rules').select('*').eq('household_id', hid).order('created_at')) ?? [],
     upsertImportRule: async (row) =>
       must(await db.from('import_rules').upsert(row, { onConflict: 'household_id,match_text' }).select().single(), 'import rule'),
-    deleteImportRule: async (id) => { unwrap(await db.from('import_rules').delete().eq('id', id)); },
+    deleteImportRule: async (hid, matchText) => { unwrap(await db.from('import_rules').delete().eq('household_id', hid).eq('match_text', matchText)); },
     restoreBackup: async (people, rows) => readCounts(must(await db.rpc('restore_backup', { p_people: people, p_rows: rows as Json }), 'restore_backup')),
     storageUsed: async () => {
       const raw = must(await db.rpc('storage_used', {}), 'storage_used') as Record<string, unknown>;

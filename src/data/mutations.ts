@@ -247,6 +247,20 @@ export function deleteExpense(id: string, layer = activeDataLayer()): boolean {
   return true;
 }
 
+/**
+ * S7 (IMP-3, Undo of Keep): an imported entry taken back: deleted (soft: it stays in history) with its bank id cleared,
+ * so the same bank row can be offered and kept again. True when something changed.
+ */
+export function unkeepImportedExpense(id: string, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const { row, onServer } = currentExpense(layer, id);
+  if (dropRefusedNew(layer, 'expenses', id, onServer)) return true;
+  if (row.deleted_at !== null && row.external_id === null) return false;
+  const patch = { deleted_at: row.deleted_at ?? layer.now().toISOString(), external_id: null };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch, label: expenseLabel(row) });
+  return true;
+}
+
 export function restoreExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row } = currentExpense(layer, id);

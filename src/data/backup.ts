@@ -4,7 +4,7 @@
  * to sync are applied, so the file is what the person sees. Restoring it is S7's (imports.ts restorePlan,
  * restoreBackup), which reads format 1 and 2.
  *
- * Format 2 (S7) adds chapters, regular payments, comments and the import rules.
+ * Format 2 (S7) adds chapters, regular payments, comments and the household's import rules (keep rules only).
  */
 import type { ImportRuleRow } from './api';
 import { activeDataLayer } from './context';
@@ -34,7 +34,8 @@ export function backupJson(opts: { appVersion: string }, layer: DataLayer = acti
       chapters: rows(keys.chapters(uid), 'chapters'),
       recurring: rows(keys.recurring(uid), 'recurring'),
       comments: rows(keys.comments(uid), 'comments'),
-      import_rules: overlayRules(layer.client.getQueryData<ImportRuleRow[]>(keys.importRules(uid)) ?? [], layer.waiting()),
+      // Only the household's keep rules: a skip rule stays on the phone that made it.
+      import_rules: overlayRules(layer.client.getQueryData<ImportRuleRow[]>(keys.importRules(uid)) ?? [], layer.waiting()).filter((r) => r.decision === 'keep'),
     },
     null,
     2,

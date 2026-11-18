@@ -6,11 +6,11 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  DATE_FORMATS, detectPreset, MAX_CSV_BYTES, MAX_CSV_ROWS, MONZO_MAPPING, parseCsv, readRows, type ColumnMapping, type DateFormat,
+  DATE_FORMATS, decodeCsv, detectPreset, MAX_CSV_BYTES, MAX_CSV_ROWS, MONZO_MAPPING, parseCsv, readRows, type ColumnMapping, type DateFormat,
 } from '../../core/csv';
 import { addDays, formatDate, isIsoDate, type IsoDate } from '../../core/dates';
 import {
-  previewImport, removeImportRule, startImport, useCategories, useDataLayer, useHousehold, useImportRules, type ImportCounts, type ImportRuleRow,
+  previewImport, removeImportRule, startImport, useAllImportRules, useCategories, useDataLayer, useHousehold, type ImportCounts, type ImportRuleView,
 } from '../../data';
 import { Button, Field, Sheet, useToast } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
@@ -69,15 +69,20 @@ export function Select({ label, value, onChange, children, hint }: { label: stri
   );
 }
 
-/** A file's text (File.text where there is one). */
-export function fileText(file: File): Promise<string> {
-  if (typeof file.text === 'function') return file.text();
+/** A file's bytes. */
+function fileBytes(file: File): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === 'function') return file.arrayBuffer().then((b) => new Uint8Array(b));
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => { resolve(typeof reader.result === 'string' ? reader.result : ''); };
+    reader.onload = () => { resolve(reader.result instanceof ArrayBuffer ? new Uint8Array(reader.result) : new Uint8Array()); };
     reader.onerror = () => { reject(reader.error ?? new Error('could not read the file')); };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   });
+}
+
+/** A file's text: UTF-8, or windows-1252 when it isn't (a bank's "£" still reads; core decodeCsv). */
+export async function fileText(file: File): Promise<string> {
+  return decodeCsv(await fileBytes(file));
 }
 
 // ───────────────────────────── Settings → Import from a bank statement ─────────────────────────────
@@ -285,10 +290,10 @@ function ImportForm({ table, onDone }: { table: string[][]; onDone: () => void }
 // ───────────────────────────── Settings → Import rules ─────────────────────────────
 
 export function ImportRulesSection() {
-  const rules = useImportRules().data ?? [];
+  const rules = useAllImportRules() ?? [];
   const categories = useCategories().data ?? [];
   const toast = useToast();
-  const words = (r: ImportRuleRow) => (r.decision === 'keep'
+  const words = (r: ImportRuleView) => (r.decision === 'keep'
     ? strings.imports.ruleKeep(r.match_text, categories.find((c) => c.id === r.category_id)?.name ?? null)
     : strings.imports.ruleSkip(r.match_text));
   if (rules.length === 0) return <p className="text-secondary text-ink-2 m-0">{strings.imports.rulesNone}</p>;
@@ -296,7 +301,11 @@ export function ImportRulesSection() {
     <ul className="m-0 flex list-none flex-col p-0">
       {rules.map((r) => (
         <li key={r.id} className="border-line flex min-h-14 items-center gap-3 border-b py-1 last:border-b-0">
-          <span className="text-body min-w-0 flex-1 break-words">{words(r)}</span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-body break-words">{words(r)}</span>
+            {/* Review fix 2: a skip rule names a merchant one person left out, so it is never shared. */}
+            {r.onThisPhone ? <span className="text-secondary text-ink-2">{strings.imports.onThisPhone}</span> : null}
+          </span>
           <Button
             variant="quiet"
             aria-label={strings.imports.removeRule(r.match_text)}

@@ -127,14 +127,35 @@ export function readDate(text: string, format: DateFormat): IsoDate | null {
 
 const SYMBOLS: Record<string, string> = { EUR: '€', USD: '$', JPY: '¥', KRW: '₩', GBP: '£' };
 
-/** FNV-1a over the text, as 8 hex digits: a stable id for a row whose bank gives none. Not a secret. */
-function fnv(text: string): string {
-  let h = 0x811c9dc5;
+/**
+ * A 64-bit hash of the text (two 32-bit lanes mixed together, as cyrb53 does), as 16 hex digits: a stable id for a row
+ * whose bank gives none. 64 bits so that years of statements don't give two different rows the same id. Not a secret.
+ */
+function hash64(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
   for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
   }
-  return h.toString(16).padStart(8, '0');
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * A file's bytes as text: UTF-8 when they are UTF-8 (a byte-order mark is dropped), otherwise windows-1252, which is
+ * what a bank's export usually is when it isn't UTF-8 (so "£", the byte A3, still reads as "£").
+ */
+export function decodeCsv(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
 }
 
 function tidy(text: string): string {
@@ -203,7 +224,7 @@ export function readRows(table: readonly (readonly string[])[], mapping: MonzoMa
       const base = `${date}|${String(spent)}|${description.toLowerCase()}`;
       const n = (seen.get(base) ?? 0) + 1;
       seen.set(base, n);
-      bankId = `gen:${fnv(base)}:${String(n)}`;
+      bankId = `gen:${hash64(base)}:${String(n)}`;
     }
     const currency = at(row, c.localCurrency).toUpperCase();
     const local = at(row, c.local).replace(/^[-−]/u, '');

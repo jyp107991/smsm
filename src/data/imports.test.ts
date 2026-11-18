@@ -162,6 +162,19 @@ async function cardFor(bankId: string, layer: DataLayer): Promise<ImportCard> {
   return card;
 }
 
+/**
+ * Review fix 2 (changes the tests below that seeded a skip rule in import_rules): a skip rule is made on the importing
+ * phone, by "Always do this for …" on Not ours, and never stored in the shared database. Seeded here the way a person
+ * makes one, from a row without a bank id (so its Not ours stays on the phone too, review fix 3).
+ */
+async function phoneSkipRule(c: { layer: DataLayer }, description: string) {
+  await fn('startImport')([bank(`gen:seed-${description}`, '2026-10-01', description, 1, null)], 'csv', c.layer);
+  const card = (await fn('importQueue')(c.layer)).find((x) => x.description === description);
+  if (!card) throw new Error(`no seed card for ${description}`);
+  await fn('skipImport')(card.id, { always: true }, c.layer);
+  await settle(c.layer);
+}
+
 // ─────────────────────────────── idHash ───────────────────────────────
 
 describe('idHash (IMP-3)', () => {
@@ -226,11 +239,9 @@ describe('startImport: what is already decided is dropped (IMP-3, INB-1)', () =>
 
   it('IMP-3: rules: a skip rule writes the hash, a keep rule keeps with its category and split, payer the importer', async () => {
     const c = await household({
-      rules: [
-        rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' }),
-        rule({ match_text: 'noodle bar, soho', decision: 'skip' }),
-      ],
+      rules: [rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' })],
     });
+    await phoneSkipRule(c, 'Noodle Bar, Soho');
     expect(await fn('startImport')(MONZO_ROWS, 'monzo', c.layer)).toEqual({ offered: 3, rules: { keep: 1, skip: 1 }, already: 0 });
     await settle(c.layer);
     expect((await fn('importQueue')(c.layer)).map((x) => x.bankId)).toEqual([LARDER, CAFE, HARDWARE].map((r) => r.bankId));
@@ -247,7 +258,8 @@ describe('startImport: what is already decided is dropped (IMP-3, INB-1)', () =>
   });
 
   it('IMP-3: a rule matches the normalised description (case, width and spaces ignored)', async () => {
-    const c = await household({ rules: [rule({ match_text: 'larder & leaf', decision: 'skip' })] });
+    const c = await household();
+    await phoneSkipRule(c, 'Larder & Leaf');
     const shouting = bank('tx_shout', '2026-11-11', '  LARDER   &  LEAF ', 999, null);
     expect(await fn('startImport')([shouting, METRO], 'monzo', c.layer)).toEqual({ offered: 1, rules: { keep: 0, skip: 1 }, already: 0 });
   });
@@ -255,8 +267,9 @@ describe('startImport: what is already decided is dropped (IMP-3, INB-1)', () =>
   it('IMP-3: the summary before the tap (previewImport) gives the same counts and writes nothing', async () => {
     const c = await household({
       expenses: [imported(LARDER.bankId)],
-      rules: [rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' }), rule({ match_text: 'noodle bar, soho', decision: 'skip' })],
+      rules: [rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' })],
     });
+    await phoneSkipRule(c, 'Noodle Bar, Soho');
     const callsBefore = c.controls.calls.length;
     expect(await fn('previewImport')(MONZO_ROWS, 'monzo', c.layer)).toEqual({ offered: 2, rules: { keep: 1, skip: 1 }, already: 1 });
     await settle(c.layer);
@@ -401,13 +414,16 @@ describe('skipImport, undoSkip (IMP-3)', () => {
     expect(await fn('startImport')([CAFE], 'monzo', c.layer)).toEqual({ offered: 0, rules: { keep: 0, skip: 0 }, already: 1 });
   });
 
-  it('IMP-3: "Always do this for" on Not ours makes a skip rule for the description', async () => {
+  it('IMP-3: "Always do this for" on Not ours makes a skip rule for the description, on this phone only (review fix 2)', async () => {
     const c = await household();
     await fn('startImport')([HARDWARE], 'monzo', c.layer);
     await fn('skipImport')((await cardFor(HARDWARE.bankId, c.layer)).id, { always: true }, c.layer);
     await settle(c.layer);
-    expect(rulesOf(c)).toHaveLength(1);
-    expect(rulesOf(c)[0]).toMatchObject({ household_id: HID, match_text: 'hardware corner, exampletown', decision: 'skip' });
+    // The merchant one person left out is never in the shared database.
+    expect(rulesOf(c)).toEqual([]);
+    expect(said(c, 'hardware')).toBe(false);
+    expect(said(c, 'HARDWARE')).toBe(false);
+    expect(await fn('importRules')(c.layer)).toEqual([expect.objectContaining({ match_text: 'hardware corner, exampletown', decision: 'skip', onThisPhone: true })]);
     expect(ignoresOf(c)).toHaveLength(1);
     expect(await fn('startImport')([{ ...HARDWARE, bankId: 'tx_another', date: '2026-11-13' }], 'monzo', c.layer)).toEqual({ offered: 0, rules: { keep: 0, skip: 1 }, already: 0 });
   });
@@ -435,7 +451,9 @@ describe('skipImport, undoSkip (IMP-3)', () => {
     c.network.set(true);
     await settle(c.layer);
     expect(ignoresOf(c)).toHaveLength(1);
-    expect(rulesOf(c)).toHaveLength(1);
+    // Review fix 2: the skip rule stays on this phone.
+    expect(rulesOf(c)).toEqual([]);
+    expect((await fn('importRules')(c.layer)).map((r) => r.decision)).toEqual(['skip']);
   });
 });
 
@@ -461,11 +479,13 @@ describe('stopReviewing (IMP-3)', () => {
 // ─────────────────────────────── Import rules ───────────────────────────────
 
 describe('importRules, removeImportRule (IMP-3)', () => {
-  it('IMP-3: lists the household’s rules; Remove takes one away (and the row is offered again)', async () => {
-    const skip = rule({ match_text: 'noodle bar, soho', decision: 'skip' });
+  it('IMP-3: lists the household’s rules and this phone’s; Remove takes one away (and the row is offered again)', async () => {
     const keep = rule({ match_text: 'metro ticket machine', decision: 'keep', category_id: categoryId('Transport'), split_mode: 'treat' });
-    const c = await household({ rules: [skip, keep] });
+    const c = await household({ rules: [keep] });
+    await phoneSkipRule(c, 'Noodle Bar, Soho');
     expect((await fn('importRules')(c.layer)).map((r) => r.match_text).sort()).toEqual(['metro ticket machine', 'noodle bar, soho']);
+    const skip = (await fn('importRules')(c.layer)).find((r) => r.decision === 'skip');
+    if (!skip) throw new Error('no skip rule');
     await fn('removeImportRule')(skip.id, c.layer);
     await settle(c.layer);
     expect(rulesOf(c).map((r) => r.id)).toEqual([keep.id]);
@@ -505,7 +525,8 @@ const LAMP = storedExpense();
 const GONE = storedExpense({ id: '00000000-0000-4000-8000-00000000e0de', description: 'Gum', amount_pence: 100, paid: { [JAE_ID]: 100 }, shares: { [JAE_ID]: 50, [SAM_ID]: 50 }, deleted_at: '2026-11-11T10:00:00.000Z' });
 const RAMEN = storedExpense({ id: '00000000-0000-4000-8000-00000000e0a1', description: 'Ramen', amount_pence: 2440, date: '2026-11-04', paid: { [SAM_ID]: 2440 }, shares: { [JAE_ID]: 1220, [SAM_ID]: 1220 }, chapter_id: storedChapter().id, country: 'JP' });
 const RICH = { expenses: [LAMP, GONE, RAMEN], settlements: [storedSettlement()], chapters: [storedChapter()], recurring: [storedRecurring()], comments: [storedComment()] };
-const RULE = rule({ id: '00000000-0000-4000-8000-0000000071e1', match_text: 'noodle bar, soho', decision: 'skip' });
+// Review fix 2: only keep rules are shared, so only they are in a backup.
+const RULE = rule({ id: '00000000-0000-4000-8000-0000000071e1', match_text: 'noodle bar, soho', decision: 'keep', category_id: categoryId('Eating out') });
 const SAME_PEOPLE = { [JAE_ID]: JAE_ID, [SAM_ID]: SAM_ID };
 const rowsSent = (arg: unknown): number => {
   const a = (arg ?? {}) as Record<string, unknown>;

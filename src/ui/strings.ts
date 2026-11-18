@@ -768,6 +768,7 @@ export const strings = {
     ruleKeep: (words: string, category: string | null) => (category ? `Keep “${words}” as ${category}` : `Keep “${words}”`),
     ruleSkip: (words: string) => `Leave out “${words}”`,
     remove: 'Remove',
+    onThisPhone: 'On this phone only',
     removeRule: (words: string) => `Remove the rule for ${words}`,
     removed: 'Rule removed',
   },
@@ -825,6 +826,14 @@ export const strings = {
     unchanged: 'Nothing already here changes.',
     nothing: 'Everything in this backup is already here.',
     is: (name: string) => `${name} is`,
+    firstPerson: 'The first person in the backup',
+    secondPerson: 'The second person in the backup',
+    /** A part of the backup the database refused; what was added before it stays. */
+    refusedAt: (part: string) => `Restoring stopped at the backup’s ${part}: one of them couldn’t be added here, so none of that part was. Anything restored before it stays.`,
+    parts: {
+      categories: 'categories', chapters: 'chapters', recurring: 'regular payments', expenses: 'entries', settlements: 'settle-ups',
+      comments: 'comments', category_memory: 'remembered categories', import_rules: 'import rules',
+    },
     swap: 'Swap',
     restore: 'Restore',
     needsConnection: 'Restoring needs a connection',

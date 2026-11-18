@@ -7,28 +7,31 @@
  *     marked with its source and the bank's id, so the expenses_external index stops it ever being imported twice;
  *   - Not ours: only sha256(household:source:bank id) is written to import_ignores; the row itself is forgotten.
  * A row is never offered when its hash is ignored, an entry (deleted ones too) already has its bank id, or it is
- * already waiting here. "Always do this for …" makes a rule (import_rules, by the normalised description) that
- * the next import applies by itself. Every write goes through the persisted queue, so all of it works offline.
+ * already waiting here. "Always do this for …" makes a rule (by the normalised description) that the next import
+ * applies by itself: a keep rule is the household's (import_rules); a skip rule, which names a merchant one person
+ * left out, stays on their phone, as does the hash of a Not ours row whose id was made up from the row (anyone with
+ * the shared spending could guess it). Every shared write goes through the persisted queue, so it all works offline.
  *
  * Export. The entries CSV is made from the phone's copy (offline too). The JSON backup is backup.ts; restoring it
  * goes to restore_backup in chunks of at most 500 rows, which only ever adds.
  */
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
-import { createStore, del, get, set, type UseStore } from 'idb-keyval';
+import { createStore, del, delMany, get, keys as idbKeys, set, type UseStore } from 'idb-keyval';
 import { z } from 'zod';
 import { exportCsv, type BankRow, type ExportEntry, type ExportSettlement, type ImportSource, type Named } from '../core/csv';
 import type { IsoDate } from '../core/dates';
 import { pence, type Pence } from '../core/money';
 import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
-import type { CategoryRow, ChapterRow, CommentRow, ImportIgnoreRow, ImportRuleRow, RecurringRow, RestoreCounts, RestoreRows, RestoreTable } from './api';
+import { ApiError, type CategoryRow, type ChapterRow, type CommentRow, type ImportIgnoreRow, type ImportRuleRow, type RecurringRow, type RestoreCounts, type RestoreRows, type RestoreTable } from './api';
 import type { Json } from './database.types';
 import { activeDataLayer } from './context';
 import { useCategories, useCategoryMemory, useDataLayer, useHousehold, useImportRules, useSession } from './hooks';
 import { toInsight, toSettle } from './insightRows';
 import { keys } from './keys';
+import { onForget } from './forget';
 import {
-  addImportedExpense, deleteExpense, EntryNotFoundError, NotInHouseholdError, NotReadyError, NotSignedInError, OfflineError,
+  addImportedExpense, unkeepImportedExpense, EntryNotFoundError, NotInHouseholdError, NotReadyError, NotSignedInError, OfflineError,
 } from './mutations';
 import type { DataLayer } from './queryClient';
 import { memoryMap, memorySplit } from './rows';
@@ -61,17 +64,30 @@ export interface ImportCounts {
   already: number;
 }
 
-// ───────────────────────────── where waiting rows live ─────────────────────────────
+// ───────────────────────────── what lives on this phone only ─────────────────────────────
 
 const waitingSchema = z.object({
   id: z.string(), source: z.enum(['monzo', 'csv']), bankId: z.string(), hash: z.string(), date: z.string(), description: z.string(),
   amount: z.number().int().positive(), note: z.string().nullable(), categoryHint: z.string().nullable(),
 });
 type Waiting = z.infer<typeof waitingSchema>;
+const skipRuleSchema = z.object({ id: z.string(), match_text: z.string(), created_at: z.string() });
+type SkipRule = z.infer<typeof skipRuleSchema>;
+
+/**
+ * Kept on the importing phone, per household and person, never in the shared database:
+ *   rows      the bank rows waiting to be decided;
+ *   skipRules "Always do this for …" on Not ours: a merchant one person chose to leave out names nothing shared;
+ *   ignores   "source:hash" of Not ours rows whose id was made from the row (gen:), which the partner could guess
+ *             from their own copy of the shared spending, so their hashes aren't shared either.
+ */
+interface DeviceData { rows: readonly Waiting[]; skipRules: readonly SkipRule[]; ignores: readonly string[] }
+const EMPTY: DeviceData = { rows: [], skipRules: [], ignores: [] };
+const deviceSchema = z.object({ rows: z.array(waitingSchema), skipRules: z.array(skipRuleSchema), ignores: z.array(z.string()) });
 
 let idbStore: UseStore | null | undefined;
-/** Rows kept in memory when the browser has no IndexedDB (tests without it; a locked-down browser). */
-const fallback = new Map<string, Waiting[]>();
+/** What is kept in memory when the browser has no IndexedDB (tests without it; a locked-down browser). */
+const fallback = new Map<string, DeviceData>();
 function store(): UseStore | null {
   if (idbStore === undefined) {
     try {
@@ -85,13 +101,15 @@ function store(): UseStore | null {
 
 interface ImportState {
   key: string;
-  rows: readonly Waiting[];
+  data: DeviceData;
   ready: boolean;
+  /** Forgotten (signed out): nothing more is written for it. */
+  gone: boolean;
   loaded: Promise<void>;
   /** "Not ours" this session, for Undo: the row (in memory only) and the rule it made. */
   skipped: Map<string, { row: Waiting; ruleId: string | null }>;
-  /** Keep this session, for Undo: the rule it made. */
-  kept: Map<string, { ruleId: string | null }>;
+  /** Keep this session, for Undo: the row, the rule it made and the queued write that made the entry. */
+  kept: Map<string, { row: Waiting; ruleId: string | null; opId: string | null }>;
   listeners: Set<() => void>;
   saving: Promise<void>;
 }
@@ -107,7 +125,8 @@ function stateOf(layer: DataLayer, key: string): ImportState {
   const found = byKey.get(key);
   if (found) return found;
   const st: ImportState = {
-    key, rows: [], ready: false, loaded: Promise.resolve(), skipped: new Map(), kept: new Map(), listeners: new Set(), saving: Promise.resolve(),
+    key, data: EMPTY, ready: false, gone: false, loaded: Promise.resolve(), skipped: new Map(), kept: new Map(), listeners: new Set(),
+    saving: Promise.resolve(),
   };
   st.loaded = (async () => {
     let raw: unknown;
@@ -117,9 +136,12 @@ function stateOf(layer: DataLayer, key: string): ImportState {
     } catch {
       raw = fallback.get(key);
     }
-    const parsed = z.array(waitingSchema).safeParse(raw ?? []);
+    const parsed = deviceSchema.safeParse(raw ?? EMPTY);
+    const stored = parsed.success ? parsed.data : EMPTY;
     // Anything written meanwhile (a fast first import) comes after what was stored.
-    st.rows = [...(parsed.success ? parsed.data : []), ...st.rows];
+    st.data = {
+      rows: [...stored.rows, ...st.data.rows], skipRules: [...stored.skipRules, ...st.data.skipRules], ignores: [...new Set([...stored.ignores, ...st.data.ignores])],
+    };
     st.ready = true;
     notify(st);
   })();
@@ -132,25 +154,50 @@ function notify(st: ImportState): void {
 }
 
 function save(st: ImportState): Promise<void> {
-  const rows = [...st.rows];
+  const data = st.data;
   st.saving = st.saving.then(async () => {
+    if (st.gone) return;
+    const empty = data.rows.length === 0 && data.skipRules.length === 0 && data.ignores.length === 0;
     try {
       const s = store();
-      if (!s) fallback.set(st.key, rows);
-      else if (rows.length === 0) await del(st.key, s);
-      else await set(st.key, rows, s);
+      if (!s) fallback.set(st.key, data);
+      else if (empty) await del(st.key, s);
+      else await set(st.key, data, s);
     } catch {
-      fallback.set(st.key, rows);
+      fallback.set(st.key, data);
     }
   });
   return st.saving;
 }
 
-function change(st: ImportState, rows: readonly Waiting[]): Promise<void> {
-  st.rows = rows;
+function change(st: ImportState, patch: Partial<DeviceData>): Promise<void> {
+  st.data = { ...st.data, ...patch };
   notify(st);
   return save(st);
 }
+
+/** Sign-out (review fix 8): this person's waiting rows, phone-only rules and ignores go, from memory and storage. */
+onForget(async (layer, uid) => {
+  const mine = (key: string) => uid === null || key.endsWith(`:${uid}`);
+  const byKey = states.get(layer);
+  for (const [key, st] of byKey ?? []) {
+    if (!mine(key)) continue;
+    st.gone = true;
+    await st.saving;
+    st.data = EMPTY;
+    notify(st);
+    byKey?.delete(key);
+  }
+  for (const key of [...fallback.keys()]) if (mine(key)) fallback.delete(key);
+  const s = store();
+  if (!s) return;
+  try {
+    const stored = (await idbKeys(s)).filter((k) => typeof k === 'string' && mine(k));
+    if (stored.length > 0) await delMany(stored, s);
+  } catch {
+    /* no IndexedDB: nothing was stored there */
+  }
+});
 
 interface Ctx { uid: string; hid: string; st: ImportState; layer: DataLayer }
 
@@ -188,12 +235,39 @@ export async function idHash(householdId: string, source: ImportSource, bankId: 
  */
 const hashes = new Map<string, string>();
 
+/** A row whose bank gave no id: its made-up id ("gen:…") is this person's (review fix 5). */
+const generated = (bankId: string) => bankId.startsWith('gen:');
+
+/**
+ * Review fix 5: a made-up id names the person importing ("gen:<user id>:…"), so the same row on two people's own
+ * statements (a coffee each, same day, same price) is two rows, not one blocking the other.
+ */
+function qualify(rows: readonly BankRow[], uid: string): BankRow[] {
+  return rows.map((r) => (generated(r.bankId) && !r.bankId.startsWith(`gen:${uid}:`) ? { ...r, bankId: `gen:${uid}:${r.bankId.slice(4)}` } : r));
+}
+
 function cached<R>(layer: DataLayer, key: readonly unknown[]): R[] {
   return layer.client.getQueryData<R[]>(key) ?? [];
 }
 
-function rulesOf(layer: DataLayer, uid: string): ImportRuleRow[] {
-  return overlayRules(cached<ImportRuleRow>(layer, keys.importRules(uid)), layer.waiting());
+/** A rule as Settings lists it: the household's keep rules, and this phone's own skip rules. */
+export type ImportRuleView = ImportRuleRow & { onThisPhone: boolean };
+
+/** The household's keep rules (a skip rule is never shared; one found there is not used). */
+function sharedRules(layer: DataLayer, uid: string): ImportRuleRow[] {
+  return overlayRules(cached<ImportRuleRow>(layer, keys.importRules(uid)), layer.waiting()).filter((r) => r.decision === 'keep');
+}
+
+function phoneRule(r: SkipRule, hid: string): ImportRuleView {
+  return { id: r.id, household_id: hid, match_text: r.match_text, decision: 'skip', category_id: null, split_mode: null, split_params: null, created_at: r.created_at, onThisPhone: true };
+}
+
+function allRules(shared: readonly ImportRuleRow[], skipRules: readonly SkipRule[], hid: string): ImportRuleView[] {
+  return [...shared.map((r) => ({ ...r, onThisPhone: false })), ...skipRules.map((r) => phoneRule(r, hid))];
+}
+
+function rulesOf(ctx: Ctx): ImportRuleView[] {
+  return allRules(sharedRules(ctx.layer, ctx.uid), ctx.st.data.skipRules, ctx.hid);
 }
 
 function usable(categories: readonly CategoryRow[], id: string | null): string | null {
@@ -231,11 +305,11 @@ function byDate(rows: readonly Waiting[]): Waiting[] {
   return rows.map((r, i) => ({ r, i })).sort((x, y) => (x.r.date < y.r.date ? -1 : x.r.date > y.r.date ? 1 : x.i - y.i)).map((x) => x.r);
 }
 
-function categoryContext(layer: DataLayer, uid: string) {
+function categoryContext(ctx: Ctx) {
   return {
-    rules: rulesOf(layer, uid),
-    memory: memoryMap(layer.memory()),
-    categories: overlay(cached<CategoryRow>(layer, keys.categories(uid)), layer.waiting(), 'categories'),
+    rules: rulesOf(ctx),
+    memory: memoryMap(ctx.layer.memory()),
+    categories: overlay(cached<CategoryRow>(ctx.layer, keys.categories(ctx.uid)), ctx.layer.waiting(), 'categories'),
   };
 }
 
@@ -246,12 +320,14 @@ interface Sorted {
   already: number;
 }
 
-async function sortRows(ctx: Ctx, rows: readonly BankRow[], source: ImportSource): Promise<Sorted> {
+async function sortRows(ctx: Ctx, given: readonly BankRow[], source: ImportSource): Promise<Sorted> {
   const { layer, uid, hid, st } = ctx;
+  const rows = qualify(given, uid);
   const ignored = overlayIgnores(cached<ImportIgnoreRow>(layer, keys.importIgnores(uid)), layer.waiting());
-  const rules = rulesOf(layer, uid);
+  for (const i of st.data.ignores) ignored.add(i);
+  const rules = rulesOf(ctx);
   const imported = new Set(layer.entries().filter((e) => e.source === source && e.external_id !== null).map((e) => e.external_id));
-  const seen = new Set(st.rows.filter((r) => r.source === source).map((r) => r.bankId));
+  const seen = new Set(st.data.rows.filter((r) => r.source === source).map((r) => r.bankId));
   const out: Sorted = { offer: [], keep: [], skip: [], already: 0 };
   for (const row of rows) {
     if (seen.has(row.bankId) || imported.has(row.bankId)) {
@@ -285,7 +361,7 @@ export async function previewImport(rows: readonly BankRow[], source: ImportSour
 
 /**
  * IMP-1, IMP-3, INB-1: the rows go to this phone's Inbox as cards, after what is already decided is dropped and
- * the household's rules are applied (a skip rule writes the hash; a keep rule keeps the row at once).
+ * the rules are applied (a skip rule ignores the row; a keep rule keeps it at once).
  */
 export async function startImport(rows: readonly BankRow[], source: ImportSource, layer = activeDataLayer()): Promise<ImportCounts> {
   const ctx = await loadedCtx(layer);
@@ -297,27 +373,45 @@ export async function startImport(rows: readonly BankRow[], source: ImportSource
     ]).catch(() => undefined);
   }
   const sorted = await sortRows(ctx, rows, source);
-  const cats = categoryContext(layer, ctx.uid);
+  const cats = categoryContext(ctx);
   for (const w of sorted.skip) ignore(ctx, w);
   for (const { row, rule } of sorted.keep) {
     keepRow(ctx, row, { categoryId: usable(cats.categories, rule.category_id) ?? categoryFor(row, cats), split: memorySplit(rule) ?? undefined });
   }
-  if (sorted.offer.length > 0) await change(ctx.st, [...ctx.st.rows, ...sorted.offer]);
+  if (sorted.offer.length > 0) await change(ctx.st, { rows: [...ctx.st.data.rows, ...sorted.offer] });
   return counts(sorted);
 }
 
 /** INB-1: the rows waiting on this phone, in date order. */
 export async function importQueue(layer = activeDataLayer()): Promise<ImportCard[]> {
   const ctx = await loadedCtx(layer);
-  const cats = categoryContext(layer, ctx.uid);
-  return byDate(ctx.st.rows).map((w) => cardOf(w, cats));
+  const cats = categoryContext(ctx);
+  return byDate(ctx.st.data.rows).map((w) => cardOf(w, cats));
 }
 
 // ───────────────────────────── deciding a card ─────────────────────────────
 
+/** Not ours: the hash, shared for a bank's own id; kept on this phone for a made-up one (review fix 3). */
 function ignore(ctx: Ctx, w: Waiting): void {
+  if (generated(w.bankId)) {
+    const key = `${w.source}:${w.hash}`;
+    if (!ctx.st.data.ignores.includes(key)) void change(ctx.st, { ignores: [...ctx.st.data.ignores, key] });
+    return;
+  }
   const row: ImportIgnoreRow = { household_id: ctx.hid, source: w.source, id_hash: w.hash };
   ctx.layer.enqueue({ opId: newId(), by: ctx.uid, table: 'import_ignores', op: 'insert', id: w.hash, row, label: w.source });
+}
+
+function unignore(ctx: Ctx, w: Waiting): void {
+  if (generated(w.bankId)) {
+    const key = `${w.source}:${w.hash}`;
+    void change(ctx.st, { ignores: ctx.st.data.ignores.filter((i) => i !== key) });
+    return;
+  }
+  ctx.layer.enqueue({
+    opId: newId(), by: ctx.uid, table: 'import_ignores', op: 'delete', id: w.hash,
+    row: { household_id: ctx.hid, source: w.source, id_hash: w.hash }, label: w.source,
+  });
 }
 
 function splitRule(split: SplitParams): Pick<ImportRuleRow, 'split_mode' | 'split_params'> {
@@ -327,21 +421,40 @@ function splitRule(split: SplitParams): Pick<ImportRuleRow, 'split_mode' | 'spli
   return { split_mode: null, split_params: null };
 }
 
+function removeShared(ctx: Ctx, rule: Pick<ImportRuleRow, 'id' | 'match_text'>): void {
+  ctx.layer.enqueue({
+    opId: newId(), by: ctx.uid, table: 'import_rules', op: 'delete', id: rule.id, row: { household_id: ctx.hid, match_text: rule.match_text }, label: rule.match_text,
+  });
+}
+
+/**
+ * "Always do this for …": a keep rule is the household's (it only makes shared entries); a skip rule stays on this
+ * phone (review fix 2). Either replaces the other for the same words.
+ */
 function makeRule(ctx: Ctx, description: string, decision: 'keep' | 'skip', categoryId: string | null, split: SplitParams | null): string | null {
   const match = normaliseKey(description);
   if (match === '') return null;
-  const existing = rulesOf(ctx.layer, ctx.uid).find((r) => r.match_text === match);
+  const shared = sharedRules(ctx.layer, ctx.uid).find((r) => r.match_text === match);
+  const onPhone = ctx.st.data.skipRules.find((r) => r.match_text === match);
+  if (decision === 'skip') {
+    if (shared) removeShared(ctx, shared);
+    if (onPhone) return onPhone.id;
+    const rule: SkipRule = { id: newId(), match_text: match, created_at: ctx.layer.now().toISOString() };
+    void change(ctx.st, { skipRules: [...ctx.st.data.skipRules, rule] });
+    return rule.id;
+  }
+  if (onPhone) void change(ctx.st, { skipRules: ctx.st.data.skipRules.filter((r) => r.id !== onPhone.id) });
   const row: ImportRuleRow = {
-    id: existing?.id ?? newId(), household_id: ctx.hid, match_text: match, decision, category_id: decision === 'keep' ? categoryId : null,
-    ...(decision === 'keep' && split ? splitRule(split) : { split_mode: null, split_params: null }),
-    created_at: existing?.created_at ?? ctx.layer.now().toISOString(),
+    id: shared?.id ?? newId(), household_id: ctx.hid, match_text: match, decision: 'keep', category_id: categoryId,
+    ...(split ? splitRule(split) : { split_mode: null, split_params: null }),
+    created_at: shared?.created_at ?? ctx.layer.now().toISOString(),
   };
-  ctx.layer.enqueue({ opId: newId(), by: ctx.uid, table: 'import_rules', op: 'upsert', isNew: existing === undefined, row, input: null });
+  ctx.layer.enqueue({ opId: newId(), by: ctx.uid, table: 'import_rules', op: 'upsert', isNew: shared === undefined, row, input: null });
   return row.id;
 }
 
 /** The entry a bank row becomes: its values, the household's default split, paid by the person importing. */
-function keepRow(ctx: Ctx, w: Waiting, opts: Partial<ExpenseDraft> & { id?: string }): { id: string; draft: ExpenseDraft } {
+function keepRow(ctx: Ctx, w: Waiting, opts: Partial<ExpenseDraft> & { id?: string }): { id: string; draft: ExpenseDraft; opId: string | null } {
   const { layer, uid } = ctx;
   const { id: rowId, ...given } = opts;
   const home = layer.household()?.home_country ?? 'GB';
@@ -352,16 +465,21 @@ function keepRow(ctx: Ctx, w: Waiting, opts: Partial<ExpenseDraft> & { id?: stri
     ...Object.fromEntries(Object.entries(given as Record<string, unknown>).filter(([, v]) => v !== undefined)),
   };
   const id = addImportedExpense({ ...draft, ...(rowId === undefined ? {} : { id: rowId }) }, { source: w.source, externalId: w.bankId }, layer);
+  const op = [...layer.waiting()].reverse().find((o) => o.table === 'expenses' && o.op === 'upsert' && o.row.id === id);
   // The split as it was used (the household's default filled in), for a rule made from this keep.
   const [a, b] = layer.members();
   const split = a && b ? completeSplit(draft.split, [a.user_id, b.user_id], defaultRatioOf(layer.household())) : draft.split;
-  return { id, draft: { ...draft, split } };
+  return { id, draft: { ...draft, split }, opId: op?.opId ?? null };
 }
 
 function take(st: ImportState, id: string): Waiting {
-  const w = st.rows.find((r) => r.id === id);
+  const w = st.data.rows.find((r) => r.id === id);
   if (!w) throw new EntryNotFoundError(id);
   return w;
+}
+
+function putBack(ctx: Ctx, w: Waiting): void {
+  if (!ctx.st.data.rows.some((r) => r.id === w.id)) void change(ctx.st, { rows: [...ctx.st.data.rows, w] });
 }
 
 /**
@@ -373,12 +491,12 @@ export function keepImportNow(id: string, opts: Partial<ExpenseDraft> & { always
   if (!ctx.st.ready) throw new NotReadyError();
   const { always = false, ...given } = opts;
   const w = take(ctx.st, id);
-  const cats = categoryContext(layer, ctx.uid);
-  const { id: entryId, draft } = keepRow(ctx, w, { categoryId: categoryFor(w, cats), ...given });
-  const ruleId = always ? makeRule(ctx, w.description, 'keep', draft.categoryId, draft.split) : null;
-  ctx.st.kept.set(entryId, { ruleId });
-  void change(ctx.st, ctx.st.rows.filter((r) => r.id !== id));
-  return entryId;
+  const cats = categoryContext(ctx);
+  const kept = keepRow(ctx, w, { categoryId: categoryFor(w, cats), ...given });
+  const ruleId = always ? makeRule(ctx, w.description, 'keep', kept.draft.categoryId, kept.draft.split) : null;
+  ctx.st.kept.set(kept.id, { row: w, ruleId, opId: kept.opId });
+  void change(ctx.st, { rows: ctx.st.data.rows.filter((r) => r.id !== id) });
+  return kept.id;
 }
 
 /** IMP-3 Keep: adds the entry (see keepImportNow) and returns its id. */
@@ -389,16 +507,31 @@ export async function keepImport(id: string, opts: Partial<ExpenseDraft> & { alw
   return entryId;
 }
 
-/** Undo of Keep: the entry is deleted (soft: it stays in history, so the row is not offered again) and its rule goes. */
+/**
+ * Undo of Keep (review fix 4): the card comes back. A keep still waiting to be sent is taken out of the queue, so
+ * nothing reaches the server; one already sent is deleted (soft) with its bank id cleared, so the row can be kept
+ * again. A rule the tap made goes too. False when there was nothing to undo.
+ */
 export function undoKeep(entryId: string, layer = activeDataLayer()): boolean {
   const ctx = ctxOf(layer);
   const made = ctx.st.kept.get(entryId);
   ctx.st.kept.delete(entryId);
   if (made?.ruleId) removeImportRule(made.ruleId, layer);
-  return deleteExpense(entryId, layer);
+  const withdrawn = made?.opId != null && layer.withdraw(made.opId);
+  if (!withdrawn) {
+    try {
+      unkeepImportedExpense(entryId, layer);
+    } catch (err) {
+      // The keep never became an entry (the other phone had kept the same row first): nothing to give back.
+      if (err instanceof EntryNotFoundError) return false;
+      throw err;
+    }
+  }
+  if (made) putBack(ctx, made.row);
+  return true;
 }
 
-/** IMP-3 Not ours, at once: only the hash is written (and a skip rule with `always`); the row is forgotten. */
+/** IMP-3 Not ours, at once: only the hash is kept (and a skip rule with `always`); the row is forgotten. */
 export function skipImportNow(id: string, opts: { always: boolean }, layer = activeDataLayer()): void {
   const ctx = ctxOf(layer);
   if (!ctx.st.ready) throw new NotReadyError();
@@ -406,7 +539,7 @@ export function skipImportNow(id: string, opts: { always: boolean }, layer = act
   ignore(ctx, w);
   const ruleId = opts.always ? makeRule(ctx, w.description, 'skip', null, null) : null;
   ctx.st.skipped.set(id, { row: w, ruleId });
-  void change(ctx.st, ctx.st.rows.filter((r) => r.id !== id));
+  void change(ctx.st, { rows: ctx.st.data.rows.filter((r) => r.id !== id) });
 }
 
 export async function skipImport(id: string, opts: { always: boolean }, layer = activeDataLayer()): Promise<void> {
@@ -421,38 +554,40 @@ export async function undoSkip(id: string, layer = activeDataLayer()): Promise<v
   const made = ctx.st.skipped.get(id);
   if (!made) return;
   ctx.st.skipped.delete(id);
-  const { row } = made;
-  ctx.layer.enqueue({
-    opId: newId(), by: ctx.uid, table: 'import_ignores', op: 'delete', id: row.hash,
-    row: { household_id: ctx.hid, source: row.source, id_hash: row.hash }, label: row.source,
-  });
+  unignore(ctx, made.row);
   if (made.ruleId) removeImportRule(made.ruleId, layer);
-  if (!ctx.st.rows.some((r) => r.id === row.id)) await change(ctx.st, [...ctx.st.rows, row]);
+  putBack(ctx, made.row);
+  await ctx.st.saving;
 }
 
 /** IMP-3: forgets this phone's waiting rows, recording nothing (they are offered again next time). */
 export async function stopReviewing(layer = activeDataLayer()): Promise<void> {
   const ctx = await loadedCtx(layer);
   ctx.st.skipped.clear();
-  await change(ctx.st, []);
+  ctx.st.kept.clear();
+  await change(ctx.st, { rows: [] });
 }
 
-/** IMP-3: the household's rules, with waiting changes applied. */
-export function importRules(layer = activeDataLayer()): ImportRuleRow[] {
-  const uid = layer.me();
-  return uid ? rulesOf(layer, uid) : [];
+/** IMP-3: the household's keep rules and this phone's skip rules, with waiting changes applied. */
+export function importRules(layer = activeDataLayer()): ImportRuleView[] {
+  if (!layer.me() || !layer.householdId()) return [];
+  return rulesOf(ctxOf(layer));
 }
 
-/** IMP-3: Settings → Import rules → Remove. */
+/** IMP-3: Settings → Import rules → Remove (a shared rule by its words, so the other phone's copy of it goes too). */
 export function removeImportRule(id: string, layer = activeDataLayer()): void {
-  const uid = layer.me();
-  if (!uid) throw new NotSignedInError();
-  const rule = rulesOf(layer, uid).find((r) => r.id === id);
-  layer.enqueue({ opId: newId(), by: uid, table: 'import_rules', op: 'delete', id, label: rule?.match_text ?? '' });
+  const ctx = ctxOf(layer);
+  const onPhone = ctx.st.data.skipRules.find((r) => r.id === id);
+  if (onPhone) {
+    void change(ctx.st, { skipRules: ctx.st.data.skipRules.filter((r) => r.id !== id) });
+    return;
+  }
+  const shared = sharedRules(layer, ctx.uid).find((r) => r.id === id);
+  if (shared) removeShared(ctx, shared);
 }
 
-/** INB-1: the cards waiting on this phone, in date order (undefined until read); follows every change. */
-export function useImportQueue(): ImportCard[] | undefined {
+/** What this phone keeps for the person signed in (undefined until read); follows every change. */
+function useDeviceData(): { data: DeviceData; hid: string } | undefined {
   const layer = useDataLayer();
   const session = useSession();
   const hid = useHousehold().data?.id ?? null;
@@ -463,14 +598,30 @@ export function useImportQueue(): ImportCard[] | undefined {
     st.listeners.add(cb);
     return () => { st.listeners.delete(cb); };
   }, [st]);
-  const get = useCallback(() => (st?.ready ? st.rows : undefined), [st]);
-  const rows = useSyncExternalStore(subscribe, get, get);
+  const get = useCallback(() => (st?.ready ? st.data : undefined), [st]);
+  const data = useSyncExternalStore(subscribe, get, get);
+  return useMemo(() => (data && hid ? { data, hid } : undefined), [data, hid]);
+}
+
+/** IMP-3: Settings → Import rules: the household's keep rules, then this phone's skip rules. */
+export function useAllImportRules(): ImportRuleView[] | undefined {
+  const device = useDeviceData();
+  const shared = useImportRules().data;
+  return useMemo(
+    () => (device && shared ? allRules(shared.filter((r) => r.decision === 'keep'), device.data.skipRules, device.hid) : undefined),
+    [device, shared],
+  );
+}
+
+/** INB-1: the cards waiting on this phone, in date order (undefined until read); follows every change. */
+export function useImportQueue(): ImportCard[] | undefined {
+  const device = useDeviceData();
+  const rules = useAllImportRules();
   const categories = useCategories().data;
   const memory = useCategoryMemory();
-  const rules = useImportRules().data;
   return useMemo(
-    () => rows && byDate(rows).map((w) => cardOf(w, { rules: rules ?? [], memory, categories: categories ?? [] })),
-    [rows, rules, memory, categories],
+    () => device && byDate(device.data.rows).map((w) => cardOf(w, { rules: rules ?? [], memory, categories: categories ?? [] })),
+    [device, rules, memory, categories],
   );
 }
 
@@ -494,6 +645,14 @@ export function exportEntriesCsv(range: { from: IsoDate; to: IsoDate }, layer = 
 // ───────────────────────────── restoring a backup ─────────────────────────────
 
 export const RESTORE_CHUNK = 500;
+
+/** A part of the backup the database refused (a row that doesn't add up, a person it can't place); nothing of it was added. */
+export class RestoreRefusedError extends Error {
+  constructor(public readonly table: RestoreTable, detail: string) {
+    super(detail);
+    this.name = 'RestoreRefusedError';
+  }
+}
 const RESTORE_ORDER: readonly RestoreTable[] = ['categories', 'chapters', 'recurring', 'expenses', 'settlements', 'comments', 'category_memory', 'import_rules'];
 
 export interface RestorePlan {
@@ -517,7 +676,7 @@ const backupSchema = z.looseObject({
   recurring: z.array(objectRow).optional(),
   comments: z.array(objectRow).optional(),
   category_memory: z.array(z.looseObject({ key: z.string() })).optional(),
-  import_rules: z.array(z.looseObject({ match_text: z.string() })).optional(),
+  import_rules: z.array(z.looseObject({ match_text: z.string(), decision: z.string().optional() })).optional(),
 });
 
 /** EXP-1: reads an smsm backup (format 1 or 2) and says what restoring it would add; anything else is refused. */
@@ -533,10 +692,12 @@ export function restorePlan(json: string, layer = activeDataLayer()): RestorePla
   const b = parsed.data;
   if (b.members.length !== 2) return { error: 'notTwo' };
   const uid = layer.me() ?? '';
+  const keepRules = (b.import_rules ?? []).filter((r) => r.decision === 'keep');
   const rows: Required<RestoreRows> = {
     categories: (b.categories ?? []) as Json[], chapters: (b.chapters ?? []) as Json[], recurring: (b.recurring ?? []) as Json[],
     expenses: b.expenses as Json[], settlements: (b.settlements ?? []) as Json[], comments: (b.comments ?? []) as Json[],
-    category_memory: (b.category_memory ?? []) as Json[], import_rules: (b.import_rules ?? []) as Json[],
+    // Only keep rules are shared and restored (a skip rule in an older backup stays out).
+    category_memory: (b.category_memory ?? []) as Json[], import_rules: keepRules as Json[],
   };
   const newIds = (list: readonly { id: string }[], here: readonly { id: string }[]) => {
     const have = new Set(here.map((r) => r.id));
@@ -545,7 +706,7 @@ export function restorePlan(json: string, layer = activeDataLayer()): RestorePla
   const cats = cached<CategoryRow>(layer, keys.categories(uid));
   const catNames = new Set(cats.map((c) => normaliseKey(c.name)));
   const catIds = new Set(cats.map((c) => c.id));
-  const ruleWords = new Set(rulesOf(layer, uid).map((r) => r.match_text));
+  const ruleWords = new Set(sharedRules(layer, uid).map((r) => r.match_text));
   return {
     format: b.format === 'smsm-backup-1' ? 1 : 2,
     people: b.members.map((m) => ({ id: m.user_id, name: m.display_name ?? '' })),
@@ -556,7 +717,7 @@ export function restorePlan(json: string, layer = activeDataLayer()): RestorePla
       regular: newIds(b.recurring ?? [], cached<RecurringRow>(layer, keys.recurring(uid))),
       comments: newIds(b.comments ?? [], cached<CommentRow>(layer, keys.comments(uid))),
       categories: (b.categories ?? []).filter((c) => !catIds.has(c.id) && !catNames.has(normaliseKey(typeof c['name'] === 'string' ? c['name'] : ''))).length,
-      rules: (b.import_rules ?? []).filter((r) => !ruleWords.has(r.match_text)).length,
+      rules: keepRules.filter((r) => !ruleWords.has(r.match_text)).length,
     },
     rows,
   };
@@ -602,7 +763,16 @@ export async function restoreBackup(plan: RestorePlan, people: Record<string, st
   if (layer.members().length < 2) throw new PartnerNotJoinedError();
   const total: RestoreCounts = { added: {}, skipped: {} };
   for (const rows of chunks(plan.rows)) {
-    const got = await layer.api.restoreBackup(people, rows);
+    let got: RestoreCounts;
+    try {
+      got = await layer.api.restoreBackup(people, rows);
+    } catch (err) {
+      // restore_backup names the part it refused ("restore expenses: …"): said in plain words by the screen.
+      const named = err instanceof ApiError ? /^restore (\w+): /u.exec(err.message) : null;
+      const table = named?.[1];
+      if (table && (RESTORE_ORDER as readonly string[]).includes(table)) throw new RestoreRefusedError(table as RestoreTable, err instanceof Error ? err.message : '');
+      throw err;
+    }
     for (const side of ['added', 'skipped'] as const) {
       for (const [t, v] of Object.entries(got[side]) as [RestoreTable, number][]) total[side][t] = (total[side][t] ?? 0) + v;
     }
