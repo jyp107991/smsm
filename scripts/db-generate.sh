@@ -32,7 +32,7 @@ npx --no-install supabase gen types --remote="$URL" --schema public > "$OUT/data
 
 if [ "${1:-}" = "--check" ]; then
   ok=1
-  diff -q "$OUT/schema.sql" supabase/schema.sql >/dev/null || { echo "supabase/schema.sql is stale: run npm run db:generate"; diff "$OUT/schema.sql" supabase/schema.sql | head -40; ok=0; }
+  diff -q "$OUT/schema.sql" supabase/schema.sql >/dev/null || { echo "supabase/schema.sql is stale: run npm run db:generate"; diff -u "$OUT/schema.sql" supabase/schema.sql | cat -A | head -60; ok=0; }
   diff -q "$OUT/database.types.ts" src/data/database.types.ts >/dev/null || { echo "src/data/database.types.ts is stale: run npm run db:generate"; diff "$OUT/database.types.ts" src/data/database.types.ts | head -40; ok=0; }
   [ $ok = 1 ] && echo "generated files up to date"
   [ $ok = 1 ]
