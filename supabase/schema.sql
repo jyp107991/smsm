@@ -494,6 +494,9 @@ begin
   if p_period >= this_month then raise exception 'only a finished month has its wording kept'; end if;
   if p_prose is null or btrim(p_prose) = '' then raise exception 'no wording'; end if;
   if p_stats is null then raise exception 'no figures'; end if;
+  -- Two short sentences and a month's figures: nothing bigger is kept.
+  if octet_length(p_prose) > 2000 then raise exception 'wording too long'; end if;
+  if pg_column_size(p_stats) > 16384 then raise exception 'figures too large'; end if;
   insert into recaps(household_id, period, stats, prose) values (hid, p_period, p_stats, p_prose)
   on conflict (household_id, period) do nothing;  -- the primary key: once per household per month
   select prose into kept from recaps where household_id = hid and period = p_period;
