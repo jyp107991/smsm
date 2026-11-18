@@ -8,8 +8,12 @@
  *     scan(image: Blob, ctx: { categories: string[]; today: string; country: string }): Promise<AiResult>
  *     parse(text: string, ctx: { categories: string[]; chapters: string[]; today: string }): Promise<AiResult>
  *     categorise(description: string, categories: string[]): Promise<AiResult>
+ *     S6b (docs/slices/S6b.md "Interfaces → Data"):
+ *     recap(stats: RecapStats): Promise<AiResult>          (src/core/wording.ts recapStats: figures as shown, A/B)
+ *     ask(question: string, ctx: { categories: string[]; chapters: string[]; countries: string[]; today: string }): Promise<AiResult>
  *   }  AiResult = { ok: true; data } | { ok: false; reason: 'off' | 'limit' | 'timeout' | 'invalid' | 'error' }
- *   photos: PhotoStore { put(path: string, photo: Blob): Promise<void>; get(path: string): Promise<Blob | null> }
+ *   photos: PhotoStore { put(path: string, photo: Blob): Promise<void>; get(path: string): Promise<Blob | null>;
+ *                        remove?(path: string): Promise<void> }
  *     (the app's is IndexedDB 'smsm-photos'; here a Map that outlives a restart when the same store is passed again)
  *   downscale: (photo: Blob) => Promise<Blob>   (the app's: canvas, 1280 px on the long side, JPEG 0.8)
  */
@@ -37,6 +41,9 @@ export function fakeAi(answers: {
   scan?: AiResult | ((image: Blob, ctx: unknown) => Promise<AiResult>);
   parse?: AiResult | ((text: string, ctx: unknown) => Promise<AiResult>);
   categorise?: AiResult | ((description: string, categories: string[]) => Promise<AiResult>);
+  /** S6b: the recap's wording and Ask smsm. */
+  recap?: AiResult | ((stats: unknown) => Promise<AiResult>);
+  ask?: AiResult | ((question: string, ctx: unknown) => Promise<AiResult>);
 } = {}) {
   const as = <A extends unknown[]>(a: AiResult | ((...args: A) => Promise<AiResult>) | undefined) =>
     a === undefined ? NOT_ASKED : typeof a === 'function' ? a : () => Promise.resolve(a);
@@ -44,6 +51,8 @@ export function fakeAi(answers: {
     scan: vi.fn(as(answers.scan)),
     parse: vi.fn(as(answers.parse)),
     categorise: vi.fn(as(answers.categorise)),
+    recap: vi.fn(as(answers.recap)),
+    ask: vi.fn(as(answers.ask)),
   };
 }
 
@@ -61,6 +70,7 @@ export function memoryPhotos() {
     map,
     put: vi.fn((path: string, photo: Blob) => { map.set(path, photo); return Promise.resolve(); }),
     get: vi.fn((path: string) => Promise.resolve(map.get(path) ?? null)),
+    remove: vi.fn((path: string) => { map.delete(path); return Promise.resolve(); }),
   };
 }
 

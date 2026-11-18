@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #10",
+ "currency": "IDR",
+ "total_pence": 1700000,
+ "items": [
+  {
+   "label": "CINNAMON SUGAR",
+   "pence": 1700000
+  }
+ ]
+}

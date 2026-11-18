@@ -17,6 +17,10 @@ export type EntryRequest =
     inboxItem?: string;
     /** S6a (SCAN-4): a receipt sorted later: its photo, already on its way to the bucket. */
     receiptPath?: string;
+    /** S6b (ADD-8): opened from the "Scan receipt" shortcut: the camera (or the photo picker) offered at once. */
+    start?: 'scan';
+    /** S6b (ADD-8): a photo shared into the app; attached, and read as a scan when smart features are on. */
+    shared?: { photo: Blob };
   }
   /** S3: a new regular payment (optionally prefilled, e.g. from "looks monthly"), or edit one by its id. */
   | { mode: 'recurring'; id?: string; prefill?: Partial<FormState>; schedule?: Partial<ScheduleState> }

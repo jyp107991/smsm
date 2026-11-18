@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #5",
+ "currency": "IDR",
+ "total_pence": 3100000,
+ "items": [
+  {
+   "label": "TRAD KY TOAST CARTE",
+   "pence": 2818200
+  }
+ ]
+}

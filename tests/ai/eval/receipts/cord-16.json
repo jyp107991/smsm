@@ -1,0 +1,31 @@
+{
+ "source": "CORD v2 test #17",
+ "currency": "IDR",
+ "total_pence": 9100000,
+ "items": [
+  {
+   "label": "Goblin's Mace",
+   "pence": 2500000
+  },
+  {
+   "label": "Mozarella Hot Dog",
+   "pence": 3800000
+  },
+  {
+   "label": "Chili Pepper Croquette",
+   "pence": 1400000
+  },
+  {
+   "label": "Cheese Croquette",
+   "pence": 1400000
+  },
+  {
+   "label": "Plastik Amook",
+   "pence": 0
+  },
+  {
+   "label": "Plastik Putih Take Away",
+   "pence": 0
+  }
+ ]
+}

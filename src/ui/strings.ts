@@ -623,6 +623,20 @@ export const strings = {
       `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${amount} on average. A standing order of ${amount} a month would keep you about square.`,
   },
   /** S5b: comments on an entry (ACT-4). */
+  /** S6b: Ask smsm (INS-9). */
+  ask: {
+    title: 'Ask smsm',
+    hint: 'Like “how much on eating out in Japan?”',
+    ask: 'Ask',
+    reading: 'Working it out…',
+    cant: 'I can answer totals, counts, averages and the biggest, by category, chapter, country, who paid and dates.',
+    filters: 'Filters',
+    remove: (label: string) => `Remove ${label}`,
+    groups: 'By group',
+    matching: 'Matching entries',
+    seeAll: 'See all in Activity',
+    entries: (n: number) => (n === 1 ? '1 entry' : `${String(n)} entries`),
+  },
   /** S6a: smart features (SCAN-1…5, ADD-9, CAT-2 step 4). */
   smart: {
     section: 'Receipts and loose words',

@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "M&S Food",
+ "date": "2026-10-19",
+ "currency": "GBP",
+ "total_pence": 3000,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Dine In Meal Deal",
+   "pence": 1500
+  },
+  {
+   "label": "Bottle of Wine",
+   "pence": 900
+  },
+  {
+   "label": "Flowers",
+   "pence": 600
+  }
+ ]
+}

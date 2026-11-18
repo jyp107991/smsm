@@ -5,14 +5,19 @@
  * only sets a category, marked as a guess, and never over a person's choice.
  */
 import seedList from '../../content/merchants.json';
-import { checkReply, type ParseReply, type ScanReply } from '../core/aiReplies';
+import { checkReply, type AskReply, type ParseReply, type ScanReply } from '../core/aiReplies';
+import { recapOf } from '../core/recap';
+import { recapStats, wordingGuard, type RecapStats, type Wording } from '../core/wording';
+import { createStore, del, get } from 'idb-keyval';
+import type { Json } from './database.types';
+import { toInsight, toSettle, toTemplate } from './insightRows';
 import { suggest } from '../core/categorise';
 import type { IsoDate } from '../core/dates';
 import { scanGuards } from '../core/itemise';
 import { pence, type Pence } from '../core/money';
 import type { UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
-import type { CategoryRow, ChapterRow, InboxItemRow } from './api';
+import type { CategoryRow, ChapterRow, InboxItemRow, RecurringRow } from './api';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
 import { currentCountry, editExpense } from './mutations';
@@ -176,13 +181,13 @@ export interface LooseReading {
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** AI.md rule 4: the two people's names, as whole words in any case, become "A" (this phone's person) and "B". */
-function masked(text: string, layer: DataLayer): string {
+function masked(text: string, layer: DataLayer, prefix = ''): string {
   const me = layer.me();
   const members = layer.members();
   let words = text;
   for (const [m, label] of [[members.find((x) => x.user_id === me), 'A'], [members.find((x) => x.user_id !== me), 'B']] as const) {
     const name = m?.display_name?.trim();
-    if (name) words = words.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, 'giu'), label);
+    if (name) words = words.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, 'giu'), `${prefix}${label}`);
   }
   return words;
 }
@@ -264,3 +269,133 @@ export async function guessCategory(expenseId: string, layer = activeDataLayer()
     }
   } catch { /* the entry stays as saved */ }
 }
+
+// ───────── S6b, INS-2: the recap's wording ─────────
+
+/** Months whose wording failed on this phone while the app runs (not asked again), and the one being asked now. */
+const unworded = new WeakMap<DataLayer, Set<string>>();
+const asking = new WeakMap<DataLayer, Map<string, Promise<Wording | null>>>();
+
+/** The figures that make a month's wording true: kept wording is shown only while they are the same. */
+const sameFigures = (kept: unknown, now: RecapStats) => {
+  if (!kept || typeof kept !== 'object') return false;
+  const k = kept as Partial<RecapStats>;
+  return k.total === now.total && (k.paid === undefined || JSON.stringify(k.paid) === JSON.stringify(now.paid))
+    && (k.bar === undefined || JSON.stringify(k.bar) === JSON.stringify(now.bar));
+};
+
+/** The two people as the wording names them: A joined first, so both phones read the same sentence. */
+function inJoinOrder(layer: DataLayer): [{ id: UserId; name: string }, { id: UserId; name: string }] | null {
+  const [a, b] = [...layer.members()].sort((x, y) => (x.joined_at < y.joined_at ? -1 : x.joined_at > y.joined_at ? 1 : 0));
+  return a && b ? [{ id: a.user_id, name: a.display_name ?? '' }, { id: b.user_id, name: b.display_name ?? '' }] : null;
+}
+
+function wordingOf(prose: string | null): Wording | null {
+  if (prose === null) return null;
+  return checkReply('recap', prose);
+}
+
+/**
+ * INS-2: a finished month's wording by the AI, guarded (every number is one of the month's own; no advice), with the
+ * names put in; null for the template. Stored once per household (the first phone to ask keeps it, the other reads it).
+ */
+export async function recapWording(month: string, layer = activeDataLayer()): Promise<Wording | null> {
+  if (!storedSmart()) return null;
+  // One question per month at a time (the page re-renders as the household syncs; the AI is asked once).
+  const inFlight = asking.get(layer) ?? new Map<string, Promise<Wording | null>>();
+  asking.set(layer, inFlight);
+  const pending = inFlight.get(month);
+  if (pending) return pending;
+  const run = wordMonth(month, layer).finally(() => { inFlight.delete(month); });
+  inFlight.set(month, run);
+  return run;
+}
+
+async function wordMonth(month: string, layer: DataLayer): Promise<Wording | null> {
+  const today = layer.today();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month >= today.slice(0, 7)) return null;
+  const failed = unworded.get(layer) ?? new Set<string>();
+  unworded.set(layer, failed);
+  const hid = layer.householdId();
+  const people = inJoinOrder(layer);
+  if (!hid || !people || failed.has(month)) return null;
+  const categories = liveCategories(layer);
+  const templates = layer.client.getQueryData<RecurringRow[]>(keys.recurring(layer.me() ?? '')) ?? [];
+  const recap = recapOf(
+    layer.entries().map(toInsight), layer.settlements().map(toSettle), [people[0].id, people[1].id], month,
+    { today, names: { [people[0].id]: people[0].name, [people[1].id]: people[1].name }, categories: categories.map((c) => ({ id: c.id, name: c.name })), templates: templates.map(toTemplate) },
+  );
+  // AI.md rule 4: names in the notes (an entry's description) go as Person A / Person B, like everything else.
+  const plain = recapStats(recap, [people[0].id, people[1].id]);
+  const stats: RecapStats = { ...plain, notes: plain.notes.map((n) => masked(n, layer, 'Person ')), bar: plain.bar.map((b) => ({ ...b, name: masked(b.name, layer, 'Person ') })) };
+  // A month with nothing spent together is the template's ("Nothing was spent together"); never asked.
+  if (recap.total <= 0) return null;
+  const names = { A: people[0].name, B: people[1].name };
+  const shown = (w: Wording | null) => (w === null ? null : wordingGuard(stats, w, names));
+  const give = (w: Wording | null) => { if (w === null) failed.add(month); return w; };
+  if (!layer.network.online) return null;
+  try {
+    const keptRow = await layer.api.recapProse(hid, month);
+    if (keptRow !== null) {
+      // Kept wording is true only for the figures it was written for; an entry changed since: the template.
+      if (!sameFigures(keptRow.stats, stats)) return give(null);
+      return give(shown(wordingOf(keptRow.prose)));
+    }
+    const res = await layer.ai.recap(stats);
+    const reply = res.ok ? checkReply('recap', res.data) : null;
+    if (!reply || shown(reply) === null) return give(null);
+    // Kept once for the household; the wording shown is whichever got there first.
+    let prose = JSON.stringify(reply);
+    try { prose = await layer.api.saveRecapProse(month, stats as unknown as Json, prose); } catch { /* shown anyway */ }
+    return give(shown(wordingOf(prose)));
+  } catch {
+    return give(null);
+  }
+}
+
+// ───────── S6b, INS-9: Ask smsm ─────────
+
+/** INS-9: a question read by the AI into a closed filter (the app works out the figure); or why not. */
+export async function askSmsm(question: string, layer = activeDataLayer()): Promise<Result<AskReply>> {
+  if (!ready(layer)) return { ok: false, reason: 'off' };
+  const countries = [...new Set(layer.entries().filter((e) => e.deleted_at === null).map((e) => e.country))].sort();
+  // A chapter named after a person ("Alex's birthday") goes masked like the question, and comes back by its own name.
+  const chapterNames = rowsOf<ChapterRow>(layer, keys.chapters(layer.me() ?? ''), 'chapters').map((c) => c.name);
+  const sentChapters = chapterNames.map((n) => masked(n, layer));
+  try {
+    const res = await layer.ai.ask(masked(question, layer), {
+      categories: liveCategories(layer).map((c) => c.name),
+      chapters: sentChapters,
+      countries,
+      today: layer.today(),
+    });
+    if (!res.ok) return res;
+    const reply = checkReply('ask', res.data);
+    if (!reply) return { ok: false, reason: 'invalid' };
+    if ('unsupported' in reply || !reply.filters.chapters) return { ok: true, data: reply };
+    const chapters = reply.filters.chapters.map((c) => chapterNames[sentChapters.indexOf(c)] ?? c);
+    return { ok: true, data: { ...reply, filters: { ...reply.filters, chapters } } };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+// ───────── S6b, ADD-8: shared into the app ─────────
+
+/** ADD-8: what the service worker kept from the share sheet, read once and cleared (nothing is sent anywhere). */
+export async function takeShared(layer = activeDataLayer()): Promise<{ photo?: Blob; text?: string } | null> {
+  const store = createStore('smsm-shared', 'shared');
+  let kept: { photo?: string | null; text?: string | null } | undefined;
+  try { kept = await get(SHARED_KEY, store); } catch { return null; }
+  if (!kept) return null;
+  await del(SHARED_KEY, store).catch(() => undefined);
+  const out: { photo?: Blob; text?: string } = {};
+  if (kept.photo) {
+    const photo = await layer.photos.get(kept.photo).catch(() => null);
+    if (photo) out.photo = photo;
+    void layer.photos.remove?.(kept.photo).catch(() => undefined);
+  }
+  if (kept.text && kept.text.trim() !== '') out.text = kept.text.trim();
+  return out.photo || out.text ? out : null;
+}
+const SHARED_KEY = 'latest';

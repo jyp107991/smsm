@@ -1,0 +1,8 @@
+{
+  "response": "{\"merchant\": \"Warung Makan\", \"date\": \"2026-11-12\", \"currency\": \"IDR\", \"total_pence\": 281435, \"items\": [{\"label\": \"NASI GORENG SPECIAL\", \"pence\": 120000}, {\"label\": \"ES TEH MANIS\", \"pence\": 40000}, {\"label\": \"AYAM BAKAR\", \"pence\": 78000}], \"discount_pence\": 0, \"service_pence\": 17850, \"tax_pence\": 25585, \"category\": \"Eating out\", \"confidence\": \"high\"}",
+  "usage": {
+    "prompt_tokens": 900,
+    "completion_tokens": 160,
+    "total_tokens": 1060
+  }
+}

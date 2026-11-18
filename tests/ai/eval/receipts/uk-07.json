@@ -1,0 +1,16 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Shell",
+ "date": "2026-10-25",
+ "currency": "GBP",
+ "total_pence": 4782,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Transport",
+ "items": [
+  {
+   "label": "Unleaded 32.10L",
+   "pence": 4782
+  }
+ ]
+}

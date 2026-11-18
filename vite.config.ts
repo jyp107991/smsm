@@ -60,6 +60,20 @@ export default defineConfig(({ mode }) => ({
           { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           { src: '/icons/icon-monochrome-512.png', sizes: '512x512', type: 'image/png', purpose: 'monochrome' },
         ],
+        // S6b (ADD-8, NOT-3): long-press the app's icon; each opens its sheet once (src/screens/shell/FromOutside.tsx).
+        shortcuts: [
+          { name: 'Add expense', short_name: 'Add', url: '/?do=add', icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Scan receipt', short_name: 'Scan', url: '/?do=scan', icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Settle up', short_name: 'Settle', url: '/?do=settle', icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+        ],
+        // S6b (ADD-8, SPEC 5.3): smsm in Android's share sheet. The service worker keeps what was shared
+        // (public/share-target.js) and opens /?do=shared.
+        share_target: {
+          action: '/share',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: { title: 'title', text: 'text', url: 'url', files: [{ name: 'photo', accept: ['image/*'] }] },
+        },
       },
       workbox: {
         // A new version takes over as soon as it is installed, even with an old window open (owner, 17 Nov:
@@ -68,7 +82,9 @@ export default defineConfig(({ mode }) => ({
         skipWaiting: true,
         clientsClaim: true,
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/version\.json$/],
+        navigateFallbackDenylist: [/^\/version\.json$/, /^\/api\//],
+        // S6b (ADD-8): POST /share (the share sheet) is answered by this, ahead of everything else.
+        importScripts: ['/share-target.js'],
         // Latin font files are precached; the Korean slices (hundreds of small files, DESIGN §3.2) are not:
         // each is cached the first time a name or note needs it, and works offline from then on.
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}', '**/*-latin-*.woff2'],

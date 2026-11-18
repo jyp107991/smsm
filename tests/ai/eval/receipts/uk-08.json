@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "IKEA",
+ "date": "2026-07-12",
+ "currency": "GBP",
+ "total_pence": 4935,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Household",
+ "items": [
+  {
+   "label": "KALLAX Shelf",
+   "pence": 4500
+  },
+  {
+   "label": "FRAKTA Bag",
+   "pence": 85
+  },
+  {
+   "label": "Tea Lights x100",
+   "pence": 350
+  }
+ ]
+}

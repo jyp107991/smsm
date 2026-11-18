@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #7",
+ "currency": "IDR",
+ "total_pence": 11100000,
+ "items": [
+  {
+   "label": "Kupon 15",
+   "pence": 10000000
+  }
+ ]
+}

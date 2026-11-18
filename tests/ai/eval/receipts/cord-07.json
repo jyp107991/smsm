@@ -1,0 +1,19 @@
+{
+ "source": "CORD v2 test #6",
+ "currency": "IDR",
+ "total_pence": 4600000,
+ "items": [
+  {
+   "label": "EGG TART",
+   "pence": 1300000
+  },
+  {
+   "label": "CHOCO CUS ARD PASTRY",
+   "pence": 2400000
+  },
+  {
+   "label": "REDBEAN BREAD",
+   "pence": 900000
+  }
+ ]
+}

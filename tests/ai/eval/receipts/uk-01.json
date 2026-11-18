@@ -1,0 +1,28 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Tesco Express",
+ "date": "2026-10-03",
+ "currency": "GBP",
+ "total_pence": 601,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Semi Skimmed Milk 4pt",
+   "pence": 165
+  },
+  {
+   "label": "Hovis Wholemeal",
+   "pence": 140
+  },
+  {
+   "label": "Bananas Loose",
+   "pence": 86
+  },
+  {
+   "label": "Free Range Eggs 6",
+   "pence": 210
+  }
+ ]
+}

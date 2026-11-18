@@ -1,0 +1,28 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Dishoom",
+ "date": "2026-10-17",
+ "currency": "GBP",
+ "total_pence": 4109,
+ "discount_pence": 0,
+ "service_pence": 479,
+ "category": "Eating out",
+ "items": [
+  {
+   "label": "House Black Daal",
+   "pence": 790
+  },
+  {
+   "label": "Chicken Ruby",
+   "pence": 1550
+  },
+  {
+   "label": "Garlic Naan",
+   "pence": 390
+  },
+  {
+   "label": "Mango Lassi x2",
+   "pence": 900
+  }
+ ]
+}

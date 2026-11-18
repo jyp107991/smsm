@@ -1,0 +1,60 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Waitrose",
+ "date": "2026-08-30",
+ "currency": "GBP",
+ "total_pence": 3195,
+ "discount_pence": 250,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Sourdough",
+   "pence": 300
+  },
+  {
+   "label": "Unsalted Butter",
+   "pence": 240
+  },
+  {
+   "label": "Strawberries 400g",
+   "pence": 350
+  },
+  {
+   "label": "Greek Yoghurt",
+   "pence": 220
+  },
+  {
+   "label": "Coffee Beans",
+   "pence": 650
+  },
+  {
+   "label": "Kitchen Roll",
+   "pence": 325
+  },
+  {
+   "label": "Washing Up Liquid",
+   "pence": 160
+  },
+  {
+   "label": "Tomatoes",
+   "pence": 195
+  },
+  {
+   "label": "Avocado x2",
+   "pence": 200
+  },
+  {
+   "label": "Pasta 500g",
+   "pence": 110
+  },
+  {
+   "label": "Pesto",
+   "pence": 275
+  },
+  {
+   "label": "Parmesan",
+   "pence": 420
+  }
+ ]
+}

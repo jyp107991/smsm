@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "headline": { "type": "string" },
+    "aside": { "type": ["string", "null"] }
+  },
+  "required": ["headline", "aside"],
+  "additionalProperties": false
+}

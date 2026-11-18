@@ -1,0 +1,8 @@
+{
+  "response": "{\"measure\": \"sum\", \"filters\": {\"categories\": \"Eating out\", \"from\": \"last month\"}}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

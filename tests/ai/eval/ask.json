@@ -1,0 +1,266 @@
+[
+ {
+  "question": "how much did we spend on eating out in japan?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Eating out"
+   ],
+   "countries": [
+    "JP"
+   ]
+  }
+ },
+ {
+  "question": "what did the japan trip cost?",
+  "expect": {
+   "measure": "total",
+   "chapters": [
+    "Japan trip"
+   ]
+  }
+ },
+ {
+  "question": "how much have we spent on groceries this year?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Groceries"
+   ],
+   "from": "2026-01-01"
+  }
+ },
+ {
+  "question": "how many times did we eat out last month?",
+  "expect": {
+   "measure": "count",
+   "categories": [
+    "Eating out"
+   ],
+   "from": "2026-10-01",
+   "to": "2026-10-31"
+  }
+ },
+ {
+  "question": "what's the most we've spent in one go?",
+  "expect": {
+   "measure": "largest"
+  }
+ },
+ {
+  "question": "average spend on going out?",
+  "expect": {
+   "measure": "average",
+   "categories": [
+    "Going out"
+   ]
+  }
+ },
+ {
+  "question": "how much has B paid for groceries?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Groceries"
+   ],
+   "payer": "B"
+  }
+ },
+ {
+  "question": "how much did I pay in october?",
+  "expect": {
+   "measure": "total",
+   "payer": "A",
+   "from": "2026-10-01",
+   "to": "2026-10-31"
+  }
+ },
+ {
+  "question": "spending by category this month",
+  "expect": {
+   "measure": "total",
+   "group_by": "category",
+   "from": "2026-11-01"
+  }
+ },
+ {
+  "question": "monthly totals this year",
+  "expect": {
+   "measure": "total",
+   "group_by": "month",
+   "from": "2026-01-01"
+  }
+ },
+ {
+  "question": "how much on transport since september?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Transport"
+   ],
+   "from": "2026-09-01"
+  }
+ },
+ {
+  "question": "how much did we spend in france?",
+  "expect": {
+   "measure": "total",
+   "countries": [
+    "FR"
+   ]
+  }
+ },
+ {
+  "question": "how many treats has B paid for?",
+  "expect": {
+   "measure": "count",
+   "payer": "B",
+   "mode": [
+    "treat"
+   ]
+  }
+ },
+ {
+  "question": "who paid more for household stuff?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Household"
+   ],
+   "group_by": "payer"
+  }
+ },
+ {
+  "question": "biggest grocery shop?",
+  "expect": {
+   "measure": "largest",
+   "categories": [
+    "Groceries"
+   ]
+  }
+ },
+ {
+  "question": "how much on subscriptions?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Subscriptions"
+   ]
+  }
+ },
+ {
+  "question": "what did we spend on coffee?",
+  "expect": {
+   "measure": "total",
+   "text": "coffee"
+  }
+ },
+ {
+  "question": "how much did the new sofa project cost so far?",
+  "expect": {
+   "measure": "total",
+   "chapters": [
+    "New sofa"
+   ]
+  }
+ },
+ {
+  "question": "spending by country",
+  "expect": {
+   "measure": "total",
+   "group_by": "country"
+  }
+ },
+ {
+  "question": "how much on eating out and going out in 2026?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Eating out",
+    "Going out"
+   ],
+   "from": "2026-01-01"
+  }
+ },
+ {
+  "question": "how many entries tagged holiday?",
+  "expect": {
+   "measure": "count",
+   "tags": [
+    "holiday"
+   ]
+  }
+ },
+ {
+  "question": "average grocery shop this year",
+  "expect": {
+   "measure": "average",
+   "categories": [
+    "Groceries"
+   ],
+   "from": "2026-01-01"
+  }
+ },
+ {
+  "question": "what did we spend between 1 and 15 november?",
+  "expect": {
+   "measure": "total",
+   "from": "2026-11-01",
+   "to": "2026-11-15"
+  }
+ },
+ {
+  "question": "total spent per chapter",
+  "expect": {
+   "measure": "total",
+   "group_by": "chapter"
+  }
+ },
+ {
+  "question": "how much did B spend on travel?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Travel"
+   ],
+   "payer": "B"
+  }
+ },
+ {
+  "question": "are we saving enough for a house?",
+  "expect": {
+   "unsupported": true
+  }
+ },
+ {
+  "question": "what's my salary?",
+  "expect": {
+   "unsupported": true
+  }
+ },
+ {
+  "question": "how much do I owe B?",
+  "expect": {
+   "unsupported": true
+  }
+ },
+ {
+  "question": "how much on health this year?",
+  "expect": {
+   "measure": "total",
+   "categories": [
+    "Health"
+   ],
+   "from": "2026-01-01"
+  }
+ },
+ {
+  "question": "most expensive meal out?",
+  "expect": {
+   "measure": "largest",
+   "categories": [
+    "Eating out"
+   ]
+  }
+ }
+]

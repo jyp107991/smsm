@@ -4,11 +4,11 @@
  * figures are the core's (core/recap). From settle day on, the current month's recap is "so far".
  */
 import { ArrowLeft } from 'lucide-react';
-import { useEffect, useId, useMemo, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { formatShortDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import { recapOf } from '../../core/recap';
-import { useBalance, useCategories, useDataLayer, useHousehold } from '../../data';
+import { recapWording, useBalance, useCategories, useDataLayer, useHousehold } from '../../data';
 import { Button, ICON } from '../../ui/primitives';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
@@ -37,6 +37,16 @@ export function RecapPage({ month }: { month: string }) {
     today, names: input.names, categories: input.categories, templates: input.templates, commentCounts: input.commentCounts,
   }) : null), [input, valid, month, today]);
   const seen = recap === null ? null : recap.soFar;
+  // INS-2: a finished month's wording by the AI when there is some (kept once for both of you, every figure checked);
+  // the template sentence otherwise.
+  const [wording, setWording] = useState<{ month: string; headline: string; aside: string | null } | null>(null);
+  const finished = recap !== null && !recap.soFar;
+  useEffect(() => {
+    if (!finished) return;
+    let live = true;
+    void recapWording(month).then((w) => { if (live) setWording(w ? { month, ...w } : null); });
+    return () => { live = false; };
+  }, [finished, month, input]);
   useEffect(() => { if (seen !== null) markRecapSeen(month, seen); }, [seen, month]);
   const name = strings.recap.monthName(month);
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
@@ -74,7 +84,8 @@ export function RecapPage({ month }: { month: string }) {
       {header}
       <article className="bg-surface flex flex-col gap-8 rounded-[20px] px-5 py-6">
         <Part title={strings.recap.headline} hidden>
-          <p className="text-sentence nums-list m-0">{spent ? recap.headline : strings.recap.nothing}</p>
+          <p className="text-sentence nums-list m-0">{spent ? (wording?.month === month ? wording.headline : recap.headline) : strings.recap.nothing}</p>
+          {spent && wording?.month === month && wording.aside ? <p className="text-body text-ink-2 m-0">{wording.aside}</p> : null}
         </Part>
 
         {recap.bar.length > 0 ? (

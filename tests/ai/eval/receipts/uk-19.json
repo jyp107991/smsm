@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "ローソン 渋谷店",
+ "date": "2026-04-11",
+ "currency": "JPY",
+ "total_pence": 64800,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "おにぎり 鮭",
+   "pence": 18000
+  },
+  {
+   "label": "お茶 500ml",
+   "pence": 16000
+  },
+  {
+   "label": "からあげクン",
+   "pence": 30800
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Lidl",
+ "date": "2026-10-28",
+ "currency": "GBP",
+ "total_pence": 693,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Milk 2L",
+   "pence": 125
+  },
+  {
+   "label": "Bread",
+   "pence": 75
+  },
+  {
+   "label": "Apples",
+   "pence": 149
+  },
+  {
+   "label": "Cheese",
+   "pence": 229
+  },
+  {
+   "label": "Crisps",
+   "pence": 115
+  }
+ ]
+}

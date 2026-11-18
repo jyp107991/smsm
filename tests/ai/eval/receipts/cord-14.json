@@ -1,0 +1,15 @@
+{
+ "source": "CORD v2 test #15",
+ "currency": "IDR",
+ "total_pence": 6300000,
+ "items": [
+  {
+   "label": "Lemon Tea (L)",
+   "pence": 2500000
+  },
+  {
+   "label": "Caramel Small",
+   "pence": 3800000
+  }
+ ]
+}

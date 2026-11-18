@@ -124,7 +124,7 @@ const userText = (req: AiRequest): string => {
 
 describe('models, caps and time (SCAN-5; AI.md §2)', () => {
   it('SCAN-5: the models, in the order they are tried', () => {
-    expect(core().MODELS).toEqual({
+    expect(core().MODELS).toMatchObject({ // S6b adds recap and ask; these three are unchanged
       scan: ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'],
       parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
       categorise: ['@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'],
@@ -160,7 +160,8 @@ describe('prompts and requests (SCAN-1, ADD-9, CAT-2; AI.md §1, §2)', () => {
       expect(prompt.split('\n')[0]).toMatch(/^version: \d+$/);
       const schema = JSON.parse(readFileSync(promptPath(task, 'schema.json'), 'utf8')) as { type?: string; properties?: Record<string, unknown> };
       expect(schema.type).toBe('object');
-      const want = { scan: SCAN_KEYS, parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
+      // S6b (18 Nov): the scan schema gains tax_pence, so a model can report tax on top of the lines (src/core/itemise-tax.test.ts).
+      const want = { scan: [...SCAN_KEYS, 'tax_pence'].sort(), parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
       expect(Object.keys(schema.properties ?? {}).sort()).toEqual(want);
     });
   }

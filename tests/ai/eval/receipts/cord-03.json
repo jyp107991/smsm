@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #2",
+ "currency": "IDR",
+ "total_pence": 2800000,
+ "items": [
+  {
+   "label": "JASMINE MT ( L )",
+   "pence": 2400000
+  }
+ ]
+}

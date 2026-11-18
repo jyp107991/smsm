@@ -26,6 +26,7 @@ import { MonzoQuestionProvider } from './settle/question';
 import { SettleSheet } from './settle/SettleSheet';
 import { Settings } from './settings/Settings';
 import { usePeople } from './shared/people';
+import { FromOutside } from './shell/FromOutside';
 import { SheetsContext, type EntryRequest, type SettleRequest } from './sheets';
 import { SignIn } from './signin/SignIn';
 import { StartOrJoin, WhoAreYou } from './setup/Setup';
@@ -157,6 +158,8 @@ function MainApp() {
             </TabPanel>
           </BottomTabs>
           <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
+          {/* S6b (ADD-8): the app-icon shortcuts and the share sheet open their sheet once. */}
+          <FromOutside />
           <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
         </ToastProvider>
       </MonzoQuestionProvider>

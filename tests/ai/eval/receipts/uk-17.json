@@ -1,0 +1,16 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "National Rail",
+ "date": "2026-10-05",
+ "currency": "GBP",
+ "total_pence": 9840,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Transport",
+ "items": [
+  {
+   "label": "Off-Peak Return x2",
+   "pence": 9840
+  }
+ ]
+}

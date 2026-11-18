@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "B&Q",
+ "date": "2026-06-14",
+ "currency": "GBP",
+ "total_pence": 2850,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Household",
+ "items": [
+  {
+   "label": "Paint 2.5L White",
+   "pence": 1800
+  },
+  {
+   "label": "Roller Set",
+   "pence": 750
+  },
+  {
+   "label": "Masking Tape",
+   "pence": 300
+  }
+ ]
+}

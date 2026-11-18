@@ -1,0 +1,28 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Asda",
+ "date": "2026-10-14",
+ "currency": "GBP",
+ "total_pence": 2160,
+ "discount_pence": 300,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Nappies",
+   "pence": 900
+  },
+  {
+   "label": "Baby Wipes",
+   "pence": 200
+  },
+  {
+   "label": "Rice Cakes",
+   "pence": 110
+  },
+  {
+   "label": "Formula",
+   "pence": 1250
+  }
+ ]
+}

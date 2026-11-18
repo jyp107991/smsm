@@ -9,7 +9,7 @@
  * call. Always 200 with `{ok: true, data}` or `{ok: false, reason}` once signed in, so the phone falls back quietly.
  * Nothing about the request or the reply is logged.
  */
-import { buildRequest, capFor, isDailyLimit, MODELS, readReply, timeoutFor, type Outcome, type Task, type TaskInput } from './ai-core';
+import { buildRequest, capFor, recapStatsSchema, isDailyLimit, MODELS, readReply, timeoutFor, type Outcome, type Task, type TaskInput } from './ai-core';
 
 export interface AiBinding { run(model: string, input: Record<string, unknown>): Promise<unknown> }
 /** What the AI route needs: the binding, Supabase's URL and public key (deploy vars), the app's own origin. */
@@ -22,7 +22,7 @@ export interface AiEnv {
 }
 export interface Env extends AiEnv { ASSETS: { fetch(req: Request): Promise<Response> } }
 
-const TASKS: readonly Task[] = ['scan', 'parse', 'categorise'];
+const TASKS: readonly Task[] = ['scan', 'parse', 'categorise', 'recap', 'ask'];
 const MAX_IMAGE_CHARS = 2_800_000; // a 1280 px JPEG as base64 is far below this
 const MAX_BODY_BYTES = 3_000_000;
 
@@ -33,6 +33,11 @@ function inputFrom(body: Record<string, unknown>): TaskInput | null {
   // Names only, each short: a household's categories or chapters, never a way to send a long prompt.
   const strings = (v: unknown) => (Array.isArray(v) && v.every((s) => typeof s === 'string' && s.length <= 80) ? v.slice(0, 100) : null);
   const text = (v: unknown, max: number) => (typeof v === 'string' && v.length > 0 && v.length <= max ? v : null);
+  // S6b: the recap carries only the month's figures (exactly their keys: a stray field, such as names, is refused).
+  if (body.task === 'recap') {
+    const stats = recapStatsSchema.safeParse(body.stats);
+    return stats.success ? { task: 'recap', stats: stats.data } : null;
+  }
   const categories = strings(body.categories);
   if (!categories) return null;
   switch (body.task) {
@@ -46,6 +51,12 @@ function inputFrom(body: Record<string, unknown>): TaskInput | null {
       const t = text(body.text, 300);
       const today = text(body.today, 10);
       return t && today ? { task: 'parse', text: t, categories, chapters: strings(body.chapters) ?? [], today } : null;
+    }
+    case 'ask': {
+      const question = text(body.question, 300);
+      const today = text(body.today, 10);
+      const countries = Array.isArray(body.countries) && body.countries.every((c) => typeof c === 'string' && /^[A-Z]{2}$/.test(c)) ? (body.countries as string[]).slice(0, 250) : null;
+      return question && today && countries ? { task: 'ask', question, categories, chapters: strings(body.chapters) ?? [], countries, today } : null;
     }
     case 'categorise': {
       const d = text(body.description, 200);

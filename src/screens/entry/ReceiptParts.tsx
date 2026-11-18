@@ -4,18 +4,33 @@
  * person's own lines changes the amount; a total that doesn't add up is said in words, and the person sets it).
  */
 import { Camera, ImagePlus, X } from 'lucide-react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { formatForeign } from '../../core/fx';
 import { formatPence, type Pence } from '../../core/money';
 import { Button, ICON } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 
 /** A button that opens the camera or the photo library (a file input, images only). */
-export function PhotoButton({ label, scan, onPicked }: { label: string; scan: boolean; onPicked: (file: File) => void }) {
+export function PhotoButton({ label, scan, autoOpen = false, onPicked }: {
+  label: string;
+  scan: boolean;
+  /** ADD-8: opened from the "Scan receipt" shortcut: the picker at once (where the browser allows it), the button focused. */
+  autoOpen?: boolean;
+  onPicked: (file: File) => void;
+}) {
   const input = useRef<HTMLInputElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!autoOpen) return;
+    button.current?.focus();
+    input.current?.click();
+    // Once, as the sheet opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <>
       <Button
+        ref={button}
         variant="plain"
         onClick={() => { input.current?.click(); }}
         icon={scan ? Camera : ImagePlus}

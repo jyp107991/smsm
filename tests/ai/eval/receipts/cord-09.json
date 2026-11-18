@@ -1,0 +1,11 @@
+{
+ "source": "CORD v2 test #8",
+ "currency": "IDR",
+ "total_pence": 5000000,
+ "items": [
+  {
+   "label": "[REG] BLACK SAKURA",
+   "pence": 4545500
+  }
+ ]
+}

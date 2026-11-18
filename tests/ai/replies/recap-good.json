@@ -1,0 +1,8 @@
+{
+  "response": "{\"headline\": \"October came to £1,365.50 together, about £120 less than usual.\", \"aside\": \"Person A paid £1,000.00 of it, mostly Rent & bills.\"}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

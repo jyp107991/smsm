@@ -479,6 +479,31 @@ begin
 end $$;
 
 --
+-- Name: save_recap_prose(text, jsonb, text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) RETURNS text
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $_$
+declare hid uuid := my_household(); kept text;
+  this_month text := to_char((now() at time zone 'Europe/London')::date, 'YYYY-MM');
+begin
+  if hid is null then raise exception 'not in a household'; end if;
+  if p_period is null or p_period !~ '^\d{4}-(0[1-9]|1[0-2])$' then raise exception 'not a month'; end if;
+  if p_period >= this_month then raise exception 'only a finished month has its wording kept'; end if;
+  if p_prose is null or btrim(p_prose) = '' then raise exception 'no wording'; end if;
+  if p_stats is null then raise exception 'no figures'; end if;
+  -- Two short sentences and a month's figures: nothing bigger is kept.
+  if octet_length(p_prose) > 2000 then raise exception 'wording too long'; end if;
+  if pg_column_size(p_stats) > 16384 then raise exception 'figures too large'; end if;
+  insert into recaps(household_id, period, stats, prose) values (hid, p_period, p_stats, p_prose)
+  on conflict (household_id, period) do nothing;  -- the primary key: once per household per month
+  select prose into kept from recaps where household_id = hid and period = p_period;
+  return kept;
+end $_$;
+
+--
 -- Name: set_identity(text, text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -2106,6 +2131,14 @@ GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) T
 REVOKE ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO authenticated;
 GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO service_role;
+
+--
+-- Name: FUNCTION save_recap_prose(p_period text, p_stats jsonb, p_prose text); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) TO authenticated;
+GRANT ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) TO service_role;
 
 --
 -- Name: FUNCTION set_identity(p_name text, p_animal text); Type: ACL; Schema: public; Owner: -

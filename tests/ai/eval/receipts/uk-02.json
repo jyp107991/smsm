@@ -1,0 +1,32 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Sainsbury’s",
+ "date": "2026-09-21",
+ "currency": "GBP",
+ "total_pence": 1289,
+ "discount_pence": 100,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Basmati Rice 1kg",
+   "pence": 225
+  },
+  {
+   "label": "Chicken Breast 600g",
+   "pence": 550
+  },
+  {
+   "label": "Broccoli",
+   "pence": 69
+  },
+  {
+   "label": "Cheddar Mature 400g",
+   "pence": 360
+  },
+  {
+   "label": "Orange Juice 1L",
+   "pence": 185
+  }
+ ]
+}

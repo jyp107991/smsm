@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Costa Coffee",
+ "date": "2026-11-01",
+ "currency": "GBP",
+ "total_pence": 1005,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Eating out",
+ "items": [
+  {
+   "label": "Latte Medium",
+   "pence": 385
+  },
+  {
+   "label": "Cappuccino Medium",
+   "pence": 375
+  },
+  {
+   "label": "Croissant",
+   "pence": 245
+  }
+ ]
+}
