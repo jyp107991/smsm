@@ -39,14 +39,14 @@ import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
 import {
   ApiError, isTransient, type Api, type CategoryMemoryRow, type AuthUser, type ExpenseRow, type HouseholdRow, type ImportIgnoreRow, type ImportRuleRow, type MemberRow,
-  type SettlementRow,
+  type NotificationPrefsRow, type SettlementRow,
 } from './api';
-import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE } from './keys';
+import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE, PREFS_KEY, PREFS_SCOPE } from './keys';
 import type { Network } from './network';
 import { createProblemStore, problemFrom, type ProblemStore } from './problems';
 import {
   categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, importIgnoresQuery, importRulesQuery, inboxQuery, membersQuery, membershipQuery,
-  memoryQuery, recurringQuery, settlementsQuery,
+  memoryQuery, notificationPrefsQuery, recurringQuery, settlementsQuery,
 } from './queries';
 import { createRealtime, type Realtime } from './realtime';
 import { expenseToLedger, settlementToLedger } from './rows';
@@ -54,9 +54,10 @@ import { userIdOf, type SessionKeeper } from './session';
 import type { VersionCheck } from './version';
 import { claimQueue, OtherWindowError, type QueueLocks, type WindowRole } from './windows';
 import { runForget } from './forget';
+import { dropThisPhone, within } from './push';
 import {
   categoryWrite, chapterWrite, commentWrite, completedRow, defaultRatioOf, expenseWrite, opRowId, overlay, overlayMemory, partnerCompleter, recurringWrite, settlementWrite,
-  type ExpenseUpsert, type MemoryOp, type MoneyOp, type QueuedRow,
+  type ExpenseUpsert, type MemoryOp, type MoneyOp, type PrefsOp, type QueuedRow,
 } from './writes';
 
 export const CACHE_KEY = 'smsm-cache';
@@ -156,6 +157,10 @@ export interface DataLayer {
   remember(op: MemoryOp): void;
   /** The household's category memory with waiting choices applied. */
   memory(): CategoryMemoryRow[];
+  /** S8 (NOT-1): queue a change to the person's notification switches (offline too; not a waiting change). */
+  enqueuePrefs(op: PrefsOp): void;
+  /** The signed-in person's switch changes not yet sent, oldest first. */
+  prefsWaiting(): PrefsOp[];
   /** Write the cache and queue to storage now. */
   flush(): Promise<void>;
   /** Sign out and clear everything stored for the person on this phone. Needs a connection. */
@@ -170,9 +175,13 @@ function isMemoryMutation(m: { options: { mutationKey?: readonly unknown[] } } |
   return m?.options.mutationKey?.[0] === MEMORY_KEY[0];
 }
 
-/** Writes kept in the stored queue: money, and what the app learned from a person's choices (CAT-3). */
+function isPrefsMutation(m: { options: { mutationKey?: readonly unknown[] } } | undefined): boolean {
+  return m?.options.mutationKey?.[0] === PREFS_KEY[0];
+}
+
+/** Writes kept in the stored queue: money, what the app learned from a person's choices (CAT-3), and S8's switches. */
 function isQueuedMutation(m: { options: { mutationKey?: readonly unknown[] } } | undefined): boolean {
-  return isMoneyMutation(m) || isMemoryMutation(m);
+  return isMoneyMutation(m) || isMemoryMutation(m) || isPrefsMutation(m);
 }
 
 /** One queue per person: another account's waiting writes never hold up this person's. */
@@ -182,6 +191,10 @@ function scopeFor(by: string): { id: string } {
 
 function memoryScopeFor(by: string): { id: string } {
   return { id: `${MEMORY_SCOPE.id}:${by}` };
+}
+
+function prefsScopeFor(by: string): { id: string } {
+  return { id: `${PREFS_SCOPE.id}:${by}` };
 }
 
 /** The cache holds the household's rows only; the queue is saved apart (QUEUE_KEY). */
@@ -377,6 +390,8 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       // S7: so an import offline still knows what was decided before (IMP-3).
       client.query({ ...importIgnoresQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...importRulesQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      // S8: this person's switches, as set on any of their phones (NOT-1).
+      client.query({ ...notificationPrefsQuery(api, id), staleTime: 0 }).catch(noop),
     ]);
     followHousehold();
     wake();
@@ -631,6 +646,43 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     },
   });
 
+  client.setMutationDefaults(PREFS_KEY, {
+    scope: PREFS_SCOPE,
+    networkMode: 'always',
+    retry: 0,
+    mutationFn: (op: PrefsOp) => sendWith(op, () => api.setNotificationPrefs(op.patch)),
+    onSuccess: (row: NotificationPrefsRow) => {
+      const id = uid();
+      if (id && row.user_id === id) client.setQueryData<NotificationPrefsRow | null>(keys.notificationPrefs(id), row);
+    },
+    // Refused (it can't be: the phone checks the same rules): what the server has is shown again, and it is reported.
+    onError: (err: Error, op: PrefsOp) => {
+      if (err instanceof DiscardedError) return;
+      const id = uid();
+      if (id) void client.invalidateQueries({ queryKey: keys.notificationPrefs(id), refetchType: 'all' });
+      report(err, { what: 'notification settings refused', keys: Object.keys(op.patch) });
+    },
+  });
+
+  function prefsWaiting(): PrefsOp[] {
+    const me = uid();
+    return client
+      .getMutationCache()
+      .findAll({ mutationKey: PREFS_KEY, status: 'pending' })
+      .map((m) => m.state.variables as PrefsOp | undefined)
+      .filter((v): v is PrefsOp => v !== undefined && v.by === me);
+  }
+
+  function enqueuePrefs(op: PrefsOp): void {
+    if (disposed) throw new Error('This store has been closed.');
+    if (role !== 'owner') throw new OtherWindowError();
+    const observer = new MutationObserver<NotificationPrefsRow, Error, PrefsOp>(client, { mutationKey: PREFS_KEY, scope: prefsScopeFor(op.by) });
+    observer
+      .mutate(op)
+      .catch(noop)
+      .finally(() => { observer.reset(); });
+  }
+
   function memoryWaiting(): MemoryOp[] {
     const me = uid();
     return client
@@ -711,10 +763,11 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       present.add(op.opId);
       // Marked paused so resuming picks up every one; in this person's own queue.
       const learned = m.mutationKey?.[0] === MEMORY_KEY[0];
+      const prefs = m.mutationKey?.[0] === PREFS_KEY[0];
       mutations.push({
         ...m,
-        mutationKey: learned ? [...MEMORY_KEY] : [...MONEY_KEY],
-        scope: learned ? memoryScopeFor(op.by) : scopeFor(op.by),
+        mutationKey: prefs ? [...PREFS_KEY] : learned ? [...MEMORY_KEY] : [...MONEY_KEY],
+        scope: prefs ? prefsScopeFor(op.by) : learned ? memoryScopeFor(op.by) : scopeFor(op.by),
         state: { ...m.state, isPaused: true },
       });
     }
@@ -944,11 +997,15 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     withdraw,
     remember,
     memory,
+    enqueuePrefs,
+    prefsWaiting,
     flush,
     async signOut() {
       // Signing out clears storage the window that owns the queue relies on.
       if (role !== 'owner') throw new OtherWindowError();
       const me = uid();
+      // NOT-1: notifications stop on this phone; done while still signed in, never holding sign-out up for long.
+      await within(dropThisPhone(api), 4000);
       await api.auth.signOut();
       await forget(me);
     },

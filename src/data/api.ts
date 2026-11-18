@@ -21,6 +21,13 @@ export type RecurringRow = Tables['recurring']['Row'];
 export type InboxItemRow = Tables['inbox_items']['Row'];
 export type ChapterRow = Tables['chapters']['Row'];
 export type CommentRow = Tables['comments']['Row'];
+/** S8 (NOT-1): one person's notification switches (no row: the defaults). */
+export type NotificationPrefsRow = Tables['notification_prefs']['Row'];
+/** The switches and the amount set_notification_prefs takes: only the keys given change. */
+export type NotificationPrefsPatch = Partial<Pick<NotificationPrefsRow,
+  'entries' | 'settle_ups' | 'comments' | 'bills_today' | 'bills_tomorrow' | 'recap' | 'balance' | 'balance_threshold_pence'>>;
+/** S8: this phone's push subscription as the push function needs it (base64url keys). */
+export interface PushSubscriptionWrite { endpoint: string; p256dh: string; auth: string }
 /** S7 (IMP-3): a bank row decided "Not ours", kept only as a hash of its bank id; and an "always do this" rule. */
 export type ImportIgnoreRow = Tables['import_ignores']['Row'];
 export type ImportRuleRow = Tables['import_rules']['Row'];
@@ -164,6 +171,13 @@ export interface Api {
   restoreBackup(people: Record<string, string>, rows: RestoreRows): Promise<RestoreCounts>;
   /** S7 (EXP-3): storage_used. */
   storageUsed(): Promise<StorageUsed>;
+  /** S8 (NOT-1): the push function's public key (null until it has made one), this phone's subscription, and the
+   * signed-in person's switches (set_notification_prefs writes only the keys given and returns the row). */
+  pushPublicKey(): Promise<string | null>;
+  savePushSubscription(sub: PushSubscriptionWrite): Promise<void>;
+  removePushSubscription(endpoint: string): Promise<void>;
+  notificationPrefs(userId: string): Promise<NotificationPrefsRow | null>;
+  setNotificationPrefs(patch: NotificationPrefsPatch): Promise<NotificationPrefsRow>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
   watchHousehold(householdId: string, onChange: (table: WatchedTable) => void, onStatus: (s: ChannelStatus) => void): () => void;
 }
@@ -370,6 +384,16 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
       const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v ?? 0));
       return { database_bytes: n(raw['database_bytes']), photo_bytes: n(raw['photo_bytes']) };
     },
+    pushPublicKey: async () => {
+      const key = unwrap(await db.rpc('push_public_key'));
+      return typeof key === 'string' && key !== '' ? key : null;
+    },
+    savePushSubscription: async (sub) => {
+      unwrap(await db.rpc('save_push_subscription', { p_endpoint: sub.endpoint, p_p256dh: sub.p256dh, p_auth: sub.auth }));
+    },
+    removePushSubscription: async (endpoint) => { unwrap(await db.rpc('remove_push_subscription', { p_endpoint: endpoint })); },
+    notificationPrefs: async (userId) => unwrap(await db.from('notification_prefs').select('*').eq('user_id', userId).maybeSingle()),
+    setNotificationPrefs: async (patch) => must(await db.rpc('set_notification_prefs', { p: patch as Json }), 'set_notification_prefs'),
     watchHousehold(householdId, onChange, onStatus) {
       // A topic of its own each time: supabase-js hands back an existing channel with the same topic, so a
       // follow right after a stop (whose removal is still in flight) would get the closing one.

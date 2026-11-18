@@ -29,17 +29,17 @@
 - **`post_due_recurring` has no upper bound per call.** A template started years ago back-posts every occurrence. Decide in S3 (probably: confirm before back-posting more than a few).
 
 - **From the S0/S1 review, still open:** demo household: trip descriptions get random categories and the monthly settle date drifts (cosmetic). (Fixed in S2: the Sheet's history entry, through one history coordinator `src/ui/history.ts`; toasts through one persistent live region; `errors.ts` reports with an unserialisable reason.)
+- **A bank import notifies once per kept row** (S8). NOT-1 says each change is sent at once, so importing 40 rows sends the partner 40 notifications (each its own tag). If that is noisy in real use, group one import into a single "Sam imported 40 entries" notification.
 - **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour for now; revisit with real use in S2 (the person always sees the reading before saving).
 
 ## Deferred criteria
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
 - TXT-6: grapheme truncation and wrapping are tested (S0) and the screens use them; the Hangul font fallback on real screens is checked by eye (screenshots), not yet by an automated test (S9 visual snapshots).
 - REC-2: the TypeScript and SQL schedules agree (S1); posting by the database arrives in S3.
-- REC-1, REC-3, REC-4, REC-5, REC-6, REC-7, REC-8, INB-1, INB-2, INB-3, CAT-1: S3, recurring, bills, inbox, categories.
+- REC-1, REC-3, REC-4, REC-5, REC-6, REC-7, REC-8, INB-1, INB-3, CAT-1: S3, recurring, bills, inbox, categories.
 - CHP-1, CHP-2, CHP-3, CHP-4, CHP-5, CHP-6, PLC-1, PLC-2, PLC-3, PLC-4, PLC-5, PLC-6, PLC-7: S4, chapters and places.
-- INS-1, INS-2, INS-3, INS-4, INS-5, INS-6, INS-7, INS-8, SET-4, ACT-4: S5, insights, recap, settle day, comments.
+- INS-1, INS-2, INS-3, INS-4, INS-5, INS-6, INS-7, INS-8, SET-4: S5, insights, recap, settle day, comments.
 - ADD-8, ADD-9, SCAN-1, SCAN-2, SCAN-3, SCAN-4, SCAN-5, INS-9, TXT-5: S6, smart features, share target and shortcuts.
-- NOT-1, NOT-2, NOT-3: S8, notifications.
 
 ## Ideas (not in scope until promoted)
 - Joint account as a payer (data model ready).

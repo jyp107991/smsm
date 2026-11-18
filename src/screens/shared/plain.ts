@@ -6,7 +6,7 @@
  */
 import {
   ApiError, EntryInvalidError, EntryNotFoundError, NotInHouseholdError, NotReadyError, NotSignedInError, OfflineError,
-  OtherWindowError, PartnerNotJoinedError, type InvalidReason,
+  OtherWindowError, PartnerNotJoinedError, PushNotReadyError, type InvalidReason,
 } from '../../data';
 import { strings } from '../../ui/strings';
 
@@ -18,6 +18,7 @@ export function invalidWords(reasons: readonly InvalidReason[]): string {
 }
 
 export function plainError(err: unknown, fallback: string = strings.errors.didntWork): string {
+  if (err instanceof PushNotReadyError) return strings.notifications.notReady;
   if (err instanceof EntryInvalidError) return invalidWords(err.reasons);
   if (err instanceof OfflineError) return strings.errors.offline;
   if (err instanceof OtherWindowError) return strings.windows.otherWindow;

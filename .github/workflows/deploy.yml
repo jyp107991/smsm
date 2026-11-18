@@ -56,6 +56,15 @@ jobs:
           else
             echo "No Edge Functions yet."
           fi
+      # S8: the push function makes its keys and records its own address the first time (idempotent: it only fills
+      # in what is missing, and needs no secret). Only its {"ok":true} is printed; it holds nothing private.
+      - name: Set up notifications
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS -X POST "$VITE_SUPABASE_URL/functions/v1/push?init=1" -o /dev/null; then echo "Push function ready."; exit 0; fi
+            sleep 10
+          done
+          echo "The push function did not answer ?init=1"; exit 1
       - name: Deploy the app
         run: set -o pipefail; npx wrangler deploy --var "SUPABASE_URL:$VITE_SUPABASE_URL" --var "SUPABASE_ANON_KEY:$VITE_SUPABASE_PUBLISHABLE_KEY" 2>&1 | scripts/redact.sh | tee deploy-app.log
       - name: Deploy the demo and gallery

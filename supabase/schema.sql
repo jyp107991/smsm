@@ -221,7 +221,8 @@ CREATE FUNCTION public.health() RETURNS jsonb
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-  select jsonb_build_object('ok', true, 'min_client_version', (select value from app_config where key = 'min_client_version'))
+  select jsonb_build_object('ok', true, 'min_client_version', (select value from app_config where key = 'min_client_version'),
+                            'push', exists (select 1 from push_config where id and vapid_public is not null))
 $$;
 
 --
@@ -279,6 +280,27 @@ CREATE FUNCTION public.jsonb_pence_sum(j jsonb) RETURNS bigint
 $$;
 
 --
+-- Name: kick_push(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.kick_push() RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $_$
+declare c push_config;
+begin
+  if to_regnamespace('net') is null then return; end if;
+  if not exists (select 1 from notification_outbox where sent_at is null) then return; end if;
+  select * into c from push_config where id;
+  if c.function_url is null or c.token is null then return; end if;
+  begin
+    execute 'select net.http_post(url := $1, body := $2, headers := $3, timeout_milliseconds := $4)'
+      using c.function_url, '{}'::jsonb, jsonb_build_object('Content-Type', 'application/json', 'x-push-token', c.token), 10000;
+  exception when others then
+    raise warning 'kick_push: %', sqlerrm;
+  end;
+end $_$;
+
+--
 -- Name: log_activity(); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.log_activity() RETURNS trigger
@@ -320,6 +342,32 @@ begin
 end $$;
 
 --
+-- Name: mark_notifications_sent(uuid[]); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.mark_notifications_sent(p_ids uuid[]) RETURNS void
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  update notification_outbox set sent_at = now() where id = any(p_ids) and sent_at is null
+$$;
+
+--
+-- Name: member_net_on(uuid, uuid, date); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.member_net_on(p_household uuid, p_user uuid, p_day date) RETURNS bigint
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  select (coalesce((select sum(case e.kind when 'money_back' then -1 else 1 end
+                               * (coalesce((e.paid ->> p_user::text)::bigint, 0) - coalesce((e.shares ->> p_user::text)::bigint, 0)))
+                      from expenses e where e.household_id = p_household and e.deleted_at is null and e.date <= p_day), 0)
+        + coalesce((select sum(s.amount_pence) from settlements s
+                     where s.household_id = p_household and s.deleted_at is null and s.from_user = p_user and s.date <= p_day), 0)
+        - coalesce((select sum(s.amount_pence) from settlements s
+                     where s.household_id = p_household and s.deleted_at is null and s.to_user = p_user and s.date <= p_day), 0))::bigint
+$$;
+
+--
 -- Name: my_household(); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.my_household() RETURNS uuid
@@ -330,13 +378,237 @@ CREATE FUNCTION public.my_household() RETURNS uuid
 $$;
 
 --
+-- Name: next_notifications(integer); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.next_notifications(p_limit integer) RETURNS TABLE(id uuid, recipient uuid, kind text, data jsonb, names jsonb, animal text, badge integer)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+#variable_conflict use_column
+begin
+  delete from notification_outbox o where o.sent_at is null and o.created_at < now() - interval '2 days';
+  delete from notification_outbox o where o.sent_at is not null and o.sent_at < now() - interval '7 days';
+  update notification_outbox o set sent_at = now() where o.sent_at is null and not notification_enabled(o.recipient, o.kind);
+  -- A balance reminder whose balance has come back within the person's amount since it was queued says nothing.
+  update notification_outbox o set sent_at = now()
+   where o.sent_at is null and o.kind = 'balance_reminder'
+     and coalesce((select abs(b.net_pence) from member_net b where b.household_id = o.household_id and b.user_id = o.recipient), 0)
+         <= coalesce((o.payload ->> 'threshold')::bigint, 0);
+  return query
+  with picked as (
+    select o.id from notification_outbox o
+     where o.sent_at is null and (o.claimed_at is null or o.claimed_at < now() - interval '2 minutes')
+     order by o.created_at, o.id
+     limit greatest(coalesce(p_limit, 0), 0)
+     for update skip locked
+  ), claimed as (
+    update notification_outbox o set claimed_at = now() from picked where o.id = picked.id returning o.*
+  )
+  select c.id, c.recipient, c.kind, notification_data(c::notification_outbox),
+         (select coalesce(jsonb_object_agg(m.user_id::text, m.display_name), '{}') from members m where m.household_id = c.household_id),
+         (select m.animal from members m where m.household_id = c.household_id and m.user_id = c.actor),
+         ((select count(*) from inbox_items i where i.household_id = c.household_id and i.status = 'open')
+          + (select count(*) from change_requests q where q.household_id = c.household_id and q.status = 'pending' and q.requested_by <> c.recipient))::int
+    from claimed c
+   order by c.created_at, c.id;
+end $$;
+
+--
+-- Name: note_push_result(text, boolean); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.note_push_result(p_endpoint text, p_ok boolean) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if p_ok then
+    update push_subscriptions set last_ok_at = now(), failing_since = null where endpoint = p_endpoint;
+  else
+    update push_subscriptions set failing_since = coalesce(failing_since, now()) where endpoint = p_endpoint;
+    delete from push_subscriptions where endpoint = p_endpoint and failing_since < now() - interval '24 hours';
+  end if;
+end $$;
+
+--
+-- Name: notification_outbox; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.notification_outbox (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    household_id uuid NOT NULL,
+    recipient uuid NOT NULL,
+    actor uuid,
+    kind text NOT NULL,
+    ref_id uuid,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    claimed_at timestamp with time zone,
+    sent_at timestamp with time zone,
+    CONSTRAINT notification_outbox_kind_check CHECK ((kind = ANY (ARRAY['entry_added'::text, 'entry_changed'::text, 'entry_deleted'::text, 'entry_restored'::text, 'settle_added'::text, 'settle_changed'::text, 'settle_deleted'::text, 'comment'::text, 'approval_waiting'::text, 'approval_decided'::text, 'bill_posted'::text, 'bill_tomorrow'::text, 'recap_ready'::text, 'settle_day'::text, 'balance_reminder'::text])))
+);
+
+--
+-- Name: notification_data(public.notification_outbox); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.notification_data(o public.notification_outbox) RETURNS jsonb
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare d jsonb; v_balance jsonb; e expenses; s settlements; cr change_requests; r recurring; v_body text;
+begin
+  select coalesce(jsonb_object_agg(user_id::text, net_pence::bigint), '{}') into v_balance from member_net where household_id = o.household_id;
+  d := jsonb_build_object('actor', o.actor, 'ref', o.ref_id, 'balance', v_balance);
+  if o.kind in ('entry_added', 'entry_changed', 'entry_deleted', 'entry_restored', 'bill_posted') then
+    select * into e from expenses where id = o.ref_id;
+    d := d || jsonb_build_object('description', e.description, 'amount', e.amount_pence);
+    -- A change: the amount (the words give the new one), only the category, or other details.
+    if o.kind = 'entry_changed' and jsonb_typeof(o.payload -> 'fields') = 'array' then
+      if o.payload -> 'fields' ? 'amount_pence' then
+        d := d || jsonb_build_object('change', 'amount');
+      elsif o.payload -> 'fields' = '["category_id"]'::jsonb then
+        d := d || jsonb_build_object('change', 'category', 'category', (select c.name from categories c where c.id = e.category_id));
+      else
+        d := d || jsonb_build_object('change', 'details');
+      end if;
+    end if;
+  elsif o.kind in ('settle_added', 'settle_changed', 'settle_deleted') then
+    select * into s from settlements where id = o.ref_id;
+    d := d || jsonb_build_object('amount', s.amount_pence, 'from', s.from_user);
+  elsif o.kind = 'comment' then
+    select * into e from expenses where id = o.ref_id;
+    select body into v_body from comments where id = (o.payload ->> 'comment_id')::uuid;
+    d := d || jsonb_build_object('description', e.description, 'comment', v_body, 'commentId', o.payload ->> 'comment_id');
+  elsif o.kind in ('approval_waiting', 'approval_decided') then
+    select * into cr from change_requests where id = o.ref_id;
+    d := d || jsonb_build_object('request', cr.kind, 'approved', cr.status = 'approved');
+  elsif o.kind = 'bill_tomorrow' then
+    select * into r from recurring where id = o.ref_id;
+    d := d || jsonb_build_object('description', r.description, 'amount', r.amount_pence, 'varies', r.amount_varies);
+  elsif o.kind = 'recap_ready' then
+    d := d || jsonb_build_object('month', o.payload ->> 'month');
+  elsif o.kind = 'balance_reminder' then
+    d := d || jsonb_build_object('threshold', (o.payload ->> 'threshold')::bigint);
+  end if;
+  return jsonb_strip_nulls(d);
+end $$;
+
+--
+-- Name: notification_enabled(uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.notification_enabled(p_user uuid, p_kind text) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  select case
+    when p_kind in ('approval_waiting', 'approval_decided') then true
+    when p_kind in ('entry_added', 'entry_changed', 'entry_deleted', 'entry_restored') then coalesce((select entries from notification_prefs where user_id = p_user), true)
+    when p_kind in ('settle_added', 'settle_changed', 'settle_deleted') then coalesce((select settle_ups from notification_prefs where user_id = p_user), true)
+    when p_kind = 'comment' then coalesce((select comments from notification_prefs where user_id = p_user), true)
+    when p_kind = 'bill_posted' then coalesce((select bills_today from notification_prefs where user_id = p_user), true)
+    when p_kind = 'bill_tomorrow' then coalesce((select bills_tomorrow from notification_prefs where user_id = p_user), false)
+    when p_kind in ('recap_ready', 'settle_day') then coalesce((select recap from notification_prefs where user_id = p_user), true)
+    when p_kind = 'balance_reminder' then coalesce((select balance from notification_prefs where user_id = p_user), false)
+    else false
+  end
+$$;
+
+--
+-- Name: notify_change_request(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.notify_change_request() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if auth.uid() is null then return null; end if;
+  if tg_op = 'INSERT' then
+    if new.status = 'pending' then perform queue_notification(new.household_id, auth.uid(), 'approval_waiting', new.id); end if;
+  elsif old.status = 'pending' and new.status in ('approved', 'declined') and new.requested_by <> auth.uid() then
+    perform queue_notification(new.household_id, auth.uid(), 'approval_decided', new.id);
+  end if;
+  return null;
+end $$;
+
+--
+-- Name: notify_comment(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.notify_comment() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if auth.uid() is null or new.deleted_at is not null then return null; end if;
+  perform queue_notification(new.household_id, auth.uid(), 'comment', new.expense_id, jsonb_build_object('comment_id', new.id));
+  return null;
+end $$;
+
+--
+-- Name: notify_expense(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.notify_expense() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare v_kind text; v_payload jsonb := '{}'; v_fields jsonb;
+begin
+  if auth.uid() is null then return null; end if;
+  if tg_op = 'INSERT' then
+    if current_setting('smsm.posting', true) = 'on' or new.deleted_at is not null then return null; end if;
+    v_kind := 'entry_added';
+  elsif old.deleted_at is null and new.deleted_at is not null then
+    v_kind := 'entry_deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    v_kind := 'entry_restored';
+  elsif new.deleted_at is not null then
+    return null;
+  elsif (to_jsonb(new) - 'updated_at' - 'updated_by') = (to_jsonb(old) - 'updated_at' - 'updated_by') then
+    return null;
+  else
+    v_kind := 'entry_changed';
+    select coalesce(jsonb_agg(n.key order by n.key), '[]') into v_fields
+      from jsonb_each(to_jsonb(new) - 'updated_at' - 'updated_by' - 'category_guess') n
+     where n.value is distinct from to_jsonb(old) -> n.key;
+    v_payload := jsonb_build_object('fields', v_fields);
+  end if;
+  perform queue_notification(new.household_id, auth.uid(), v_kind, new.id, v_payload);
+  return null;
+end $$;
+
+--
+-- Name: notify_settlement(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.notify_settlement() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare v_kind text;
+begin
+  if auth.uid() is null then return null; end if;
+  if tg_op = 'INSERT' then
+    if new.deleted_at is not null then return null; end if;
+    v_kind := 'settle_added';
+  elsif old.deleted_at is null and new.deleted_at is not null then
+    v_kind := 'settle_deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    v_kind := 'settle_added';   -- restored: it counts again, as a settle-up
+  elsif new.deleted_at is not null then
+    return null;
+  elsif (to_jsonb(new) - 'updated_at') = (to_jsonb(old) - 'updated_at') then
+    return null;
+  else
+    v_kind := 'settle_changed';
+  end if;
+  perform queue_notification(new.household_id, auth.uid(), v_kind, new.id);
+  return null;
+end $$;
+
+--
 -- Name: post_due_recurring(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.post_due_recurring(p_household uuid DEFAULT NULL::uuid) RETURNS integer
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-declare r recurring; d date; step interval; posted int := 0; hid uuid; home char(2);
+declare r recurring; d date; step interval; posted int := 0; hid uuid; home char(2); v_id uuid; v_late boolean;
         uk_today date := (now() at time zone 'Europe/London')::date;
 begin
   if auth.uid() is not null and p_household is not null and p_household is distinct from my_household() then
@@ -347,6 +619,9 @@ begin
   end if;
   hid := coalesce(p_household, my_household());
   if hid is null then return 0; end if;
+  perform set_config('smsm.posting', 'on', true);
+  v_late := exists (select 1 from notification_daily_runs where day = uk_today)
+            and (select count(*) from members x where x.household_id = hid) = 2;
   select home_country into home from households where id = hid;
   for r in select * from recurring where household_id = hid and active order by id for update loop
     step := case r.frequency when 'weekly' then make_interval(weeks => r.every)
@@ -361,17 +636,25 @@ begin
                 'estimate_pence', r.amount_pence, 'date', d, 'category_id', r.category_id))
         on conflict do nothing;
       else
+        v_id := null;
         insert into expenses(household_id, description, amount_pence, date, category_id, chapter_id, paid, paid_via,
                              split_mode, split_params, shares, notes, country, source, recurring_id, occurrence_date)
         values (r.household_id, r.description, r.amount_pence, d, r.category_id, null, r.paid, r.paid_via,
                 r.split_mode, r.split_params, r.shares, r.notes, coalesce(home, 'GB'), 'recurring', r.id, d)
-        on conflict do nothing;
+        on conflict do nothing
+        returning id into v_id;
+        if v_late and v_id is not null and d = uk_today then
+          insert into notification_outbox(household_id, recipient, kind, ref_id, payload)
+          select hid, m.user_id, 'bill_posted', v_id, jsonb_build_object('recurring_id', r.id) from members m where m.household_id = hid;
+        end if;
       end if;
       r.posted_count := r.posted_count + 1;
       posted := posted + 1;
     end loop;
     update recurring set posted_count = r.posted_count where id = r.id and posted_count is distinct from r.posted_count;
   end loop;
+  perform set_config('smsm.posting', 'off', true);
+  if v_late then perform kick_push(); end if;
   return posted;
 end $$;
 
@@ -392,6 +675,127 @@ begin
     end;
   end loop;
   return total;
+end $$;
+
+--
+-- Name: push_endpoint_ok(text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.push_endpoint_ok(p_endpoint text) RETURNS boolean
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO 'public'
+    AS $_$
+  select coalesce(length(p_endpoint) <= 2048
+    and substring(p_endpoint from '^https://([^/:?#\s]+)/') ~ '^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+push\.apple\.com|([a-z0-9-]+\.)+notify\.windows\.com)$',
+    false)
+$_$;
+
+--
+-- Name: push_public_key(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.push_public_key() RETURNS text
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  select vapid_public from push_config where id
+$$;
+
+--
+-- Name: queue_daily_notifications(timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.queue_daily_notifications(p_now timestamp with time zone DEFAULT now()) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare v_local timestamp := p_now at time zone 'Europe/London'; d date := (p_now at time zone 'Europe/London')::date;
+        n int := 0; c int;
+begin
+  if extract(hour from v_local) <> 8 then return 0; end if;
+  insert into notification_daily_runs(day) values (d) on conflict do nothing;
+  if not found then return 0; end if;
+  delete from notification_daily_runs where day < d - 400;
+
+  -- A shared regular payment posted today: both.
+  insert into notification_outbox(household_id, recipient, kind, ref_id, payload)
+  select e.household_id, m.user_id, 'bill_posted', e.id, jsonb_build_object('recurring_id', e.recurring_id)
+    from expenses e join members m on m.household_id = e.household_id
+   where e.recurring_id is not null and e.source = 'recurring' and e.occurrence_date = d and e.deleted_at is null
+     and (select count(*) from members x where x.household_id = e.household_id) = 2
+     and not exists (select 1 from notification_outbox a where a.kind = 'bill_posted' and a.ref_id = e.id);
+  get diagnostics c = row_count; n := n + c;
+
+  -- A shared bill posts tomorrow (its next occurrence): both (most have the switch off).
+  insert into notification_outbox(household_id, recipient, kind, ref_id)
+  select r.household_id, m.user_id, 'bill_tomorrow', r.id
+    from recurring r join members m on m.household_id = r.household_id
+   where r.active and (r.end_date is null or r.end_date >= d + 1)
+     and exists (select 1 from generate_series(r.posted_count, r.posted_count + 3) k
+                  where (r.start_date + recurring_step(r.frequency, r.every) * k)::date = d + 1)
+     and (select count(*) from members x where x.household_id = r.household_id) = 2;
+  get diagnostics c = row_count; n := n + c;
+
+  -- The 1st: last month's recap, where last month has something in it.
+  if extract(day from d) = 1 then
+    insert into notification_outbox(household_id, recipient, kind, payload)
+    select h.id, m.user_id, 'recap_ready', jsonb_build_object('month', to_char(d - 1, 'YYYY-MM'))
+      from households h join members m on m.household_id = h.id
+     where (select count(*) from members x where x.household_id = h.id) = 2
+       and exists (select 1 from expenses e where e.household_id = h.id and e.deleted_at is null
+                     and e.date between date_trunc('month', d - 1)::date and d - 1);
+    get diagnostics c = row_count; n := n + c;
+  end if;
+
+  -- Settle day, unless the two are square.
+  insert into notification_outbox(household_id, recipient, kind)
+  select h.id, m.user_id, 'settle_day'
+    from households h join members m on m.household_id = h.id
+   where h.settle_day = extract(day from d)
+     and (select count(*) from members x where x.household_id = h.id) = 2
+     and exists (select 1 from member_net b where b.household_id = h.id and b.net_pence <> 0);
+  get diagnostics c = row_count; n := n + c;
+
+  -- The balance above a person's chosen amount (the same way round) on each of the last 30 days: that person, at
+  -- most once every 30 days.
+  with due as (
+    select m.household_id, m.user_id, p.balance_threshold_pence as threshold
+      from members m join notification_prefs p on p.user_id = m.user_id and p.balance
+     where (select count(*) from members x where x.household_id = m.household_id) = 2
+       and not exists (select 1 from notification_reminders r where r.user_id = m.user_id and r.last_sent > d - 30)
+       and (select bool_and(q.net > p.balance_threshold_pence) or bool_and(q.net < -p.balance_threshold_pence)
+              from (select member_net_on(m.household_id, m.user_id, x::date) as net
+                      from generate_series(d - 29, d, interval '1 day') x) q)
+  ), queued as (
+    insert into notification_outbox(household_id, recipient, kind, payload)
+    select household_id, user_id, 'balance_reminder', jsonb_build_object('threshold', threshold) from due
+    returning recipient
+  )
+  insert into notification_reminders(user_id, last_sent) select recipient, d from queued
+  on conflict (user_id) do update set last_sent = excluded.last_sent;
+  get diagnostics c = row_count; n := n + c;
+
+  if n > 0 then perform kick_push(); end if;
+  return n;
+end $$;
+
+--
+-- Name: queue_notification(uuid, uuid, text, uuid, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.queue_notification(p_household uuid, p_actor uuid, p_kind text, p_ref uuid, p_payload jsonb DEFAULT '{}'::jsonb) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare v_recipient uuid; v_any boolean := false;
+begin
+  if p_actor is null or p_household is null then return; end if;
+  if coalesce(current_setting('smsm.restoring', true), '') = 'on' then return; end if;
+  for v_recipient in select user_id from members where household_id = p_household and user_id <> p_actor loop
+    insert into notification_outbox(household_id, recipient, actor, kind, ref_id, payload)
+    values (p_household, v_recipient, p_actor, p_kind, p_ref, coalesce(p_payload, '{}'));
+    v_any := true;
+  end loop;
+  if v_any and current_setting('smsm.push_kicked', true) is distinct from 'on' then
+    perform set_config('smsm.push_kicked', 'on', true);
+    perform kick_push();
+  end if;
 end $$;
 
 --
@@ -436,6 +840,18 @@ CREATE FUNCTION public.recurring_step(p_frequency text, p_every integer) RETURNS
                           when 'monthly' then make_interval(months => p_every)
                           else make_interval(years => p_every) end
 $$;
+
+--
+-- Name: remove_push_subscription(text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.remove_push_subscription(p_endpoint text) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  delete from push_subscriptions where endpoint = p_endpoint and user_id = auth.uid();
+end $$;
 
 --
 -- Name: request_change(text, jsonb); Type: FUNCTION; Schema: public; Owner: -
@@ -752,6 +1168,37 @@ begin
 end $_$;
 
 --
+-- Name: save_push_subscription(text, text, text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.save_push_subscription(p_endpoint text, p_p256dh text, p_auth text) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare uid uuid := auth.uid(); old push_subscriptions;
+begin
+  if uid is null then raise exception 'not signed in'; end if;
+  if not push_endpoint_ok(p_endpoint) then raise exception 'that is not a push address'; end if;
+  if coalesce(length(p_p256dh), 0) not between 1 and 200 or coalesce(length(p_auth), 0) not between 1 and 200 then
+    raise exception 'the subscription''s keys are missing';
+  end if;
+  select * into old from push_subscriptions where endpoint = p_endpoint for update;
+  if old.endpoint is null then
+    insert into push_subscriptions(endpoint, user_id, p256dh, auth) values (p_endpoint, uid, p_p256dh, p_auth)
+    on conflict (endpoint) do nothing;
+  elsif old.user_id = uid then
+    update push_subscriptions set p256dh = p_p256dh, auth = p_auth where endpoint = p_endpoint;
+  else
+    if (select household_id from members where user_id = old.user_id) is distinct from my_household() or my_household() is null then
+      raise exception 'that push address belongs to someone else';
+    end if;
+    if old.p256dh <> p_p256dh or old.auth <> p_auth then
+      raise exception 'that push address belongs to someone else';
+    end if;
+    update push_subscriptions set user_id = uid, created_at = now(), failing_since = null where endpoint = p_endpoint;
+  end if;
+end $$;
+
+--
 -- Name: save_recap_prose(text, jsonb, text); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) RETURNS text
@@ -806,6 +1253,61 @@ begin
   if p_username is not null and p_username !~ '^[A-Za-z0-9_-]{1,40}$' then raise exception 'that does not look like a monzo.me name'; end if;
   update members set monzo_me = p_username where user_id = auth.uid();
 end $_$;
+
+--
+-- Name: notification_prefs; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.notification_prefs (
+    user_id uuid NOT NULL,
+    entries boolean DEFAULT true NOT NULL,
+    settle_ups boolean DEFAULT true NOT NULL,
+    comments boolean DEFAULT true NOT NULL,
+    bills_today boolean DEFAULT true NOT NULL,
+    bills_tomorrow boolean DEFAULT false NOT NULL,
+    recap boolean DEFAULT true NOT NULL,
+    balance boolean DEFAULT false NOT NULL,
+    balance_threshold_pence bigint DEFAULT 10000 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT notification_prefs_balance_threshold_pence_check CHECK (((balance_threshold_pence > 0) AND (balance_threshold_pence <= 100000000)))
+);
+
+--
+-- Name: set_notification_prefs(jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.set_notification_prefs(p jsonb) RETURNS public.notification_prefs
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare uid uuid := auth.uid(); k text; v numeric; r notification_prefs;
+begin
+  if uid is null then raise exception 'not signed in'; end if;
+  if p is null or jsonb_typeof(p) <> 'object' then raise exception 'preferences must be an object'; end if;
+  for k in select jsonb_object_keys(p) loop
+    if k in ('entries', 'settle_ups', 'comments', 'bills_today', 'bills_tomorrow', 'recap', 'balance') then
+      if jsonb_typeof(p -> k) <> 'boolean' then raise exception 'a switch is on or off'; end if;
+    elsif k = 'balance_threshold_pence' then
+      if jsonb_typeof(p -> k) <> 'number' then raise exception 'the amount is a whole number of pence above zero'; end if;
+      v := (p ->> k)::numeric;
+      if v <> trunc(v) or v <= 0 or v > 100000000 then raise exception 'the amount is a whole number of pence above zero'; end if;
+    else
+      raise exception 'no such notification setting: %', k;
+    end if;
+  end loop;
+  insert into notification_prefs(user_id) values (uid) on conflict (user_id) do nothing;
+  update notification_prefs set
+    entries = coalesce((p ->> 'entries')::boolean, entries),
+    settle_ups = coalesce((p ->> 'settle_ups')::boolean, settle_ups),
+    comments = coalesce((p ->> 'comments')::boolean, comments),
+    bills_today = coalesce((p ->> 'bills_today')::boolean, bills_today),
+    bills_tomorrow = coalesce((p ->> 'bills_tomorrow')::boolean, bills_tomorrow),
+    recap = coalesce((p ->> 'recap')::boolean, recap),
+    balance = coalesce((p ->> 'balance')::boolean, balance),
+    balance_threshold_pence = coalesce((p ->> 'balance_threshold_pence')::bigint, balance_threshold_pence),
+    updated_at = now()
+  where user_id = uid
+  returning * into r;
+  return r;
+end $$;
 
 --
 -- Name: set_settle_day(integer); Type: FUNCTION; Schema: public; Owner: -
@@ -1225,6 +1727,53 @@ CREATE VIEW public.member_net WITH (security_invoker='true') AS
    FROM public.members m;
 
 --
+-- Name: notification_daily_runs; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.notification_daily_runs (
+    day date NOT NULL,
+    at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: notification_reminders; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.notification_reminders (
+    user_id uuid NOT NULL,
+    last_sent date NOT NULL
+);
+
+--
+-- Name: push_config; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.push_config (
+    id boolean DEFAULT true NOT NULL,
+    vapid_public text,
+    vapid_private text,
+    token text DEFAULT (replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text)) NOT NULL,
+    function_url text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT push_config_function_url_check CHECK (((function_url IS NULL) OR (function_url ~~ 'https://%'::text))),
+    CONSTRAINT push_config_id_check CHECK (id),
+    CONSTRAINT push_config_token_check CHECK ((length(token) >= 32))
+);
+
+--
+-- Name: push_subscriptions; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.push_subscriptions (
+    endpoint text NOT NULL,
+    user_id uuid NOT NULL,
+    p256dh text NOT NULL,
+    auth text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_ok_at timestamp with time zone,
+    failing_since timestamp with time zone,
+    CONSTRAINT push_subscriptions_auth_check CHECK (((length(auth) >= 1) AND (length(auth) <= 200))),
+    CONSTRAINT push_subscriptions_endpoint_check CHECK (public.push_endpoint_ok(endpoint)),
+    CONSTRAINT push_subscriptions_p256dh_check CHECK (((length(p256dh) >= 1) AND (length(p256dh) <= 200)))
+);
+
+--
 -- Name: recaps; Type: TABLE; Schema: public; Owner: -
 --
 CREATE TABLE public.recaps (
@@ -1405,6 +1954,42 @@ ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_pkey PRIMARY KEY (household_id, user_id);
 
 --
+-- Name: notification_daily_runs notification_daily_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_daily_runs
+    ADD CONSTRAINT notification_daily_runs_pkey PRIMARY KEY (day);
+
+--
+-- Name: notification_outbox notification_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_outbox
+    ADD CONSTRAINT notification_outbox_pkey PRIMARY KEY (id);
+
+--
+-- Name: notification_prefs notification_prefs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_prefs
+    ADD CONSTRAINT notification_prefs_pkey PRIMARY KEY (user_id);
+
+--
+-- Name: notification_reminders notification_reminders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_reminders
+    ADD CONSTRAINT notification_reminders_pkey PRIMARY KEY (user_id);
+
+--
+-- Name: push_config push_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.push_config
+    ADD CONSTRAINT push_config_pkey PRIMARY KEY (id);
+
+--
+-- Name: push_subscriptions push_subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.push_subscriptions
+    ADD CONSTRAINT push_subscriptions_pkey PRIMARY KEY (endpoint);
+
+--
 -- Name: recaps recaps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 ALTER TABLE ONLY public.recaps
@@ -1484,6 +2069,21 @@ CREATE INDEX join_attempts_user_at ON public.join_attempts USING btree (user_id,
 CREATE UNIQUE INDEX members_one_household ON public.members USING btree (user_id);
 
 --
+-- Name: notification_outbox_sent; Type: INDEX; Schema: public; Owner: -
+--
+CREATE INDEX notification_outbox_sent ON public.notification_outbox USING btree (sent_at) WHERE (sent_at IS NOT NULL);
+
+--
+-- Name: notification_outbox_waiting; Type: INDEX; Schema: public; Owner: -
+--
+CREATE INDEX notification_outbox_waiting ON public.notification_outbox USING btree (created_at, id) WHERE (sent_at IS NULL);
+
+--
+-- Name: push_subscriptions_user; Type: INDEX; Schema: public; Owner: -
+--
+CREATE INDEX push_subscriptions_user ON public.push_subscriptions USING btree (user_id);
+
+--
 -- Name: categories categories_log; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER categories_log AFTER INSERT OR UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.log_activity();
@@ -1492,6 +2092,11 @@ CREATE TRIGGER categories_log AFTER INSERT OR UPDATE ON public.categories FOR EA
 -- Name: categories categories_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER categories_stamp BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
+
+--
+-- Name: change_requests change_requests_notify; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER change_requests_notify AFTER INSERT OR UPDATE ON public.change_requests FOR EACH ROW EXECUTE FUNCTION public.notify_change_request();
 
 --
 -- Name: chapters chapters_author; Type: TRIGGER; Schema: public; Owner: -
@@ -1524,6 +2129,11 @@ CREATE TRIGGER comments_guard BEFORE UPDATE ON public.comments FOR EACH ROW EXEC
 CREATE TRIGGER comments_log AFTER INSERT OR UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
+-- Name: comments comments_notify; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER comments_notify AFTER INSERT ON public.comments FOR EACH ROW EXECUTE FUNCTION public.notify_comment();
+
+--
 -- Name: expenses expenses_author; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER expenses_author BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
@@ -1547,6 +2157,11 @@ CREATE TRIGGER expenses_check_money BEFORE INSERT OR UPDATE ON public.expenses F
 -- Name: expenses expenses_log; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER expenses_log AFTER INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.log_activity();
+
+--
+-- Name: expenses expenses_notify; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER expenses_notify AFTER INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.notify_expense();
 
 --
 -- Name: expenses expenses_stamp; Type: TRIGGER; Schema: public; Owner: -
@@ -1612,6 +2227,11 @@ CREATE TRIGGER settlements_author BEFORE INSERT OR UPDATE ON public.settlements 
 -- Name: settlements settlements_log; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER settlements_log AFTER INSERT OR UPDATE ON public.settlements FOR EACH ROW EXECUTE FUNCTION public.log_activity();
+
+--
+-- Name: settlements settlements_notify; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER settlements_notify AFTER INSERT OR UPDATE ON public.settlements FOR EACH ROW EXECUTE FUNCTION public.notify_settlement();
 
 --
 -- Name: settlements settlements_stamp; Type: TRIGGER; Schema: public; Owner: -
@@ -1821,6 +2441,30 @@ ALTER TABLE ONLY public.members
 --
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+--
+-- Name: notification_outbox notification_outbox_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_outbox
+    ADD CONSTRAINT notification_outbox_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
+
+--
+-- Name: notification_prefs notification_prefs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_prefs
+    ADD CONSTRAINT notification_prefs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+--
+-- Name: notification_reminders notification_reminders_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.notification_reminders
+    ADD CONSTRAINT notification_reminders_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+--
+-- Name: push_subscriptions push_subscriptions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.push_subscriptions
+    ADD CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 --
 -- Name: recaps recaps_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2067,6 +2711,46 @@ CREATE POLICY mem_read ON public.members FOR SELECT USING ((household_id = publi
 ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: notification_daily_runs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.notification_daily_runs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: notification_outbox; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.notification_outbox ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: notification_prefs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.notification_prefs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: notification_prefs notification_prefs_own; Type: POLICY; Schema: public; Owner: -
+--
+CREATE POLICY notification_prefs_own ON public.notification_prefs FOR SELECT TO authenticated USING ((user_id = auth.uid()));
+
+--
+-- Name: notification_reminders; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.notification_reminders ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: push_config; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.push_config ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: push_subscriptions; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: push_subscriptions push_subscriptions_own; Type: POLICY; Schema: public; Owner: -
+--
+CREATE POLICY push_subscriptions_own ON public.push_subscriptions FOR SELECT TO authenticated USING ((user_id = auth.uid()));
+
+--
 -- Name: recaps; Type: ROW SECURITY; Schema: public; Owner: -
 --
 ALTER TABLE public.recaps ENABLE ROW LEVEL SECURITY;
@@ -2206,6 +2890,11 @@ GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO authenticated;
 GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO service_role;
 
 --
+-- Name: FUNCTION kick_push(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.kick_push() FROM PUBLIC;
+
+--
 -- Name: FUNCTION log_activity(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.log_activity() FROM PUBLIC;
@@ -2213,11 +2902,72 @@ GRANT ALL ON FUNCTION public.log_activity() TO authenticated;
 GRANT ALL ON FUNCTION public.log_activity() TO service_role;
 
 --
+-- Name: FUNCTION mark_notifications_sent(p_ids uuid[]); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.mark_notifications_sent(p_ids uuid[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.mark_notifications_sent(p_ids uuid[]) TO service_role;
+
+--
+-- Name: FUNCTION member_net_on(p_household uuid, p_user uuid, p_day date); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.member_net_on(p_household uuid, p_user uuid, p_day date) FROM PUBLIC;
+
+--
 -- Name: FUNCTION my_household(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.my_household() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.my_household() TO authenticated;
 GRANT ALL ON FUNCTION public.my_household() TO service_role;
+
+--
+-- Name: FUNCTION next_notifications(p_limit integer); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.next_notifications(p_limit integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.next_notifications(p_limit integer) TO service_role;
+
+--
+-- Name: FUNCTION note_push_result(p_endpoint text, p_ok boolean); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.note_push_result(p_endpoint text, p_ok boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.note_push_result(p_endpoint text, p_ok boolean) TO service_role;
+
+--
+-- Name: FUNCTION notification_data(o public.notification_outbox); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.notification_data(o public.notification_outbox) FROM PUBLIC;
+
+--
+-- Name: FUNCTION notification_enabled(p_user uuid, p_kind text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.notification_enabled(p_user uuid, p_kind text) FROM PUBLIC;
+
+--
+-- Name: FUNCTION notify_change_request(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.notify_change_request() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.notify_change_request() TO authenticated;
+GRANT ALL ON FUNCTION public.notify_change_request() TO service_role;
+
+--
+-- Name: FUNCTION notify_comment(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.notify_comment() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.notify_comment() TO authenticated;
+GRANT ALL ON FUNCTION public.notify_comment() TO service_role;
+
+--
+-- Name: FUNCTION notify_expense(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.notify_expense() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.notify_expense() TO authenticated;
+GRANT ALL ON FUNCTION public.notify_expense() TO service_role;
+
+--
+-- Name: FUNCTION notify_settlement(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.notify_settlement() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.notify_settlement() TO authenticated;
+GRANT ALL ON FUNCTION public.notify_settlement() TO service_role;
 
 --
 -- Name: FUNCTION post_due_recurring(p_household uuid); Type: ACL; Schema: public; Owner: -
@@ -2233,6 +2983,28 @@ REVOKE ALL ON FUNCTION public.post_due_recurring_all() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.post_due_recurring_all() TO service_role;
 
 --
+-- Name: FUNCTION push_endpoint_ok(p_endpoint text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.push_endpoint_ok(p_endpoint text) FROM PUBLIC;
+
+--
+-- Name: FUNCTION push_public_key(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.push_public_key() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.push_public_key() TO authenticated;
+GRANT ALL ON FUNCTION public.push_public_key() TO service_role;
+
+--
+-- Name: FUNCTION queue_daily_notifications(p_now timestamp with time zone); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.queue_daily_notifications(p_now timestamp with time zone) FROM PUBLIC;
+
+--
+-- Name: FUNCTION queue_notification(p_household uuid, p_actor uuid, p_kind text, p_ref uuid, p_payload jsonb); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.queue_notification(p_household uuid, p_actor uuid, p_kind text, p_ref uuid, p_payload jsonb) FROM PUBLIC;
+
+--
 -- Name: FUNCTION recurring_guard(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.recurring_guard() FROM PUBLIC;
@@ -2244,6 +3016,13 @@ GRANT ALL ON FUNCTION public.recurring_guard() TO service_role;
 REVOKE ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) TO authenticated;
 GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) TO service_role;
+
+--
+-- Name: FUNCTION remove_push_subscription(p_endpoint text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.remove_push_subscription(p_endpoint text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.remove_push_subscription(p_endpoint text) TO authenticated;
+GRANT ALL ON FUNCTION public.remove_push_subscription(p_endpoint text) TO service_role;
 
 --
 -- Name: FUNCTION request_change(p_kind text, p_payload jsonb); Type: ACL; Schema: public; Owner: -
@@ -2296,6 +3075,13 @@ REVOKE ALL ON FUNCTION public.restore_target(p_hid uuid, p_old uuid, p_table tex
 GRANT ALL ON FUNCTION public.restore_target(p_hid uuid, p_old uuid, p_table text) TO service_role;
 
 --
+-- Name: FUNCTION save_push_subscription(p_endpoint text, p_p256dh text, p_auth text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.save_push_subscription(p_endpoint text, p_p256dh text, p_auth text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.save_push_subscription(p_endpoint text, p_p256dh text, p_auth text) TO authenticated;
+GRANT ALL ON FUNCTION public.save_push_subscription(p_endpoint text, p_p256dh text, p_auth text) TO service_role;
+
+--
 -- Name: FUNCTION save_recap_prose(p_period text, p_stats jsonb, p_prose text); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) FROM PUBLIC;
@@ -2315,6 +3101,19 @@ GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO service
 REVOKE ALL ON FUNCTION public.set_monzo_me(p_username text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO authenticated;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO service_role;
+
+--
+-- Name: TABLE notification_prefs; Type: ACL; Schema: public; Owner: -
+--
+GRANT SELECT ON TABLE public.notification_prefs TO authenticated;
+GRANT SELECT ON TABLE public.notification_prefs TO service_role;
+
+--
+-- Name: FUNCTION set_notification_prefs(p jsonb); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.set_notification_prefs(p jsonb) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.set_notification_prefs(p jsonb) TO authenticated;
+GRANT ALL ON FUNCTION public.set_notification_prefs(p jsonb) TO service_role;
 
 --
 -- Name: FUNCTION set_settle_day(p_day integer); Type: ACL; Schema: public; Owner: -
@@ -2433,6 +3232,17 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.settlements TO authenticated;
 -- Name: TABLE member_net; Type: ACL; Schema: public; Owner: -
 --
 GRANT SELECT ON TABLE public.member_net TO authenticated;
+
+--
+-- Name: TABLE push_config; Type: ACL; Schema: public; Owner: -
+--
+GRANT SELECT,INSERT,UPDATE ON TABLE public.push_config TO service_role;
+
+--
+-- Name: TABLE push_subscriptions; Type: ACL; Schema: public; Owner: -
+--
+GRANT SELECT ON TABLE public.push_subscriptions TO authenticated;
+GRANT SELECT,DELETE,UPDATE ON TABLE public.push_subscriptions TO service_role;
 
 --
 -- Name: TABLE recaps; Type: ACL; Schema: public; Owner: -

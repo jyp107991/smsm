@@ -8,7 +8,7 @@ GitHub (`jyp107991/smsm`, public) → GitHub Actions runs the checks → Supabas
 | Workflow | When | What |
 |---|---|---|
 | `ci` | every push to a branch other than main | checks (types, lint, tests, trace, SQL, generated files, build, browser tests); `remote-check` proves the secrets work (project link, migration dry run, Cloudflare token status); a preview of the demo build for that branch |
-| `deploy` | push to main (or by hand, main only) | the same checks → build → `supabase db push` (migrations only) → Edge Functions → `wrangler deploy` of `smsm` and `smsm-demo` → smoke test of the live app (version matches the commit, service worker and manifest served, database health check answers) |
+| `deploy` | push to main (or by hand, main only) | the same checks → build → `supabase db push` (migrations only) → Edge Functions → the push function's one-time set-up (`?init=1`) → `wrangler deploy` of `smsm` and `smsm-demo` → smoke test of the live app (version matches the commit, service worker and manifest served, database health check answers, the push keys are there) |
 | `keepalive` | every 2 days | calls `health()` so the free project never pauses |
 | `auth-config` | by hand only | `mode=diff` shows exactly what a sign-in settings push would change (read-only); `mode=push` applies them, only after the owner approves |
 
@@ -47,7 +47,7 @@ The schema, migrations, storage buckets, scheduled jobs and functions are applie
 
 ## 3. GitHub repository secrets and variables
 Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `CLOUDFLARE_API_TOKEN`.
-Variables: `SUPABASE_PROJECT_REF`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, later `VITE_VAPID_PUBLIC_KEY`.
+Variables: `SUPABASE_PROJECT_REF`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`. (Notifications need none: S8 keeps its keys in the database, §6.)
 No secret is ever committed. The Supabase URL and publishable key are safe in the app; everything else lives only in GitHub secrets or Supabase secrets.
 
 ## 4. Phones
@@ -57,7 +57,12 @@ Open the address in Chrome → menu → Install app. Sign in, start the househol
 Nothing to set up: they run on Cloudflare Workers AI through the app's own Worker (the `AI` binding in `wrangler.jsonc`), on the free daily allowance of the Cloudflare account the app is deployed to. No API key, no secret. The deploy passes the Supabase URL and the public publishable key to the Worker as vars (from the repository's existing variables). If a deploy ever reports that the Cloudflare token can't use Workers AI, add "Workers AI: Read" to that token's permissions in the Cloudflare dashboard.
 
 ## 6. Notifications (S8)
-As MacroPy `docs/DEPLOY.md` §4: generate VAPID keys, `supabase secrets set`, deploy the function, schedule it.
+Nothing to set up, no new secret (owner, 17 Nov). The pipeline does it all:
+- The migration makes `push_config` with a random token the database makes for itself, the outbox, the triggers, and two pg_cron jobs (`smsm-push` every minute, `smsm-notify-daily` at 07:07 and 08:07 UTC, which does its work only at 08:07 London time). It enables pg_net.
+- `supabase functions deploy` deploys `supabase/functions/push` with JWT verification off (`supabase/config.toml` `[functions.push]`): the database calls it with its token, which the function checks.
+- The deploy then calls the function once with `?init=1` (step "Set up notifications"): the first time, it makes the VAPID key pair (Web Crypto, P-256) and records its own address in `push_config`; afterwards it changes nothing. It reads `push_config` with the secret key Supabase gives every function.
+- The smoke test checks `health()` says `"push": true` (the public key is there, so phones' `push_public_key()` answers).
+If the keys ever had to be replaced (they never need to be), clear `vapid_public` and `vapid_private` in `push_config` and run the deploy again: phones re-subscribe with the new key the next time the app opens.
 
 ## 7. Optional: let Claude Code see production health
 Give the Claude Code environment a read-only database connection string (or a Supabase secret key) as an environment secret so it can read `client_errors` and `ai_usage` at the start of each session. Never commit it.

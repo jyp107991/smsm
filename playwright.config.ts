@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Locally a pre-installed Chromium can be used (PW_CHROMIUM_PATH); CI installs Playwright's own.
+// Locally a pre-installed Chromium can be used (PW_CHROMIUM_PATH); CI installs Playwright's own. The full Chromium
+// (channel 'chromium', new headless), not the headless shell: the shell has no notification permission, so S8's
+// Settings and push tests can't run in it.
 const executablePath = process.env.PW_CHROMIUM_PATH;
 
 export default defineConfig({
@@ -16,6 +18,7 @@ export default defineConfig({
     trace: 'off',
     viewport: { width: 390, height: 800 },
     launchOptions: executablePath ? { executablePath } : {},
+    ...(executablePath ? {} : { channel: 'chromium' }),
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 800 } } }],
   webServer: {

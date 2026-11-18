@@ -13,6 +13,7 @@ import {
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
   type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type MemberRow, type RecapRow,
   type RecurringRow, type RestoreCounts, type RestoreRows, type RestoreTable, type SettlementRow, type SettlementWrite, type WatchedTable,
+  type NotificationPrefsPatch, type NotificationPrefsRow,
 } from './api';
 import type { Json } from './database.types';
 
@@ -39,7 +40,27 @@ export interface MemoryTables {
   /** S7 (IMP-3): hashes of bank rows decided "Not ours", and the "always do this" rules. */
   importIgnores?: ImportIgnoreRow[];
   importRules?: ImportRuleRow[];
+  /** S8 (NOT-1): push_public_key() (null until the push function has made one), the subscriptions, the switches. */
+  pushPublicKey?: string | null;
+  pushSubscriptions?: { user_id: string; endpoint: string; p256dh: string; auth: string }[];
+  notificationPrefs?: NotificationPrefsRow[];
   minClientVersion: string | null;
+}
+
+/** The push services browsers use (save_push_subscription's allowlist, the migration's push_endpoint_ok). */
+function pushEndpointOk(endpoint: string): boolean {
+  const host = /^https:\/\/([^/:?#\s]+)\//.exec(endpoint)?.[1] ?? '';
+  return endpoint.length <= 2048
+    && /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+push\.apple\.com|([a-z0-9-]+\.)+notify\.windows\.com)$/.test(host);
+}
+
+/** notification_prefs' column defaults (the migration). */
+const PREF_SWITCHES = ['entries', 'settle_ups', 'comments', 'bills_today', 'bills_tomorrow', 'recap', 'balance'] as const;
+function defaultPrefs(userId: string, at: string): NotificationPrefsRow {
+  return {
+    user_id: userId, entries: true, settle_ups: true, comments: true, bills_today: true, bills_tomorrow: false, recap: true, balance: false,
+    balance_threshold_pence: 10000, updated_at: at,
+  };
 }
 
 export interface MemoryCall { name: string; arg: unknown }
@@ -122,6 +143,9 @@ export function createMemoryApi(
     recaps: clone(seed.recaps ?? []),
     importIgnores: clone(seed.importIgnores ?? []),
     importRules: clone(seed.importRules ?? []),
+    pushPublicKey: seed.pushPublicKey ?? null,
+    pushSubscriptions: clone(seed.pushSubscriptions ?? []),
+    notificationPrefs: clone(seed.notificationPrefs ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
   /** The server's UK date (DAT-2: post_due_recurring posts by London's date). */
@@ -824,6 +848,47 @@ export function createMemoryApi(
         const database = new TextEncoder().encode(JSON.stringify(tables)).length;
         const photos = (tables.receipts ?? []).filter((r) => r.path.startsWith(`${hid}/`)).reduce((t, r) => t + r.size, 0);
         return { database_bytes: database, photo_bytes: photos };
+      }),
+    pushPublicKey: () => call('pushPublicKey', null, () => { me(); return tables.pushPublicKey ?? null; }),
+    savePushSubscription: (sub) =>
+      call('savePushSubscription', sub, () => {
+        const uid = me().userId;
+        if (!pushEndpointOk(sub.endpoint)) refuse('that is not a push address');
+        if (sub.p256dh === '' || sub.auth === '') refuse('the subscription\u2019s keys are missing');
+        tables.pushSubscriptions ??= [];
+        const old = tables.pushSubscriptions.find((s) => s.endpoint === sub.endpoint);
+        // Another account's endpoint moves only on the same phone handed over within the household (its own keys).
+        if (old && old.user_id !== uid) {
+          const theirs = tables.members.find((m) => m.user_id === old.user_id)?.household_id ?? null;
+          if (theirs === null || theirs !== myHousehold() || old.p256dh !== sub.p256dh || old.auth !== sub.auth) refuse('that push address belongs to someone else');
+        }
+        tables.pushSubscriptions = tables.pushSubscriptions.filter((s) => s.endpoint !== sub.endpoint);
+        tables.pushSubscriptions.push({ user_id: uid, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth });
+      }),
+    removePushSubscription: (endpoint) =>
+      call('removePushSubscription', endpoint, () => {
+        const uid = me().userId;
+        tables.pushSubscriptions = (tables.pushSubscriptions ?? []).filter((s) => !(s.endpoint === endpoint && s.user_id === uid));
+      }),
+    notificationPrefs: (userId) =>
+      call('notificationPrefs', userId, () => (userId === me().userId ? (tables.notificationPrefs ?? []).find((r) => r.user_id === userId) ?? null : null)),
+    setNotificationPrefs: (patch: NotificationPrefsPatch) =>
+      call('setNotificationPrefs', patch, () => {
+        const uid = me().userId;
+        for (const [k, v] of Object.entries(patch)) {
+          if ((PREF_SWITCHES as readonly string[]).includes(k)) {
+            if (typeof v !== 'boolean') refuse('a switch is on or off');
+          } else if (k === 'balance_threshold_pence') {
+            if (typeof v !== 'number' || !Number.isSafeInteger(v) || v <= 0 || v > 100_000_000) refuse('the amount is a whole number of pence above zero');
+          } else refuse(`no such notification setting: ${k}`);
+        }
+        tables.notificationPrefs ??= [];
+        const stamp = now().toISOString();
+        const i = tables.notificationPrefs.findIndex((r) => r.user_id === uid);
+        const next: NotificationPrefsRow = { ...(tables.notificationPrefs[i] ?? defaultPrefs(uid, stamp)), ...patch, user_id: uid, updated_at: stamp };
+        if (i === -1) tables.notificationPrefs.push(next);
+        else tables.notificationPrefs[i] = next;
+        return next;
       }),
     watchHousehold(householdId, onChange, onStatus) {
       const w = { householdId, onChange, onStatus };

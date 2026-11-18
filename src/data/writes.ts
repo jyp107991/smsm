@@ -13,7 +13,7 @@ import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type Split
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
   type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type CommentWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
-  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type ExpensePatch, type RecurringColumn } from './api';
+  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type InboxPatch, type NotificationPrefsPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type ExpensePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
 export interface ExpenseDraft {
@@ -526,6 +526,9 @@ export function overlay<R extends { id: string }>(
  * it is the app's memory, not the person's entry.
  */
 export interface MemoryOp { opId: string; by: string; row: CategoryMemoryWrite }
+
+/** S8 (NOT-1): a change to the person's notification switches, sent to set_notification_prefs (only these keys). */
+export interface PrefsOp { opId: string; by: string; patch: NotificationPrefsPatch }
 
 /** The household's memory with the waiting choices applied on top, in the order they were made. */
 export function overlayMemory(rows: readonly CategoryMemoryRow[], ops: readonly MemoryOp[]): CategoryMemoryRow[] {

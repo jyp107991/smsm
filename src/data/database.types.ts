@@ -381,6 +381,96 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"notification_daily_runs": {
+                  Row: {
+                    "at": string,"day": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "at"?: string,"day": string
+                  }
+                  Update: {
+                    "at"?: string,"day"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"notification_outbox": {
+                  Row: {
+                    "actor": string | null,"claimed_at": string | null,"created_at": string,"household_id": string,"id": string,"kind": string,"payload": NonNullable<Json>,"recipient": string,"ref_id": string | null,"sent_at": string | null,"notification_data": Json | null
+                  }
+                  ComputedFields: "notification_data"
+                  Insert: {
+                    "actor"?: string | null,"claimed_at"?: string | null,"created_at"?: string,"household_id": string,"id"?: string,"kind": string,"payload"?: NonNullable<Json>,"recipient": string,"ref_id"?: string | null,"sent_at"?: string | null
+                  }
+                  Update: {
+                    "actor"?: string | null,"claimed_at"?: string | null,"created_at"?: string,"household_id"?: string,"id"?: string,"kind"?: string,"payload"?: NonNullable<Json>,"recipient"?: string,"ref_id"?: string | null,"sent_at"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "notification_outbox_household_id_fkey"
+      columns: ["household_id"]
+isOneToOne: false
+      referencedRelation: "households"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"notification_prefs": {
+                  Row: {
+                    "balance": boolean,"balance_threshold_pence": number,"bills_today": boolean,"bills_tomorrow": boolean,"comments": boolean,"entries": boolean,"recap": boolean,"settle_ups": boolean,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "balance"?: boolean,"balance_threshold_pence"?: number,"bills_today"?: boolean,"bills_tomorrow"?: boolean,"comments"?: boolean,"entries"?: boolean,"recap"?: boolean,"settle_ups"?: boolean,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "balance"?: boolean,"balance_threshold_pence"?: number,"bills_today"?: boolean,"bills_tomorrow"?: boolean,"comments"?: boolean,"entries"?: boolean,"recap"?: boolean,"settle_ups"?: boolean,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"notification_reminders": {
+                  Row: {
+                    "last_sent": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "last_sent": string,"user_id": string
+                  }
+                  Update: {
+                    "last_sent"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"push_config": {
+                  Row: {
+                    "function_url": string | null,"id": boolean,"token": string,"updated_at": string,"vapid_private": string | null,"vapid_public": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "function_url"?: string | null,"id"?: boolean,"token"?: string,"updated_at"?: string,"vapid_private"?: string | null,"vapid_public"?: string | null
+                  }
+                  Update: {
+                    "function_url"?: string | null,"id"?: boolean,"token"?: string,"updated_at"?: string,"vapid_private"?: string | null,"vapid_public"?: string | null
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"push_subscriptions": {
+                  Row: {
+                    "auth": string,"created_at": string,"endpoint": string,"failing_since": string | null,"last_ok_at": string | null,"p256dh": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "auth": string,"created_at"?: string,"endpoint": string,"failing_since"?: string | null,"last_ok_at"?: string | null,"p256dh": string,"user_id": string
+                  }
+                  Update: {
+                    "auth"?: string,"created_at"?: string,"endpoint"?: string,"failing_since"?: string | null,"last_ok_at"?: string | null,"p256dh"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"recaps": {
                   Row: {
                     "created_at": string,"household_id": string,"period": string,"prose": string | null,"stats": NonNullable<Json>
@@ -520,8 +610,31 @@ isOneToOne: false
 "jsonb_pence_sum":
 { Args: { "j": Json }; Returns: number
                            },
+"kick_push":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
+"mark_notifications_sent":
+{ Args: { "p_ids": (string)[] }; Returns: undefined
+                           },
+"member_net_on":
+{ Args: { "p_day": string,"p_household": string,"p_user": string }; Returns: number
+                           },
 "my_household":
 { Args: Record<PropertyKey, never>; Returns: string
+                           },
+"next_notifications":
+{ Args: { "p_limit": number }; Returns: {
+              "animal": string,"badge": number,"data": Json,"id": string,"kind": string,"names": Json,"recipient": string
+            }[]
+                           },
+"note_push_result":
+{ Args: { "p_endpoint": string,"p_ok": boolean }; Returns: undefined
+                           },
+"notification_data":
+{ Args: { "o": Omit<Database["public"]['Tables']["notification_outbox"]['Row'], Database["public"]['Tables']["notification_outbox"]['ComputedFields']> }; Returns: Json
+                           },
+"notification_enabled":
+{ Args: { "p_kind": string,"p_user": string }; Returns: boolean
                            },
 "pgp_armor_headers":
 { Args: { "": string }; Returns: Record<string, unknown>[]
@@ -532,8 +645,23 @@ isOneToOne: false
 "post_due_recurring_all":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
+"push_endpoint_ok":
+{ Args: { "p_endpoint": string }; Returns: boolean
+                           },
+"push_public_key":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"queue_daily_notifications":
+{ Args: { "p_now"?: string }; Returns: number
+                           },
+"queue_notification":
+{ Args: { "p_actor": string,"p_household": string,"p_kind": string,"p_payload"?: Json,"p_ref": string }; Returns: undefined
+                           },
 "recurring_step":
 { Args: { "p_every": number,"p_frequency": string }; Returns: string
+                           },
+"remove_push_subscription":
+{ Args: { "p_endpoint": string }; Returns: undefined
                            },
 "request_change":
 { Args: { "p_kind": string,"p_payload": Json }; Returns: string
@@ -559,6 +687,9 @@ isOneToOne: false
 "restore_target":
 { Args: { "p_hid": string,"p_old": string,"p_table": string }; Returns: string
                            },
+"save_push_subscription":
+{ Args: { "p_auth": string,"p_endpoint": string,"p_p256dh": string }; Returns: undefined
+                           },
 "save_recap_prose":
 { Args: { "p_period": string,"p_prose": string,"p_stats": Json }; Returns: string
                            },
@@ -568,6 +699,25 @@ isOneToOne: false
 "set_monzo_me":
 { Args: { "p_username": string }; Returns: undefined
                            },
+"set_notification_prefs":
+{ Args: { "p": Json }; Returns: {
+              "balance": boolean,
+"balance_threshold_pence": number,
+"bills_today": boolean,
+"bills_tomorrow": boolean,
+"comments": boolean,
+"entries": boolean,
+"recap": boolean,
+"settle_ups": boolean,
+"updated_at": string,
+"user_id": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "notification_prefs"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "set_settle_day":
 { Args: { "p_day": number }; Returns: undefined
                            },

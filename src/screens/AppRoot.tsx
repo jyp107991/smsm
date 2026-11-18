@@ -4,7 +4,8 @@
  * and Bills as tabs (Insights waits for S5), the entry page and Settings, and the two sheets.
  */
 import { useEffect, useState } from 'react';
-import { useHousehold, useSession, useSyncStatus } from '../data';
+import { useAppBadge, useHousehold, useRefreshPush, useSession, useSyncStatus } from '../data';
+import { scrollToAnchor, useNotificationTaps } from '../ui/anchors';
 import { FEATURES } from '../ui/features';
 import { BottomTabs, Button, MAIN_TABS, TabPanel, ToastProvider, type MainTab } from '../ui/primitives';
 import { go, useRoute, type Route } from '../ui/router';
@@ -140,7 +141,13 @@ function MainApp() {
     : route.name === 'statement' ? `statement:${route.month}` : route.name;
   useEffect(() => {
     window.scrollTo(0, 0);
+    // NOT-2: a notification's path may name a part of the page (#comments, #approvals).
+    return scrollToAnchor();
   }, [path]);
+  // S8: the app icon's badge (NOT-3, INB-2), this phone's subscription checked on open, and notification taps.
+  useAppBadge();
+  useRefreshPush();
+  useNotificationTaps();
 
   return (
     <SheetsContext value={sheets}>

@@ -84,7 +84,8 @@ export default defineConfig(({ mode }) => ({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/version\.json$/, /^\/api\//],
         // S6b (ADD-8): POST /share (the share sheet) is answered by this, ahead of everything else.
-        importScripts: ['/share-target.js'],
+        // S8 (NOT-1, NOT-2): push shows a notification; a tap opens its path.
+        importScripts: ['/share-target.js', '/push.js'],
         // Latin font files are precached; the Korean slices (hundreds of small files, DESIGN §3.2) are not:
         // each is cached the first time a name or note needs it, and works offline from then on.
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}', '**/*-latin-*.woff2'],

@@ -22,4 +22,13 @@ grep -q '"name"' <<<"$manifest" || fail "manifest.webmanifest is not the manifes
 health=$(curl -fsS -X POST "${VITE_SUPABASE_URL}/rest/v1/rpc/health" -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
   -H "Content-Type: application/json" -d '{}') || fail "database health check did not answer"
 grep -q '"ok": *true' <<<"$health" || fail "database health check did not answer"
+# S8 (NOT-1): the push function has made its keys (the deploy calls it with ?init=1 just before this), so a phone's
+# push_public_key() answers. health() says so without the publishable key reaching push_config.
+for i in 1 2 3 4 5 6; do
+  grep -q '"push": *true' <<<"$health" && break
+  sleep 10
+  health=$(curl -fsS -X POST "${VITE_SUPABASE_URL}/rest/v1/rpc/health" -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+    -H "Content-Type: application/json" -d '{}') || true
+done
+grep -q '"push": *true' <<<"$health" || fail "the push function has not made its keys (push_public_key() would answer nothing)"
 echo "Smoke test passed: $APP at ${SHA::7}"
