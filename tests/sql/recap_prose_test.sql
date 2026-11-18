@@ -90,3 +90,11 @@ select save_recap_prose(:'last_month', '{}'::jsonb, :'first');                  
 reset role;
 select not has_function_privilege('anon', 'public.save_recap_prose(text, jsonb, text)', 'execute') as ok_ins2_anon_cannot_save;
 select has_function_privilege('authenticated', 'public.save_recap_prose(text, jsonb, text)', 'execute') as ok_ins2_members_can_save;
+
+-- S6b fresh review: nothing oversized is kept.
+set role authenticated;
+set request.jwt.claim.sub = :'A';
+select save_recap_prose('2020-01', '{"total":"£1.00"}'::jsonb, repeat('x', 2001));                -- expect error: wording too long
+select save_recap_prose('2020-01', jsonb_build_object('notes', repeat('y', 20000)), '{"headline":"x","aside":null}'); -- expect error: figures too large
+reset role;
+select count(*) = 0 as ok_set_review_nothing_oversized_kept from recaps where period = '2020-01' and household_id = :'hid';

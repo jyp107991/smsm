@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-18 ~01:30 UTC: S6a LIVE; S6b built and reviewed
+- S6a is live (PR #13, e107a77): receipt scan and itemise, Sort it later, loose wording, AI category guesses, on Cloudflare Workers AI through the app's Worker (no key). The live route refuses calls without sign-in (401) and from other sites (403).
+- Eval receipts found online (owner: "find receipts online"): 20 real photos from CORD v2 (CC BY 4.0) plus 20 generated UK receipts; 40 loose-wording phrases and 30 questions; `npm run eval:ai` and a manual "eval-ai" workflow. Choosing them found that bills abroad add tax on top: the scan now reads tax like service.
+- S6b built: AI wording for the monthly recap (guarded: every figure the month's own, in its own role), Ask smsm in Insights (the AI reads the question into a filter, the app computes), app-icon shortcuts, Android's share sheet. Tests first by a separate agent (core 64, Worker 32, SQL 19 + 12 refusals, data 29, screens 24, e2e 4). Fresh review: three blockers (kept wording not checked against changed figures; figures in the wrong role or uncheckable forms getting through; the article "A" becoming a name) and nine smaller items, all fixed with regression tests.
+- Next: release S6b, run the live eval, then S7 (Monzo CSV import).
+
 ## 2026-11-17 ~23:35 UTC: S5 LIVE; S6a built on Workers AI
 - S5 is live (PR #12 merged as 7ad6e76; deploy run 44196715178; version.json 7ad6e76): Insights, the monthly recap, settle day, year in review, on this day, comments. The toast hardening held on CI.
 - Owner: smart features use free Cloudflare Workers AI through the app's own Worker, as MacroPy does: no API key, no new secret. The Gemini plan and the Supabase function are gone.

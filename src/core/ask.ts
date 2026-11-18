@@ -78,8 +78,11 @@ export function askFilter(reply: AskReply, lookups: AskLookups): AskQuery | null
     filter.payer = person.id;
     chips.push({ key: 'payer', value: person.id, label: `Paid by ${person.name}` });
   }
-  const from = f.from !== undefined && realDay(f.from) ? f.from : undefined;
-  const to = f.to !== undefined && realDay(f.to) ? f.to : undefined;
+  // A date that isn't a real day, or a range the wrong way round, can't be answered as asked (never "all time").
+  if ((f.from !== undefined && !realDay(f.from)) || (f.to !== undefined && !realDay(f.to))) return null;
+  if (f.from !== undefined && f.to !== undefined && f.from > f.to) return null;
+  const from = f.from;
+  const to = f.to;
   if (from) filter.from = from;
   if (to) filter.to = to;
   if (from || to) chips.push({ key: 'dates', value: `${from ?? ''}..${to ?? ''}`, label: datesWords(from, to).replace(/^./, (c) => c.toUpperCase()) });
@@ -105,29 +108,42 @@ function counts(e: AskEntry): boolean {
   if (e.deleted || e.kind === 'settlement') return false;
   return e.kind === 'expense' ? e.splitMode !== null && COUNTED.has(e.splitMode) : e.splitMode !== 'for_other';
 }
-const signed = (e: AskEntry) => (e.kind === 'money_back' ? 0 - e.amount : e.amount);
+/** An entry's money for this question: the whole amount, or (asked about one person) what that person paid. */
+type Money = (e: AskEntry) => number;
+const whole: Money = (e) => e.amount;
+const signed = (e: AskEntry, money: Money) => (e.kind === 'money_back' ? 0 - money(e) : money(e));
 
-function measured(rows: readonly AskEntry[], measure: Measure): number {
+function measured(rows: readonly AskEntry[], measure: Measure, money: Money = whole): number {
   const expenses = rows.filter((e) => e.kind === 'expense');
   switch (measure) {
-    case 'total': return rows.reduce((t, e) => t + signed(e), 0);
+    case 'total': return rows.reduce((t, e) => t + signed(e, money), 0);
     case 'count': return expenses.length;
     case 'average': {
       if (expenses.length === 0) return 0;
-      const total = rows.reduce((t, e) => t + signed(e), 0);
+      const total = rows.reduce((t, e) => t + signed(e, money), 0);
       return Math.floor((2 * total + expenses.length) / (2 * expenses.length));
     }
-    case 'largest': return expenses.reduce((m, e) => Math.max(m, e.amount), 0);
+    case 'largest': return expenses.reduce((m, e) => Math.max(m, money(e)), 0);
   }
 }
 
 /** INS-9: the figure (code, never the AI), its sentence, and the groups when asked for (`_today` is kept for the pinned signature). */
 export function answer(entries: readonly AskEntry[], filter: AskFilter, measure: Measure, groupBy: GroupBy | null, _today: IsoDate, lookups: AskLookups):
   { figure: number; sentence: string; groups?: { key: string | null; label: string; figure: number }[] } {
-  const picked = applyFilter(entries, filter).filter((e) => counts(e) && (!filter.modes || filter.modes.length === 0 || (e.splitMode !== null && filter.modes.includes(e.splitMode))));
-  const figure = measured(picked, measure);
-  const money = measure !== 'count';
-  const head = money ? formatPence(figure as Pence) : `${String(figure)} ${figure === 1 ? 'entry' : 'entries'}`;
+  // "Paid by Sam" is what Sam paid: every entry Sam put money into, counted at Sam's part (as Insights' whoPaid),
+  // never the whole of an entry Sam paid most of.
+  const payer = filter.payer;
+  const rest: AskFilter = { ...filter };
+  delete rest.payer;
+  const money: Money = payer === undefined ? whole : (e) => e.paid[payer] ?? 0;
+  const picked = applyFilter(entries, payer === undefined ? filter : rest)
+    .filter((e) => counts(e) && (!filter.modes || filter.modes.length === 0 || (e.splitMode !== null && filter.modes.includes(e.splitMode))))
+    .filter((e) => payer === undefined || (e.paid[payer] ?? 0) > 0);
+  const figure = measured(picked, measure, money);
+  const amount = formatPence(figure as Pence);
+  // INS-9: the sentence says which figure it is (a biggest entry never reads like a total).
+  const head = measure === 'count' ? `${String(figure)} ${figure === 1 ? 'entry' : 'entries'}`
+    : measure === 'average' ? `Average ${amount} an entry` : measure === 'largest' ? `Biggest ${amount}` : amount;
   const cats = (filter.categories ?? []).map((id) => lookups.categories.find((c) => c.id === id)?.name ?? '').filter((n) => n !== '');
   const where = [
     ...(filter.chapters ?? []).map((id) => lookups.chapters.find((c) => c.id === id)?.name ?? '').filter((n) => n !== ''),
@@ -154,7 +170,7 @@ export function answer(entries: readonly AskEntry[], filter: AskFilter, measure:
       if (groupBy === 'country') return lookups.countries.find((c) => c.code === k)?.name ?? k ?? '';
       return k === null ? 'Everyday' : (lookups.chapters.find((c) => c.id === k)?.name ?? '');
     };
-    groups = [...byKey].map(([k, rows]) => ({ key: k, label: label(k), figure: measured(rows, measure) }));
+    groups = [...byKey].map(([k, rows]) => ({ key: k, label: label(k), figure: measured(rows, measure, money) }));
   }
   groups = groups.filter((g) => g.figure !== 0);
   groups.sort((a, b) => (groupBy === 'month' ? String(a.key).localeCompare(String(b.key)) : b.figure - a.figure));

@@ -256,8 +256,10 @@ describe('Insights → "Ask smsm" (INS-9; AI.md §3.5, §4)', () => {
 // ─────────────────────────────── INS-2: the recap's wording ───────────────────────────────
 
 const TEMPLATE = 'October cost £1,365.50 together.';
-const WORDING = { headline: 'October came to £1,365.50 together.', aside: 'A paid £1,000.00 of it.' };
-const kept = (prose: unknown): RecapRow => ({ household_id: HID, period: '2026-10', stats: {}, prose: JSON.stringify(prose), created_at: '2026-11-01T08:00:00.000Z' });
+const WORDING = { headline: 'October came to £1,365.50 together.', aside: 'Person A paid £1,000.00 of it.' };
+// Kept with the figures it was written for, as save_recap_prose always keeps it (builder's correction after the fresh
+// review: kept wording is shown only while the month's figures are the same).
+const kept = (prose: unknown): RecapRow => ({ household_id: HID, period: '2026-10', stats: { total: '£1,365.50' }, prose: JSON.stringify(prose), created_at: '2026-11-01T08:00:00.000Z' });
 async function headline(layer: DataLayer) {
   await screen.findByRole('region', { name: 'Balance' });
   at('/recap/2026-10');

@@ -503,7 +503,10 @@ export function createMemoryApi(
         return next;
       }),
     recapProse: (hid, period) =>
-      call('recapProse', { period }, () => (tables.recaps ?? []).find((r) => r.household_id === hid && hid === myHousehold() && r.period === period)?.prose ?? null),
+      call('recapProse', { period }, () => {
+        const row = (tables.recaps ?? []).find((r) => r.household_id === hid && hid === myHousehold() && r.period === period);
+        return row ? { prose: row.prose, stats: row.stats } : null;
+      }),
     saveRecapProse: (period, stats, prose) =>
       call('saveRecapProse', { period, stats, prose }, () => {
         const hid = myHousehold();

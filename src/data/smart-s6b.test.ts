@@ -122,7 +122,7 @@ const OCTOBER_STATS = {
   bar: [{ name: 'Rent & bills', total: '£1,000.00' }, { name: 'Groceries', total: '£240.50' }, { name: 'Eating out', total: '£125.00' }],
   paid: { A: '£1,000.00', B: '£365.50' },
 };
-const WORDING = { headline: 'October came to £1,365.50 together.', aside: 'A paid £1,000.00 of it.' };
+const WORDING = { headline: 'October came to £1,365.50 together.', aside: 'Person A paid £1,000.00 of it.' };
 const NAMED = { headline: 'October came to £1,365.50 together.', aside: 'Jae paid £1,000.00 of it.' };
 const stored = (prose: unknown, period = '2026-10'): RecapRow => ({
   household_id: HID, period, stats: OCTOBER_STATS, prose: typeof prose === 'string' ? prose : JSON.stringify(prose), created_at: '2026-11-01T08:00:00.000Z',

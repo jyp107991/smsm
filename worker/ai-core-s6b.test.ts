@@ -187,7 +187,7 @@ describe('recap and ask: prompts and requests, least data (INS-2, INS-9; AI.md �
 describe('recap replies (INS-2; AI.md §3.4, §4, §5)', () => {
   it('INS-2: a good reply is valid, passes the guard, and the names go in on the phone', () => {
     const v = read('recap', 'recap-good');
-    expect(v).toEqual({ ok: true, data: { headline: 'October came to £1,365.50 together, about £120 less than usual.', aside: 'A paid £1,000.00 of it, mostly Rent & bills.' } });
+    expect(v).toEqual({ ok: true, data: { headline: 'October came to £1,365.50 together, about £120 less than usual.', aside: 'Person A paid £1,000.00 of it, mostly Rent & bills.' } });
     if (!v.ok) return;
     expect(guard()(STATS, v.data as { headline: string; aside: string | null }, WHO)).toEqual({
       headline: 'October came to £1,365.50 together, about £120 less than usual.', aside: 'Jae paid £1,000.00 of it, mostly Rent & bills.',
@@ -318,7 +318,7 @@ describe('POST /api/ai: recap and ask (INS-2, INS-9; AI.md §2, §4)', () => {
     const db = rpc(1);
     const AI = ai(replyFile('recap-good'));
     const a = await answer(await handleAi()(request(RECAP), env(AI), db.impl));
-    expect(a).toEqual({ ok: true, data: { headline: 'October came to £1,365.50 together, about £120 less than usual.', aside: 'A paid £1,000.00 of it, mostly Rent & bills.' } });
+    expect(a).toEqual({ ok: true, data: { headline: 'October came to £1,365.50 together, about £120 less than usual.', aside: 'Person A paid £1,000.00 of it, mostly Rent & bills.' } });
     expect(db.calls).toEqual([{ p_kind: 'recap' }]);
     expect(AI.run.mock.calls[0]?.[0]).toBe(core().MODELS.recap[0]);
     const sent = JSON.stringify(AI.run.mock.calls[0]?.[1]);

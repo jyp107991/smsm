@@ -37,8 +37,10 @@
  *         number only if it is one of those figures in pounds, a number written in a note, or the period's year;
  *       - the headline or aside uses an advice or judgement word, whole words, any case: "should", "too much",
  *         "overspent", "blame" (AI.md §3.4: no advice, no judgement about either person).
- *     Otherwise the same two sentences (trimmed), with "A" and "B" standing alone (capitals, as whole words, also
- *     before an apostrophe: "A’s") replaced by names.A and names.B. "B&Q", "M&S" and the article "a" are untouched.
+ *     Otherwise the same two sentences (trimmed), with "Person A" and "Person B" (also before an apostrophe:
+ *     "Person A’s") replaced by names.A and names.B. A bare "A" stays an article ("A quiet October"); "B&Q" and "M&S"
+ *     are untouched. (Corrected by the builder after the fresh review: a bare capital "A" is also the article that
+ *     opens many sentences, so the people are "Person A" and "Person B" in the prompt and the reply.)
  *
  * Until src/core/wording.ts exists it is loaded by a computed path (so this file type-checks and each test fails on
  * the missing module); once it exists this can become `import * as wording from './wording'`.
@@ -187,7 +189,7 @@ describe('wordingGuard: every number is one of the month’s (INS-2; AI.md §3.4
   });
 
   it('INS-2: who paid, the bar and the usual are all figures of the month', () => {
-    expect(guard('A paid £1,000.00 and B £365.50.')).not.toBeNull();
+    expect(guard('Person A paid £1,000.00 and Person B £365.50.')).not.toBeNull();
     expect(guard(GOOD, 'Groceries were £240.50; the usual is £1,485.00.')).not.toBeNull();
   });
 
@@ -245,8 +247,8 @@ describe('wordingGuard: length, tone and names (INS-2; AI.md §3.4)', () => {
   });
 
   it('INS-2: A and B become the names on this phone', () => {
-    expect(guard('A paid £1,000.00 and B £365.50.')).toEqual({ headline: 'Jae paid £1,000.00 and Sam £365.50.', aside: null });
-    expect(guard(GOOD, 'Most of it was A’s rent.')).toEqual({ headline: GOOD, aside: 'Most of it was Jae’s rent.' });
+    expect(guard('Person A paid £1,000.00 and Person B £365.50.')).toEqual({ headline: 'Jae paid £1,000.00 and Sam £365.50.', aside: null });
+    expect(guard(GOOD, 'Most of it was Person A’s rent.')).toEqual({ headline: GOOD, aside: 'Most of it was Jae’s rent.' });
     expect(core().wordingGuard(stats(), { headline: 'B paid £365.50.', aside: null }, { A: 'Sam', B: 'Jae' })).toEqual({ headline: 'Jae paid £365.50.', aside: null });
   });
 

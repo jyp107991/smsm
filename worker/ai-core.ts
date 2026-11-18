@@ -74,7 +74,7 @@ export const recapStatsSchema = z.object({
   usual: shown.nullable(),
   comparison: z.object({ direction: z.enum(['less', 'more', 'same']), amount: shown.nullable() }).strict().nullable(),
   bar: z.array(z.object({ name: z.string().max(80), total: shown }).strict()).max(5),
-  notes: z.array(z.string().max(200)).max(3),
+  notes: z.array(z.string().max(400)).max(3),
   paid: z.object({ A: shown, B: shown }).strict(),
 }).strict();
 export type RecapStatsInput = z.infer<typeof recapStatsSchema>;

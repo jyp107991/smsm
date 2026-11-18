@@ -124,7 +124,7 @@ export interface Api {
   /** SET-4: the household's settle day (1–28) or null. */
   setSettleDay(day: number | null): Promise<void>;
   /** S6b (INS-2): a finished month's stored AI wording (JSON text, people as A/B), and keeping it once. */
-  recapProse(householdId: string, period: string): Promise<string | null>;
+  recapProse(householdId: string, period: string): Promise<{ prose: string | null; stats: Json } | null>;
   saveRecapProse(period: string, stats: Json, prose: string): Promise<string>;
   /** S6a: a receipt photo into the private bucket (never replaced or deleted), and an address to show one. */
   uploadReceipt(path: string, photo: Blob): Promise<void>;
@@ -271,8 +271,9 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     },
     setSettleDay: async (day) => { unwrap(await db.rpc('set_settle_day', { p_day: day as number })); },
     recapProse: async (hid, period) => {
-      const rows = unwrap(await db.from('recaps').select('prose').eq('household_id', hid).eq('period', period).limit(1)) ?? [];
-      return rows[0]?.prose ?? null;
+      const rows = unwrap(await db.from('recaps').select('prose, stats').eq('household_id', hid).eq('period', period).limit(1)) ?? [];
+      const row = rows[0];
+      return row ? { prose: row.prose, stats: row.stats } : null;
     },
     saveRecapProse: async (period, stats, prose) => {
       const kept = unwrap(await db.rpc('save_recap_prose', { p_period: period, p_stats: stats, p_prose: prose }));

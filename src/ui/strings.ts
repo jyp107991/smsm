@@ -635,6 +635,7 @@ export const strings = {
     groups: 'By group',
     matching: 'Matching entries',
     seeAll: 'See all in Activity',
+    entries: (n: number) => (n === 1 ? '1 entry' : `${String(n)} entries`),
   },
   /** S6a: smart features (SCAN-1…5, ADD-9, CAT-2 step 4). */
   smart: {

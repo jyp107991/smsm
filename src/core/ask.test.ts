@@ -62,7 +62,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { IsoDate } from './dates';
 import { applyFilter, type Filter, type FilterEntry } from './filters';
-import { sharedSpend, type InsightEntry, type Period } from './insights';
+import { sharedSpend, whoPaid, type InsightEntry, type Period } from './insights';
 import { pence } from './money';
 import type { SplitMode, UserId } from './split';
 
@@ -208,7 +208,10 @@ describe('askFilter: the AI’s reading becomes the app’s own filter (INS-9; A
     const q = query({ from: '2026-10-01', to: '2026-10-31' });
     expect(q?.filter).toEqual({ from: '2026-10-01', to: '2026-10-31' });
     expect(q?.chips.filter((c) => c.key === 'dates')).toHaveLength(1);
-    expect(query({ from: '2026-02-30', to: '2026-10-31' })?.filter).toEqual({ to: '2026-10-31' });
+    // Builder's correction after the fresh review: a date that isn't a real day can't be answered as asked; dropping
+    // it would answer a wider question ("until 31 Oct"). The same for a range the wrong way round.
+    expect(query({ from: '2026-02-30', to: '2026-10-31' })).toBeNull();
+    expect(query({ from: '2026-11-01', to: '2026-10-01' })).toBeNull();
     expect(query({})?.chips).toEqual([]);
   });
 
@@ -300,12 +303,18 @@ describe('answer: code computes the figure (INS-9; AI.md §1.2, §3.5)', () => {
       from: fc.option(fc.constantFrom('2026-09-01', '2026-10-05', '2026-11-03'), { nil: undefined }),
       to: fc.option(fc.constantFrom('2026-10-12', '2026-11-06', '2026-12-31'), { nil: undefined }),
     });
+    // Builder's correction after the fresh review: "paid by Sam" is what Sam paid (Insights' whoPaid over the same rows),
+    // not the whole of each entry Sam paid most of; and a range the wrong way round is no question (null).
     fc.assert(fc.property(arb, (raw) => {
       const filters = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined));
       const q = core().askFilter({ measure: 'total', filters }, LOOKUPS);
+      if (raw.from !== undefined && raw.to !== undefined && raw.from > raw.to) { expect(q).toBeNull(); return; }
       expect(q).not.toBeNull();
       if (!q) return;
-      expect(core().answer(ENTRIES, q.filter, 'total', null, TODAY, LOOKUPS).figure).toBe(insightsTotal(q.filter));
+      const { payer, ...rest } = q.filter;
+      const want = payer === undefined ? insightsTotal(q.filter)
+        : whoPaid(applyFilter(ENTRIES, rest).filter((r) => r.kind !== 'settlement') as unknown as InsightEntry[], ALL_TIME, [JAE, SAM])[payer];
+      expect(core().answer(ENTRIES, q.filter, 'total', null, TODAY, LOOKUPS).figure).toBe(want);
     }), { numRuns: 200 });
   });
 });

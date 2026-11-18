@@ -8,7 +8,7 @@ import { X } from 'lucide-react';
 import { useId, useMemo, useState, type SyntheticEvent } from 'react';
 import { answer, askFilter, type AskEntry, type AskLookups, type AskQuery, type Chip } from '../../core/ask';
 import { applyFilter } from '../../core/filters';
-import { pence } from '../../core/money';
+import { formatPence, pence, type Pence } from '../../core/money';
 import type { SplitMode } from '../../core/split';
 import { askSmsm, useCategories, useChapters, useDataLayer, useEntries, useOnline, useSmartFeatures, type ExpenseRow } from '../../data';
 import { Button, Field } from '../../ui/primitives';
@@ -119,11 +119,12 @@ function AskBox() {
         />
         <Button type="submit" disabled={question.trim() === '' || busy}>{strings.ask.ask}</Button>
       </form>
-      {busy ? <p role="status" className="text-secondary text-ink-2 m-0">{strings.ask.reading}</p> : null}
-      {cant ? <p role="status" className="text-secondary text-ink-2 m-0">{strings.ask.cant}</p> : null}
+      {/* One live line, always there, so a screen reader hears each change (reading, the answer, or what it can do). */}
+      <p role="status" className={busy || cant ? 'text-secondary text-ink-2 m-0' : 'text-sentence nums-list m-0'}>
+        {busy ? strings.ask.reading : cant ? strings.ask.cant : (query && result ? result.sentence : '')}
+      </p>
       {query && result ? (
         <div className="flex flex-col gap-3">
-          <p role="status" className="text-sentence nums-list m-0">{result.sentence}</p>
           {query.chips.length > 0 ? (
             <ul aria-label={strings.ask.filters} className="m-0 flex list-none flex-wrap gap-2 p-0">
               {query.chips.map((c) => (
@@ -146,7 +147,7 @@ function AskBox() {
               {result.groups.map((g) => (
                 <li key={String(g.key)} className="border-line flex min-h-11 items-baseline justify-between gap-4 border-b py-2 last:border-b-0">
                   <span className="text-body min-w-0 break-words">{g.label}</span>
-                  <span className="text-body nums-list shrink-0">{query.measure === 'count' ? String(g.figure) : formatMoney(g.figure)}</span>
+                  <span className="text-body nums-list shrink-0">{query.measure === 'count' ? strings.ask.entries(g.figure) : formatPence(g.figure as Pence)}</span>
                 </li>
               ))}
             </ul>
@@ -175,8 +176,4 @@ function AskBox() {
       ) : null}
     </section>
   );
-}
-
-function formatMoney(p: number): string {
-  return `${p < 0 ? '−' : ''}£${(Math.abs(p) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
