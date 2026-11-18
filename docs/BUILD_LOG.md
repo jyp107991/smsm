@@ -266,3 +266,8 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 
 ## 2026-11-16: design v1
 - First spec and schema (superseded).
+
+## 2026-11-18 ~02:15 UTC: S6b LIVE; S7 started
+- **S6b live** (PR #14, `ab7d1ce`, deploy run 44218248892 green): `version.json` shows `ab7d1ce`; the manifest has the three shortcuts (`/?do=add|scan|settle`) and the share target (`/share`).
+- **Live eval blocked on a permission:** every Workers AI REST call from the eval workflow returned `401 Authentication error` (diagnostics now listed in the report). The Cloudflare token stored as `CLOUDFLARE_API_TOKEN` needs **Workers AI – Read** and **Workers AI – Edit**; owner asked. The app's own scanning is unaffected (it uses the Worker's AI binding, not this token).
+- **S7 started:** brief `docs/slices/S7.md`; core `src/core/csv.ts` (CSV reading, Monzo preset, mapping, export) and `src/core/statement.ts`; migration `restore_backup` (adds only) and `storage_used`. Tests being written first by a separate agent. Verify green (2060 tests, 194 SQL checks).
