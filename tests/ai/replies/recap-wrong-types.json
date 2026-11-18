@@ -1,0 +1,8 @@
+{
+  "response": "{\"headline\": 136550, \"aside\": [\"Rent & bills\"]}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

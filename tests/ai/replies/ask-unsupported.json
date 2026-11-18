@@ -1,0 +1,8 @@
+{
+  "response": "{\"unsupported\": true}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

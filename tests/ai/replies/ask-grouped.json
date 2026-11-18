@@ -1,0 +1,16 @@
+{
+  "response": {
+    "measure": "count",
+    "filters": {
+      "from": "2026-01-01",
+      "to": "2026-10-31",
+      "payer": "B"
+    },
+    "group_by": "month"
+  },
+  "usage": {
+    "prompt_tokens": 380,
+    "completion_tokens": 44,
+    "total_tokens": 424
+  }
+}

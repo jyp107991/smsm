@@ -1,0 +1,8 @@
+{
+  "response": "{\"headline\": \"October came to £1,365.50 together, about £120 less than usual, which is a lovely quiet month for the two of you, with Rent & bills doing most of it.\", \"aside\": null}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

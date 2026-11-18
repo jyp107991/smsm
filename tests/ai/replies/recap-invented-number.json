@@ -1,0 +1,8 @@
+{
+  "response": "{\"headline\": \"October came to £1,400 together, about £135 less than usual.\", \"aside\": null}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

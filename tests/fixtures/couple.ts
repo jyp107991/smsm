@@ -19,6 +19,11 @@
  * S6a (docs/slices/S6.md "Data"): the smart-feature service (`ai`), where the phone keeps photos (`photos`) and the
  * photo shrinker (`downscale`) can be passed and reach the data layer's options, so tests use fakes (jsdom has no
  * canvas or IndexedDB, and never the network). Category memory can be seeded (`categoryMemory`).
+ *
+ * S6b (docs/slices/S6b.md "Data"): stored recap wording can be seeded (`recaps`, rows of the `recaps` table); the
+ * in-memory Api keeps them in `controls.tables.recaps`, reads them for the signed-in household, and answers
+ * `saveRecapProse(period, stats, prose)` (its call name in controls.calls) as the save_recap_prose RPC does: insert-only,
+ * returning the stored prose. It honours controls.refuse / online for it like any other call.
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { createMemoryApi, type MemoryControls, type MemoryTables } from '../../src/data/memoryApi';
@@ -33,6 +38,7 @@ export type RecurringRow = Database['public']['Tables']['recurring']['Row'];
 export type InboxItemRow = Database['public']['Tables']['inbox_items']['Row'];
 export type ChapterRow = Database['public']['Tables']['chapters']['Row'];
 export type CommentRow = Database['public']['Tables']['comments']['Row'];
+export type RecapRow = Database['public']['Tables']['recaps']['Row'];
 
 export const HID = '00000000-0000-4000-8000-0000000000c1';
 export const JAE_ID = '00000000-0000-4000-8000-0000000000a1';
@@ -141,6 +147,8 @@ export function couple(
     ai?: unknown; photos?: unknown; downscale?: unknown;
     /** S6a: what the household has taught the app (category_memory rows). */
     categoryMemory?: MemoryTables['categoryMemory'];
+    /** S6b: recap wording already kept on the "server" (recaps rows). */
+    recaps?: RecapRow[];
     /** The household's approved default split (PPL-5), e.g. { [JAE_ID]: 60, [SAM_ID]: 40 }. */
     defaultRatio?: Record<string, number> | null;
     /** The phone's storage and network, to restart the app over the same storage or start offline. */
@@ -168,6 +176,8 @@ export function couple(
     households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
     settlements: opts.settlements ?? [], activity: opts.activity ?? [], recurring: opts.recurring ?? [], inboxItems: opts.inboxItems ?? [],
     chapters: opts.chapters ?? [], comments: opts.comments ?? [], categoryMemory: opts.categoryMemory ?? [],
+    // `recaps` is S6b's addition to the in-memory Api (docs/slices/S6b.md "Data").
+    recaps: opts.recaps ?? [],
   } as Partial<MemoryTables>;
   const apiOpts = { user: { userId: me, email: null }, today: () => today } as Parameters<typeof createMemoryApi>[1];
   const { api, controls } = createMemoryApi(seed, apiOpts);

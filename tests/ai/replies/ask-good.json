@@ -1,0 +1,20 @@
+{
+  "id": "chatcmpl-test",
+  "object": "chat.completion",
+  "model": "test-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```json\n{\"measure\":\"total\",\"filters\":{\"categories\":[\"Eating out\"],\"countries\":[\"JP\"]}}\n```"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 380,
+    "completion_tokens": 50,
+    "total_tokens": 430
+  }
+}

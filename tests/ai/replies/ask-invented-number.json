@@ -1,0 +1,8 @@
+{
+  "response": "{\"measure\": \"total\", \"filters\": {\"categories\": [\"Eating out\"], \"countries\": [\"JP\"]}, \"answer_pence\": 61240}",
+  "usage": {
+    "prompt_tokens": 260,
+    "completion_tokens": 40,
+    "total_tokens": 300
+  }
+}

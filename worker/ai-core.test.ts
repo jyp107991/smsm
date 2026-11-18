@@ -160,7 +160,8 @@ describe('prompts and requests (SCAN-1, ADD-9, CAT-2; AI.md §1, §2)', () => {
       expect(prompt.split('\n')[0]).toMatch(/^version: \d+$/);
       const schema = JSON.parse(readFileSync(promptPath(task, 'schema.json'), 'utf8')) as { type?: string; properties?: Record<string, unknown> };
       expect(schema.type).toBe('object');
-      const want = { scan: SCAN_KEYS, parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
+      // S6b (18 Nov): the scan schema gains tax_pence, so a model can report tax on top of the lines (src/core/itemise-tax.test.ts).
+      const want = { scan: [...SCAN_KEYS, 'tax_pence'].sort(), parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
       expect(Object.keys(schema.properties ?? {}).sort()).toEqual(want);
     });
   }
