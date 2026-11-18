@@ -39,7 +39,6 @@ Each line: ids, then where and why. `npm run trace` reads this list; remove an i
 - CHP-1, CHP-2, CHP-3, CHP-4, CHP-5, CHP-6, PLC-1, PLC-2, PLC-3, PLC-4, PLC-5, PLC-6, PLC-7: S4, chapters and places.
 - INS-1, INS-2, INS-3, INS-4, INS-5, INS-6, INS-7, INS-8, SET-4, ACT-4: S5, insights, recap, settle day, comments.
 - ADD-8, ADD-9, SCAN-1, SCAN-2, SCAN-3, SCAN-4, SCAN-5, INS-9, TXT-5: S6, smart features, share target and shortcuts.
-- IMP-1, IMP-3, EXP-1, EXP-3: S7, import and export (the JSON backup download part of EXP-1 is built and tested in S2).
 - NOT-1, NOT-2, NOT-3: S8, notifications.
 
 ## Ideas (not in scope until promoted)

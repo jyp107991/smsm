@@ -1,12 +1,13 @@
 /**
  * Settings (SPEC 6.4 for S2; PPL-1, PPL-4, PPL-5, SET-2, EXP-1): the two of you, with Request a change and
  * any approval waiting; the usual split; your monzo.me name; the join code and Share invite until the
- * household is full; Download a backup; the theme; the version; Sign out (warning first if changes wait).
+ * household is full; the theme; the version; Sign out (warning first if changes wait). S7: import from a bank
+ * statement and its rules, export (entries CSV, monthly statement, Download a backup), restore, storage.
  */
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
-  backupJson, build, ChangesWaitingError, monzoNameOf, requestChange, setMonzoMe, signOut, useChangeRequests,
+  build, ChangesWaitingError, monzoNameOf, requestChange, setMonzoMe, signOut, useChangeRequests,
   setSmartFeatures, useHousehold, useSmartFeatures, useSyncStatus,
 } from '../../data';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -27,6 +28,8 @@ import { savePending } from '../settle/monzo';
 import { Toggle } from '../entry/RecurringParts';
 import { WhereYouAre } from '../places/WhereYouAre';
 import { SettleDay } from './SettleDay';
+import { ExportSection, RestoreSection, StorageSection } from './Export';
+import { ImportRulesSection, ImportSection } from './Import';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId();
@@ -124,15 +127,6 @@ export function Settings() {
         </Section>
       ) : null}
 
-      <Section title={strings.settings.backupTitle}>
-        <p className="text-secondary text-ink-2 m-0">{strings.settings.backupLine}</p>
-        <div>
-          <Button variant="plain" onClick={() => { download(); toast.show({ message: strings.settings.backupDone }); }}>
-            {strings.settings.backup}
-          </Button>
-        </div>
-      </Section>
-
       {/* CAT-1: the household's categories, edited on their own page. */}
       <Section title={strings.settings.spending}>
         <div className="flex flex-col">
@@ -157,6 +151,23 @@ export function Settings() {
           </a>
           <p className="text-secondary text-ink-2 m-0">{strings.chapters.linkLine}</p>
         </div>
+      </Section>
+
+      {/* S7: bank statements in, entries out, backups back in, and what it all takes up (IMP-1, IMP-3, EXP-1, EXP-3). */}
+      <Section title={strings.imports.section}>
+        <ImportSection />
+      </Section>
+      <Section title={strings.imports.rulesSection}>
+        <ImportRulesSection />
+      </Section>
+      <Section title={strings.exports.section}>
+        <ExportSection />
+      </Section>
+      <Section title={strings.restore.section}>
+        <RestoreSection />
+      </Section>
+      <Section title={strings.storage.section}>
+        <StorageSection />
       </Section>
 
       <Section title={strings.places.whereYouAre}>
@@ -184,18 +195,6 @@ export function Settings() {
       {partner ? <SplitSheet open={splitSheet} onClose={() => { setSplitSheet(false); }} /> : null}
     </div>
   );
-}
-
-function download() {
-  const blob = new Blob([backupJson({ appVersion: build.version })], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `smsm-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
 }
 
 /**

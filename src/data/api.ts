@@ -21,6 +21,21 @@ export type RecurringRow = Tables['recurring']['Row'];
 export type InboxItemRow = Tables['inbox_items']['Row'];
 export type ChapterRow = Tables['chapters']['Row'];
 export type CommentRow = Tables['comments']['Row'];
+/** S7 (IMP-3): a bank row decided "Not ours", kept only as a hash of its bank id; and an "always do this" rule. */
+export type ImportIgnoreRow = Tables['import_ignores']['Row'];
+export type ImportRuleRow = Tables['import_rules']['Row'];
+/** What the phone writes to `import_rules` (the server stamps `created_at`). */
+export type ImportRuleWrite = Pick<ImportRuleRow, 'id' | 'household_id' | 'match_text' | 'decision' | 'category_id' | 'split_mode' | 'split_params'>;
+/** S7 (EXP-1): one call's worth of a backup's rows for restore_backup (at most 500 rows in all). */
+export interface RestoreRows {
+  categories?: Json[]; chapters?: Json[]; recurring?: Json[]; expenses?: Json[]; settlements?: Json[]; comments?: Json[];
+  category_memory?: Json[]; import_rules?: Json[];
+}
+export type RestoreTable = keyof RestoreRows;
+/** What restore_backup answers: rows added and rows left alone, by table. */
+export interface RestoreCounts { added: Partial<Record<RestoreTable, number>>; skipped: Partial<Record<RestoreTable, number>> }
+/** S7 (EXP-3): the database's size and this household's receipt photos, in bytes. */
+export interface StorageUsed { database_bytes: number; photo_bytes: number }
 /** The columns the phone owns on a comment (ACT-4). */
 /** S6a: an Inbox item the phone adds (a receipt to sort later, SCAN-4). */
 export type InboxItemWrite = Pick<InboxItemRow, 'id' | 'household_id' | 'source' | 'status' | 'payload' | 'receipt_path'>;
@@ -33,6 +48,8 @@ export type CategoryMemoryWrite = Pick<CategoryMemoryRow, 'household_id' | 'key'
 export const EXPENSE_WRITE_COLUMNS = [
   'id', 'household_id', 'kind', 'description', 'amount_pence', 'date', 'category_id', 'chapter_id', 'paid', 'paid_via',
   'split_mode', 'split_params', 'shares', 'notes', 'tags', 'country', 'refund_of', 'source', 'recurring_id', 'occurrence_date',
+  // S7 (IMP-3): the bank's own id for an imported row (unique per household and source: never imported twice).
+  'external_id',
   'place', 'lat', 'lng', 'original_amount', 'original_currency', 'fx_rate',
   // S6a: the receipt photo, its lines (each marked shared or not), the receipt's own total, and whether the category
   // was an AI guess.
@@ -131,6 +148,19 @@ export interface Api {
   receiptUrl(path: string): Promise<string>;
   /** S6a (SCAN-4): a receipt to sort later. */
   insertInboxItem(row: InboxItemWrite): Promise<InboxItemRow>;
+  /** S7 (IMP-3): the hashes of bank rows decided "Not ours", and the household's "always do this" rules. */
+  importIgnores(householdId: string): Promise<ImportIgnoreRow[]>;
+  /** Stored once; a second insert of the same hash (a replay) is a no-op. */
+  insertImportIgnore(row: ImportIgnoreRow): Promise<ImportIgnoreRow>;
+  deleteImportIgnore(row: ImportIgnoreRow): Promise<void>;
+  importRules(householdId: string): Promise<ImportRuleRow[]>;
+  /** Insert or replace by (household, match text): the latest choice for a description wins. */
+  upsertImportRule(row: ImportRuleWrite): Promise<ImportRuleRow>;
+  deleteImportRule(id: string): Promise<void>;
+  /** S7 (EXP-1): restore_backup: adds what isn't here (never changes or deletes); `people` maps backup ids to members. */
+  restoreBackup(people: Record<string, string>, rows: RestoreRows): Promise<RestoreCounts>;
+  /** S7 (EXP-3): storage_used. */
+  storageUsed(): Promise<StorageUsed>;
   /** One channel per household; calls `onChange` with the table that changed. Returns an unsubscribe function. */
   watchHousehold(householdId: string, onChange: (table: WatchedTable) => void, onStatus: (s: ChannelStatus) => void): () => void;
 }
@@ -185,6 +215,19 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<PgResu
     out.push(...rows);
     if (rows.length < PAGE) return out;
   }
+}
+
+/** restore_backup's answer, read defensively (a number per table, added and skipped). */
+export function readCounts(raw: unknown): RestoreCounts {
+  const side = (v: unknown): Partial<Record<RestoreTable, number>> => {
+    const out: Partial<Record<RestoreTable, number>> = {};
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      for (const [k, n] of Object.entries(v)) if (typeof n === 'number') out[k as RestoreTable] = n;
+    }
+    return out;
+  };
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return { added: side(o['added']), skipped: side(o['skipped']) };
 }
 
 function authUser(session: Session | null): AuthUser | null {
@@ -303,6 +346,26 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
         if (updated.error || updated.data) return must(updated, 'chapter');
       }
       return must(await db.from('chapters').upsert(row, { onConflict: 'id' }).select().single(), 'chapter');
+    },
+    importIgnores: (hid) =>
+      allRows<ImportIgnoreRow>((from, to) => db.from('import_ignores').select('*').eq('household_id', hid).order('id_hash').range(from, to)),
+    insertImportIgnore: async (row) => {
+      // A replay of an insert that already landed is fine: the hash is there either way.
+      unwrap(await db.from('import_ignores').upsert(row, { onConflict: 'household_id,source,id_hash', ignoreDuplicates: true }));
+      return row;
+    },
+    deleteImportIgnore: async (row) => {
+      unwrap(await db.from('import_ignores').delete().eq('household_id', row.household_id).eq('source', row.source).eq('id_hash', row.id_hash));
+    },
+    importRules: async (hid) => unwrap(await db.from('import_rules').select('*').eq('household_id', hid).order('created_at')) ?? [],
+    upsertImportRule: async (row) =>
+      must(await db.from('import_rules').upsert(row, { onConflict: 'household_id,match_text' }).select().single(), 'import rule'),
+    deleteImportRule: async (id) => { unwrap(await db.from('import_rules').delete().eq('id', id)); },
+    restoreBackup: async (people, rows) => readCounts(must(await db.rpc('restore_backup', { p_people: people, p_rows: rows as Json }), 'restore_backup')),
+    storageUsed: async () => {
+      const raw = must(await db.rpc('storage_used', {}), 'storage_used') as Record<string, unknown>;
+      const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v ?? 0));
+      return { database_bytes: n(raw['database_bytes']), photo_bytes: n(raw['photo_bytes']) };
     },
     watchHousehold(householdId, onChange, onStatus) {
       // A topic of its own each time: supabase-js hands back an existing channel with the same topic, so a

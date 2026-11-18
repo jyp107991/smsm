@@ -181,6 +181,25 @@ export function addExpense(input: ExpenseDraft & { id?: string }, layer = active
 }
 
 /**
+ * S7 (IMP-3): an entry kept from a bank statement: the person's entry as `addExpense` makes it (at once, offline
+ * too), marked with where it came from and the bank's own id, so the same row can never be imported twice
+ * (the expenses_external index). Its chapter and country are as given (an import is history, not "now").
+ */
+export function addImportedExpense(
+  input: ExpenseDraft & { id?: string },
+  from: { source: 'monzo' | 'csv'; externalId: string },
+  layer = activeDataLayer(),
+): string {
+  const { id, ...draft } = input;
+  const ctx = context(layer);
+  if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
+  const built = expenseRowFor(ctx, { chapterId: null, ...draft });
+  const row: ExpenseRow = { ...built.row, id: id ?? built.row.id, source: from.source, external_id: from.externalId };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
+  return row.id;
+}
+
+/**
  * ACT-5: either person can edit any entry; only the fields given change. Also how a refused write is fixed
  * (OFF-5): edit the kept entry by its id and it is saved again; the problem clears once it is stored.
  */

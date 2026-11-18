@@ -73,12 +73,12 @@ export function formatPlainPounds(p: Pence): string {
  * Zero is allowed (the caller decides what it means); junk gives null.
  */
 export function parseStatementAmount(text: string): number | null {
-  let s = text.normalize('NFKC').trim().replace(/[£\s]/gu, '');
+  // Every "£" and space goes, wherever it is ("£ 1 234.00", "-£5").
+  let s = text.normalize('NFKC').replace(/[£\s]/gu, '');
   let sign = 1;
   const bracket = /^\((.*)\)$/u.exec(s);
   if (bracket) { sign = -1; s = bracket[1] ?? ''; }
   if (/^[-−]/u.test(s)) { sign = -sign; s = s.slice(1); } else if (s.startsWith('+')) s = s.slice(1);
-  s = s.replace(/^£/u, '');
   const m = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/u.exec(s) ?? /^()\.(\d{1,2})$/u.exec(s);
   if (!m) return null;
   const whole = m[1] ? Number(m[1].replace(/,/g, '')) : 0;

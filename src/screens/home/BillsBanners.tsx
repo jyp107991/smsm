@@ -1,5 +1,5 @@
 /**
- * S3 on Home: the Inbox with its count when a bill waits (INB-2), and "Netflix looks monthly. Make it a
+ * S3 on Home: the Inbox with its count when a bill (or, S7, an imported bank row) waits (INB-1, INB-2), and "Netflix looks monthly. Make it a
  * regular payment?" when the last three of a description came at a steady interval (REC-5). Yes opens the
  * regular payment sheet starting at the next one, so nothing already entered posts again; No is remembered on
  * this phone for that description, across restarts.
@@ -8,7 +8,7 @@ import { Inbox as InboxIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { formatPlainPounds, pence } from '../../core/money';
 import { suggestRecurring, type RecurringSuggestion } from '../../core/recurring';
-import { useDataLayer, useEntries, useInbox, useRecurring } from '../../data';
+import { useDataLayer, useEntries, useImportQueue, useInbox, useRecurring } from '../../data';
 import { Button, ICON } from '../../ui/primitives';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
@@ -16,7 +16,8 @@ import { NO_ENTRIES } from '../shared/empty';
 import { useSheets } from '../sheets';
 
 export function InboxButton() {
-  const n = useInbox().data?.length ?? 0;
+  // INB-1: the bank rows being reviewed on this phone count too (S7).
+  const n = (useInbox().data?.length ?? 0) + (useImportQueue()?.length ?? 0);
   if (n === 0) return null;
   return (
     <button

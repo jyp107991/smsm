@@ -11,7 +11,7 @@ export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
   useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts, useSmartFeatures,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useImportRules, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts, useSmartFeatures,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {
@@ -26,12 +26,18 @@ export {
   addComment, editComment, deleteComment, restoreComment, setSettleDay,
 } from './mutations';
 export type { WindowRole } from './windows';
+export {
+  idHash, previewImport, startImport, importQueue, keepImport, keepImportNow, undoKeep, skipImport, skipImportNow, undoSkip, stopReviewing,
+  importRules, removeImportRule, useImportQueue, exportEntriesCsv, restorePlan, restoreBackup, defaultPeopleMap, storageUsed, lastStorageUsed,
+  FREE_DATABASE_BYTES, FREE_PHOTO_BYTES, NEARLY_FULL, RESTORE_CHUNK,
+  type ImportCard, type ImportCounts, type RestorePlan, type RestoreRefusal, type StorageFigure,
+} from './imports';
 export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, forgetPhoto, photoBlob, photoUrl, sortLater, sortPhotoLater, recapWording, askSmsm, takeShared, parseLoose, guessCategory, type LooseReading } from './smartActions';
 export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';
 export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
-  type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow,
+  type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow, type ImportRuleRow, type RestoreCounts,
 } from './api';
 export { REFUSAL_MESSAGES, type WriteProblem, type RefusalReason } from './problems';
 export { browserGeo, frankfurterRates, type GeoService, type RatesService, type Located } from './places';

@@ -1,0 +1,8 @@
+Transaction ID,Date,Time,Type,Name,Emoji,Category,Amount,Currency,Local amount,Local currency,Notes and #tags,Address,Receipt,Description,Category split,Money Out,Money In
+tx_0000TESTSAMPLE0001,02/11/2026,18:04:12,Card payment,Larder & Leaf,🛒,Groceries,-42.50,GBP,-42.50,GBP,,1 Example Road,,LARDER & LEAF EXAMPLETOWN GBR,,-42.50,
+tx_0000TESTSAMPLE0002,03/11/2026,08:15:00,Pot transfer,Rainy day pot,,Savings,-100.00,GBP,-100.00,GBP,,,,,,-100.00,
+tx_0000TESTSAMPLE0003,04/11/2026,09:00:00,Faster payment,Example Employer Ltd,,Income,1500.00,GBP,1500.00,GBP,November pay,,,EXAMPLE EMPLOYER LTD,,,1500.00
+tx_0000TESTSAMPLE0004,05/11/2026,20:30:00,Card payment,"Noodle Bar, Soho",🍜,Eating out,-18.20,GBP,-18.20,GBP,,"2 Sample Street, Exampletown",,NOODLE BAR SOHO,,-18.20,
+tx_0000TESTSAMPLE0005,07/11/2026,13:10:00,Card payment,Café Lumière,☕,Eating out,-78.42,GBP,-89.99,EUR,,Exampleville,,CAFE LUMIERE EXAMPLEVILLE FRA,,-78.42,
+tx_0000TESTSAMPLE0006,09/11/2026,07:45:00,Card payment,Metro Ticket Machine,🚆,Transport,-2.80,GBP,-2.80,GBP,,,,METRO TICKETS,,-2.80,
+tx_0000TESTSAMPLE0007,10/11/2026,12:00:00,Card payment,,,Shopping,-12.00,GBP,-12.00,GBP,"Notes with ""quotes""",,,"HARDWARE CORNER, EXAMPLETOWN",,-12.00,

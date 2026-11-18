@@ -37,12 +37,16 @@ import { netPositions } from '../core/balance';
 import type { IsoDate } from '../core/dates';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import { ApiError, isTransient, type Api, type CategoryMemoryRow, type AuthUser, type ExpenseRow, type HouseholdRow, type MemberRow, type SettlementRow } from './api';
+import {
+  ApiError, isTransient, type Api, type CategoryMemoryRow, type AuthUser, type ExpenseRow, type HouseholdRow, type ImportIgnoreRow, type ImportRuleRow, type MemberRow,
+  type SettlementRow,
+} from './api';
 import { keys, MEMORY_KEY, MEMORY_SCOPE, MONEY_KEY, MONEY_SCOPE } from './keys';
 import type { Network } from './network';
 import { createProblemStore, problemFrom, type ProblemStore } from './problems';
 import {
-  categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery, settlementsQuery,
+  categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, importIgnoresQuery, importRulesQuery, inboxQuery, membersQuery, membershipQuery,
+  memoryQuery, recurringQuery, settlementsQuery,
 } from './queries';
 import { createRealtime, type Realtime } from './realtime';
 import { expenseToLedger, settlementToLedger } from './rows';
@@ -367,6 +371,9 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       client.query({ ...inboxQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...chaptersQuery(api, id, hid), staleTime: 0 }).catch(noop),
       client.query({ ...commentsQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      // S7: so an import offline still knows what was decided before (IMP-3).
+      client.query({ ...importIgnoresQuery(api, id, hid), staleTime: 0 }).catch(noop),
+      client.query({ ...importRulesQuery(api, id, hid), staleTime: 0 }).catch(noop),
     ]);
     followHousehold();
     wake();
@@ -428,6 +435,18 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
         return api.upsertChapter(chapterWrite(op.row), op.isNew ? undefined : op.columns);
       case 'comments':
         return api.upsertComment(commentWrite(op.row), op.isNew ? undefined : op.columns);
+      case 'import_ignores':
+        if (op.op === 'insert') await api.insertImportIgnore(op.row);
+        else await api.deleteImportIgnore(op.row);
+        return null;
+      case 'import_rules': {
+        if (op.op === 'delete') {
+          await api.deleteImportRule(op.id);
+          return null;
+        }
+        const { id, household_id, match_text, decision, category_id, split_mode, split_params } = op.row;
+        return api.upsertImportRule({ id, household_id, match_text, decision, category_id, split_mode, split_params });
+      }
     }
   }
 
@@ -471,8 +490,40 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'categories': return keys.categories(id);
       case 'chapters': return keys.chapters(id);
       case 'comments': return keys.comments(id);
+      case 'import_ignores': return keys.importIgnores(id);
+      case 'import_rules': return keys.importRules(id);
       case 'receipts': return null;
     }
+  }
+
+  /** S7: what an import decision changed, in the phone's copy (no row comes back for these). */
+  function applyImportChange(op: MoneyOp, row: QueuedRow | null): void {
+    const id = uid();
+    if (!id) return;
+    if (op.table === 'import_ignores') {
+      const key = keys.importIgnores(id);
+      if (client.getQueryData(key) === undefined) return;
+      const same = (r: ImportIgnoreRow) => r.source === op.row.source && r.id_hash === op.row.id_hash;
+      client.setQueryData<ImportIgnoreRow[]>(key, (old) => [...(old ?? []).filter((r) => !same(r)), ...(op.op === 'insert' ? [op.row] : [])]);
+    } else if (op.table === 'import_rules') {
+      const key = keys.importRules(id);
+      if (client.getQueryData(key) === undefined) return;
+      const stored = row as ImportRuleRow | null;
+      client.setQueryData<ImportRuleRow[]>(key, (old) => {
+        if (op.op === 'delete') return (old ?? []).filter((r) => r.id !== op.id);
+        // A rule replaces the one for the same words (unique per household and match text).
+        const next = stored ?? op.row;
+        return [...(old ?? []).filter((r) => r.id !== next.id && r.match_text !== next.match_text), next];
+      });
+    }
+  }
+
+  /**
+   * S7 (IMP-3): the other phone imported this bank row first (a joint account's statement), so the database's
+   * expenses_external index refused ours. Nothing is lost: the row is in the household once.
+   */
+  function importedElsewhere(op: MoneyOp, code: string, message: string): boolean {
+    return op.table === 'expenses' && op.op === 'upsert' && op.row.external_id !== null && code === '23505' && message.includes('expenses_external');
   }
 
   async function applyServerRow(op: MoneyOp, row: QueuedRow): Promise<void> {
@@ -519,11 +570,21 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
     mutationFn: (op: MoneyOp) => send(op),
     onSuccess: async (row: QueuedRow | null, op: MoneyOp) => {
       problems.resolveRow(opRowId(op));
+      if (op.table === 'import_ignores' || op.table === 'import_rules') {
+        applyImportChange(op, row);
+        return;
+      }
       if (row) await applyServerRow(op, row);
     },
     onError: (err: Error, op: MoneyOp) => {
       if (err instanceof DiscardedError) return; // dropped on purpose: nothing to tell or keep
       const code = err instanceof ApiError ? err.code : '';
+      if (importedElsewhere(op, code, err.message)) {
+        // Dropped quietly (not a problem to fix); the partner's copy of the row comes with the next read.
+        const id = uid();
+        if (id) void client.invalidateQueries({ queryKey: keys.expenses(id), refetchType: 'all' });
+        return;
+      }
       problems.add(problemFrom(op, err.message, code, now()));
       report(err, { what: 'write refused', table: op.table, op: op.op, id: opRowId(op) });
     },

@@ -21,6 +21,9 @@ export const keys = {
   memory: (uid: string) => ['smsm', uid, 'memory'] as const,
   recurring: (uid: string) => ['smsm', uid, 'recurring'] as const,
   inbox: (uid: string) => ['smsm', uid, 'inbox'] as const,
+  /** S7 (IMP-3): the hashes of rows decided "Not ours", and the "always do this" rules. */
+  importIgnores: (uid: string) => ['smsm', uid, 'import-ignores'] as const,
+  importRules: (uid: string) => ['smsm', uid, 'import-rules'] as const,
   activityAll: (uid: string) => ['smsm', uid, 'activity'] as const,
   activity: (uid: string, entityId: string) => ['smsm', uid, 'activity', entityId] as const,
   appConfig: () => ['smsm-config', 'min_client_version'] as const,

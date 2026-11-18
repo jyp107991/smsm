@@ -11,7 +11,8 @@ import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type Use
 import {
   ApiError,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
-  type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type InboxItemRow, type MemberRow, type RecapRow, type RecurringRow, type SettlementRow, type SettlementWrite, type WatchedTable,
+  type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type MemberRow, type RecapRow,
+  type RecurringRow, type RestoreCounts, type RestoreRows, type RestoreTable, type SettlementRow, type SettlementWrite, type WatchedTable,
 } from './api';
 import type { Json } from './database.types';
 
@@ -35,6 +36,9 @@ export interface MemoryTables {
   recaps?: RecapRow[];
   /** S6a: receipt photos in the private bucket (what was uploaded, not the bytes). */
   receipts?: { path: string; size: number; type: string }[];
+  /** S7 (IMP-3): hashes of bank rows decided "Not ours", and the "always do this" rules. */
+  importIgnores?: ImportIgnoreRow[];
+  importRules?: ImportRuleRow[];
   minClientVersion: string | null;
 }
 
@@ -116,6 +120,8 @@ export function createMemoryApi(
     chapters: clone(seed.chapters ?? []),
     comments: clone(seed.comments ?? []),
     recaps: clone(seed.recaps ?? []),
+    importIgnores: clone(seed.importIgnores ?? []),
+    importRules: clone(seed.importRules ?? []),
     minClientVersion: seed.minClientVersion ?? null,
   };
   /** The server's UK date (DAT-2: post_due_recurring posts by London's date). */
@@ -300,6 +306,144 @@ export function createMemoryApi(
     return posted;
   }
 
+  const ignores = () => (tables.importIgnores ??= []);
+  const rules = () => (tables.importRules ??= []);
+  /** restore_ids: a backup row's id that another household already had, and the id it was given here. */
+  const restoreIds = new Map<string, string>();
+
+  /** What restore_backup() does (migration …_import_export.sql): only adds; ids here are left alone. */
+  function restore(people: Record<string, string>, rows: RestoreRows): RestoreCounts {
+    const hid = myHousehold();
+    if (!hid) return refuse('not in a household', '42501');
+    const memberIds = mine(tables.members).map((m) => m.user_id).sort();
+    if (memberIds.length !== 2) refuse('both of you need to have joined before restoring', '22023');
+    const mapped = [...new Set(Object.values(people))].sort();
+    if (Object.keys(people).length !== 2 || JSON.stringify(mapped) !== JSON.stringify(memberIds)) refuse('map the backup\'s two people to the two of you', '22023');
+    const order: RestoreTable[] = ['categories', 'chapters', 'recurring', 'expenses', 'settlements', 'comments', 'category_memory', 'import_rules'];
+    let n = 0;
+    for (const t of order) n += rows[t]?.length ?? 0;
+    if (n > 500) refuse('at most 500 rows a call', '22023');
+    const added: Record<RestoreTable, number> = { categories: 0, chapters: 0, recurring: 0, expenses: 0, settlements: 0, comments: 0, category_memory: 0, import_rules: 0 };
+    const skipped: Record<RestoreTable, number> = { ...added };
+    const remap = (j: Json): Json => {
+      if (!j || typeof j !== 'object' || Array.isArray(j)) return j;
+      return Object.fromEntries(Object.entries(j).map(([k, v]) => [people[k] ?? k, v ?? null]));
+    };
+    type Listed = { id: string; household_id: string };
+    const lists: Record<'categories' | 'chapters' | 'recurring' | 'expenses' | 'settlements' | 'comments', Listed[]> = {
+      categories: tables.categories, chapters: tables.chapters, recurring: tables.recurring, expenses: tables.expenses, settlements: tables.settlements, comments: tables.comments,
+    };
+    /** The id a backup row already has in this household (itself, or the id it was given before), else null. */
+    const target = (old: unknown, t: keyof typeof lists): string | null => {
+      if (typeof old !== 'string') return null;
+      if (lists[t].some((r) => r.id === old && r.household_id === hid)) return old;
+      const given = restoreIds.get(`${hid}:${old}`);
+      return given !== undefined && lists[t].some((r) => r.id === given && r.household_id === hid) ? given : null;
+    };
+    const newId = (old: unknown, t: keyof typeof lists): string => {
+      if (typeof old !== 'string') return crypto.randomUUID();
+      if (!lists[t].some((r) => r.id === old)) return old;
+      const fresh = crypto.randomUUID();
+      restoreIds.set(`${hid}:${old}`, fresh);
+      return fresh;
+    };
+    const ref = (old: unknown, t: keyof typeof lists) => target(old, t);
+    const str = (v: Json | undefined, or = ''): string => (typeof v === 'string' ? v : or);
+    const objects = (t: RestoreTable) => (rows[t] ?? []).filter((r): r is Record<string, Json> => !!r && typeof r === 'object' && !Array.isArray(r));
+    const stamp = now().toISOString();
+
+    for (const r of objects('categories')) {
+      if (target(r['id'], 'categories') !== null) { skipped.categories += 1; continue; }
+      const name = str(r['name']).trim().toLowerCase();
+      const same = mine(tables.categories).find((c) => c.name.trim().toLowerCase() === name);
+      if (same) { if (typeof r['id'] === 'string') restoreIds.set(`${hid}:${r['id']}`, same.id); skipped.categories += 1; continue; }
+      const row = { ...(r as unknown as CategoryRow), id: newId(r['id'], 'categories'), household_id: hid, default_ratio: remap(r['default_ratio'] ?? null) };
+      if (!PALETTE.includes(row.colour)) refuse('new row violates check constraint "categories_colour_palette"', '23514');
+      tables.categories.push(row);
+      log('category', row.id, 'created', { after: row as unknown as Json }, hid);
+      added.categories += 1;
+    }
+    for (const r of objects('chapters')) {
+      if (target(r['id'], 'chapters') !== null) { skipped.chapters += 1; continue; }
+      const row = { ...(r as unknown as ChapterRow), id: newId(r['id'], 'chapters'), household_id: hid };
+      tables.chapters.push(row);
+      log('chapter', row.id, 'created', { after: row as unknown as Json }, hid);
+      added.chapters += 1;
+    }
+    for (const r of objects('recurring')) {
+      if (target(r['id'], 'recurring') !== null) { skipped.recurring += 1; continue; }
+      const row: RecurringRow = {
+        ...(r as unknown as RecurringRow), id: newId(r['id'], 'recurring'), household_id: hid, active: false,
+        category_id: ref(r['category_id'], 'categories'), paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {},
+        split_params: remap(r['split_params'] ?? null),
+      };
+      checkMoney(row as unknown as ExpenseRow);
+      tables.recurring.push(row);
+      log('recurring', row.id, 'created', { after: row as unknown as Json }, hid);
+      added.recurring += 1;
+    }
+    const expenses = objects('expenses').sort((x, y) => Number(x['kind'] === 'money_back') - Number(y['kind'] === 'money_back') || str(x['created_at']).localeCompare(str(y['created_at'])));
+    for (const r of expenses) {
+      if (target(r['id'], 'expenses') !== null) { skipped.expenses += 1; continue; }
+      const recurringId = ref(r['recurring_id'], 'recurring');
+      const receipt = typeof r['receipt_path'] === 'string' && r['receipt_path'].split('/')[0] === hid ? r['receipt_path'] : null;
+      const row: ExpenseRow = {
+        ...(r as unknown as ExpenseRow), id: newId(r['id'], 'expenses'), household_id: hid, category_id: ref(r['category_id'], 'categories'),
+        chapter_id: ref(r['chapter_id'], 'chapters'), recurring_id: recurringId, refund_of: ref(r['refund_of'], 'expenses'), account_id: null,
+        receipt_path: receipt, paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {}, split_params: remap(r['split_params'] ?? null),
+        occurrence_date: recurringId === null ? null : ((r['occurrence_date'] as string | null | undefined) ?? null),
+      };
+      checkMoney(row);
+      const clash = (row.recurring_id !== null && tables.expenses.some((e) => e.recurring_id === row.recurring_id && e.occurrence_date === row.occurrence_date))
+        || (row.external_id !== null && tables.expenses.some((e) => e.household_id === hid && e.source === row.source && e.external_id === row.external_id));
+      if (clash) { skipped.expenses += 1; continue; } // on conflict do nothing
+      tables.expenses.push(row);
+      log('expense', row.id, 'created', { after: row as unknown as Json }, hid);
+      added.expenses += 1;
+    }
+    for (const r of objects('settlements')) {
+      if (target(r['id'], 'settlements') !== null) { skipped.settlements += 1; continue; }
+      const from = people[str(r['from_user'])] ?? str(r['from_user']);
+      const to = people[str(r['to_user'])] ?? str(r['to_user']);
+      if (!memberIds.includes(from) || !memberIds.includes(to)) refuse('a settle-up names someone who isn\'t one of you', '22023');
+      const row: SettlementRow = { ...(r as unknown as SettlementRow), id: newId(r['id'], 'settlements'), household_id: hid, from_user: from, to_user: to };
+      if (row.from_user === row.to_user || row.amount_pence <= 0) refuse('new row violates check constraint "settlements_check"', '23514');
+      tables.settlements.push(row);
+      log('settlement', row.id, 'created', { after: row as unknown as Json }, hid);
+      added.settlements += 1;
+    }
+    for (const r of objects('comments')) {
+      const expenseId = ref(r['expense_id'], 'expenses');
+      if (target(r['id'], 'comments') !== null || expenseId === null) { skipped.comments += 1; continue; }
+      const author = people[str(r['author'])] ?? str(r['author']);
+      if (!memberIds.includes(author)) refuse('a comment names someone who isn\'t one of you', '22023');
+      const row: CommentRow = { ...(r as unknown as CommentRow), id: newId(r['id'], 'comments'), household_id: hid, expense_id: expenseId, author };
+      tables.comments.push(row);
+      log('comment', row.id, 'created', { after: row as unknown as Json }, hid);
+      added.comments += 1;
+    }
+    for (const r of objects('category_memory')) {
+      const key = str(r['key']);
+      if (tables.categoryMemory.some((m) => m.household_id === hid && m.key === key)) { skipped.category_memory += 1; continue; }
+      tables.categoryMemory.push({
+        household_id: hid, key, category_id: ref(r['category_id'], 'categories'), split_mode: (r['split_mode'] as string | null | undefined) ?? null,
+        split_params: remap(r['split_params'] ?? null), uses: typeof r['uses'] === 'number' ? r['uses'] : 1,
+        source: typeof r['source'] === 'string' ? r['source'] : 'user', updated_at: typeof r['updated_at'] === 'string' ? r['updated_at'] : stamp,
+      });
+      added.category_memory += 1;
+    }
+    for (const r of objects('import_rules')) {
+      const match = str(r['match_text']);
+      if (rules().some((x) => x.household_id === hid && x.match_text === match)) { skipped.import_rules += 1; continue; }
+      rules().push({
+        id: crypto.randomUUID(), household_id: hid, match_text: match, decision: str(r['decision'], 'skip'), category_id: ref(r['category_id'], 'categories'),
+        split_mode: (r['split_mode'] as string | null | undefined) ?? null, split_params: remap(r['split_params'] ?? null), created_at: stamp,
+      });
+      added.import_rules += 1;
+    }
+    return { added, skipped };
+  }
+
   const api: Api = {
     auth: {
       sendCode: (email) => call('auth.sendCode', email, () => undefined),
@@ -337,7 +481,7 @@ export function createMemoryApi(
     upsertExpense: (row: ExpenseWrite) =>
       call('upsertExpense', row, () =>
         writeRow(tables.expenses, row, 'expense', (w) => ({
-          external_id: null, merchant: null, external_category: null, account_id: null,
+          merchant: null, external_category: null, account_id: null,
           created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
         }), (r) => {
@@ -348,6 +492,10 @@ export function createMemoryApi(
           }
           if (r.recurring_id !== null && tables.expenses.some((e) => e.id !== r.id && e.recurring_id === r.recurring_id && e.occurrence_date === r.occurrence_date)) {
             refuse('duplicate key value violates unique constraint "expenses_occurrence"', '23505');
+          }
+          // S7 (IMP-3): a bank row is imported once per household and source (deleted entries count).
+          if (r.external_id !== null && tables.expenses.some((e) => e.id !== r.id && e.household_id === r.household_id && e.source === r.source && e.external_id === r.external_id)) {
+            refuse('duplicate key value violates unique constraint "expenses_external"', '23505');
           }
         })),
     patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => patchRow(tables.expenses, id, patch, 'expense')),
@@ -588,6 +736,47 @@ export function createMemoryApi(
         else tables.categories.push(next);
         log('category', next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
         return next;
+      }),
+    importIgnores: (hid) => call('importIgnores', hid, () => mine(ignores())),
+    insertImportIgnore: (row) =>
+      call('insertImportIgnore', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy for table "import_ignores"', '42501');
+        if (!['csv', 'monzo'].includes(row.source)) refuse('new row violates check constraint "import_ignores_source_check"', '23514');
+        if (!ignores().some((x) => x.household_id === row.household_id && x.source === row.source && x.id_hash === row.id_hash)) ignores().push({ ...row });
+        return row;
+      }),
+    deleteImportIgnore: (row) =>
+      call('deleteImportIgnore', row, () => {
+        tables.importIgnores = ignores().filter((x) => !(x.household_id === row.household_id && x.household_id === myHousehold() && x.source === row.source && x.id_hash === row.id_hash));
+      }),
+    importRules: (hid) => call('importRules', hid, () => mine(rules()).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))),
+    upsertImportRule: (row) =>
+      call('upsertImportRule', row, () => {
+        if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy for table "import_rules"', '42501');
+        if (!['keep', 'skip'].includes(row.decision)) refuse('new row violates check constraint "import_rules_decision_check"', '23514');
+        if (row.category_id !== null && !mine(tables.categories).some((c) => c.id === row.category_id)) {
+          refuse('insert or update on table "import_rules" violates foreign key constraint "import_rules_category_id_fkey"', '23503');
+        }
+        const list = rules();
+        const i = list.findIndex((x) => x.household_id === row.household_id && x.match_text === row.match_text);
+        const next: ImportRuleRow = { created_at: list[i]?.created_at ?? now().toISOString(), ...row };
+        if (i === -1) list.push(next);
+        else list[i] = next;
+        return next;
+      }),
+    deleteImportRule: (id) =>
+      call('deleteImportRule', id, () => {
+        tables.importRules = rules().filter((x) => !(x.id === id && x.household_id === myHousehold()));
+      }),
+    restoreBackup: (people, rows) => call('restoreBackup', { people, rows }, () => restore(people, rows)),
+    storageUsed: () =>
+      call('storageUsed', null, () => {
+        const hid = myHousehold();
+        if (!hid) return refuse('not in a household', '42501');
+        // A stand-in for pg_database_size: the size of what is stored, and the household's photos.
+        const database = new TextEncoder().encode(JSON.stringify(tables)).length;
+        const photos = (tables.receipts ?? []).filter((r) => r.path.startsWith(`${hid}/`)).reduce((t, r) => t + r.size, 0);
+        return { database_bytes: database, photo_bytes: photos };
       }),
     watchHousehold(householdId, onChange, onStatus) {
       const w = { householdId, onChange, onStatus };

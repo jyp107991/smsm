@@ -10,6 +10,7 @@
  * formula prefixed with an apostrophe.
  */
 import { isIsoDate, type IsoDate } from './dates';
+import type { InsightEntry, InsightSettlement } from './insights';
 import { formatPlainPounds, parseStatementAmount, pence, type Pence } from './money';
 
 export const MAX_CSV_BYTES = 5 * 1024 * 1024;
@@ -50,43 +51,39 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-export type DateOrder = 'dmy' | 'ymd' | 'mdy';
 export type ImportSource = 'monzo' | 'csv';
+export type DateFormat = 'dd/mm/yyyy' | 'yyyy-mm-dd' | 'mm/dd/yyyy';
+export const DATE_FORMATS: readonly DateFormat[] = ['dd/mm/yyyy', 'yyyy-mm-dd', 'mm/dd/yyyy'];
 
-/** Which columns hold what, by header name (matched ignoring case and surrounding spaces). */
-export interface Mapping {
-  date: string;
-  description: string;
-  /** Either one signed amount column… */
-  amount?: string | null;
-  /** …with spending shown as negative (most banks, Monzo) or positive. */
-  spending?: 'negative' | 'positive';
-  /** …or separate money out and money in columns. */
-  moneyOut?: string | null;
-  moneyIn?: string | null;
-  bankId?: string | null;
-  dateOrder: DateOrder;
-  /** Monzo only: a second description column, the category, the type, and the merchant's own currency. */
-  fallbackDescription?: string | null;
-  category?: string | null;
-  type?: string | null;
-  localAmount?: string | null;
-  localCurrency?: string | null;
+/**
+ * The generic mapping step: which column (by its index in the header row, since bank headers can repeat or be
+ * blank) holds what. Either one signed Amount column (with how spending is shown) or Money out + Money in.
+ */
+export interface ColumnMapping {
+  date: number;
+  description: number;
+  bankId: number | null;
+  dateFormat: DateFormat;
+  amount: number | null;
+  spending: 'negative' | 'positive';
+  moneyOut: number | null;
+  moneyIn: number | null;
 }
 
-export const MONZO_MAPPING: Mapping = {
+/** The Monzo preset: Monzo's columns, found by header name (any order and case). */
+export const MONZO_MAPPING = {
+  preset: 'monzo',
   date: 'Date',
   description: 'Name',
   fallbackDescription: 'Description',
   amount: 'Amount',
-  spending: 'negative',
   bankId: 'Transaction ID',
-  dateOrder: 'dmy',
   category: 'Category',
   type: 'Type',
   localAmount: 'Local amount',
   localCurrency: 'Local currency',
-};
+} as const;
+export type MonzoMapping = typeof MONZO_MAPPING;
 
 const key = (s: string) => s.normalize('NFKC').trim().toLowerCase();
 
@@ -114,13 +111,13 @@ export interface ReadResult {
   left: { moneyIn: number; unreadable: number; pots: number };
 }
 
-/** A date as a statement writes it, in the given order: "01/08/2026", "1/8/26", "2026-08-01", "2026-08-01 10:02". */
-export function readDate(text: string, order: DateOrder): IsoDate | null {
+/** A date as a statement writes it, in the given format: "01/08/2026", "1/8/26", "2026-08-01", "2026-08-01 10:02". */
+export function readDate(text: string, format: DateFormat): IsoDate | null {
   const t = text.normalize('NFKC').trim().split(/[ T]/u)[0] ?? '';
   const parts = t.split(/[/.-]/u);
   if (parts.length !== 3 || parts.some((p) => !/^\d{1,4}$/u.test(p))) return null;
   const [p0, p1, p2] = parts as [string, string, string];
-  const [y, m, d] = order === 'ymd' ? [p0, p1, p2] : order === 'dmy' ? [p2, p1, p0] : [p2, p0, p1];
+  const [y, m, d] = format === 'yyyy-mm-dd' ? [p0, p1, p2] : format === 'dd/mm/yyyy' ? [p2, p1, p0] : [p2, p0, p1];
   if (y.length !== 4 && y.length !== 2) return null;
   if (m.length > 2 || d.length > 2) return null;
   const year = y.length === 2 ? `20${y}` : y;
@@ -144,39 +141,62 @@ function tidy(text: string): string {
   return text.normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, DESCRIPTION_MAX).trim();
 }
 
-/** The spending rows of a statement (its first row is the header), through a mapping. */
-export function readRows(table: readonly (readonly string[])[], mapping: Mapping): ReadResult {
-  const header = (table[0] ?? []).map(key);
-  const col = (name: string | null | undefined): number => (name ? header.indexOf(key(name)) : -1);
-  const at = (row: readonly string[], c: number): string => (c >= 0 ? (row[c] ?? '').trim() : '');
-  const c = {
-    date: col(mapping.date), description: col(mapping.description), fallback: col(mapping.fallbackDescription),
-    amount: col(mapping.amount), out: col(mapping.moneyOut), in: col(mapping.moneyIn), id: col(mapping.bankId),
-    category: col(mapping.category), type: col(mapping.type), local: col(mapping.localAmount), localCurrency: col(mapping.localCurrency),
+/** Column indices (-1 for none) after a mapping is resolved against the header. */
+interface Columns {
+  date: number; description: number; fallback: number; amount: number; out: number; in: number; id: number;
+  category: number; type: number; local: number; localCurrency: number;
+  dateFormat: DateFormat; spending: 'negative' | 'positive';
+}
+
+function isMonzo(mapping: MonzoMapping | ColumnMapping): mapping is MonzoMapping {
+  return 'preset' in mapping;
+}
+
+function columns(header: readonly string[], mapping: MonzoMapping | ColumnMapping): Columns {
+  if (isMonzo(mapping)) {
+    const names = header.map(key);
+    const col = (name: string) => names.indexOf(key(name));
+    return {
+      date: col(mapping.date), description: col(mapping.description), fallback: col(mapping.fallbackDescription),
+      amount: col(mapping.amount), out: -1, in: -1, id: col(mapping.bankId), category: col(mapping.category),
+      type: col(mapping.type), local: col(mapping.localAmount), localCurrency: col(mapping.localCurrency),
+      dateFormat: 'dd/mm/yyyy', spending: 'negative',
+    };
+  }
+  const ix = (n: number | null) => (n === null ? -1 : n);
+  return {
+    date: mapping.date, description: mapping.description, fallback: -1, amount: ix(mapping.amount),
+    out: mapping.amount === null ? ix(mapping.moneyOut) : -1, in: mapping.amount === null ? ix(mapping.moneyIn) : -1,
+    id: ix(mapping.bankId), category: -1, type: -1, local: -1, localCurrency: -1,
+    dateFormat: mapping.dateFormat, spending: mapping.spending,
   };
+}
+
+/** The spending rows of a statement (its first row is the header), through the Monzo preset or a column mapping. */
+export function readRows(table: readonly (readonly string[])[], mapping: MonzoMapping | ColumnMapping): ReadResult {
+  const c = columns(table[0] ?? [], mapping);
+  const at = (row: readonly string[], i: number): string => (i >= 0 ? (row[i] ?? '').trim() : '');
   const rows: BankRow[] = [];
   const left = { moneyIn: 0, unreadable: 0, pots: 0 };
   const seen = new Map<string, number>();
   for (const row of table.slice(1)) {
     if (c.type >= 0 && key(at(row, c.type)) === 'pot transfer') { left.pots += 1; continue; }
-    const date = readDate(at(row, c.date), mapping.dateOrder);
+    const date = readDate(at(row, c.date), c.dateFormat);
     const description = tidy(at(row, c.description) || at(row, c.fallback));
     let spent: number | null = null;
-    let unreadable = false;
     if (c.amount >= 0) {
       const v = parseStatementAmount(at(row, c.amount));
-      if (v === null) unreadable = true;
-      else spent = (mapping.spending ?? 'negative') === 'negative' ? -v : v;
+      if (v !== null) spent = c.spending === 'negative' ? -v : v;
     } else if (c.out >= 0 || c.in >= 0) {
       const outText = at(row, c.out);
       const inText = at(row, c.in);
       const out = outText === '' ? 0 : parseStatementAmount(outText);
       const inn = inText === '' ? 0 : parseStatementAmount(inText);
-      if (out === null || inn === null) unreadable = true;
-      else spent = Math.abs(out) - Math.abs(inn);
-    } else unreadable = true;
-    if (unreadable || date === null || description === '') { left.unreadable += 1; continue; }
-    if (spent === null || spent <= 0) { left.moneyIn += 1; continue; }
+      if (out !== null && inn !== null && (outText !== '' || inText !== '')) spent = Math.abs(out) - Math.abs(inn);
+    }
+    if (spent === null || date === null || description === '') { left.unreadable += 1; continue; }
+    // A zero (a card check) is not spending: counted with the payments in.
+    if (spent <= 0) { left.moneyIn += 1; continue; }
     if (spent > MAX_PENCE) { left.unreadable += 1; continue; }
     let bankId = at(row, c.id);
     if (bankId === '') {
@@ -187,8 +207,9 @@ export function readRows(table: readonly (readonly string[])[], mapping: Mapping
     }
     const currency = at(row, c.localCurrency).toUpperCase();
     const local = at(row, c.local).replace(/^[-−]/u, '');
+    const symbol = SYMBOLS[currency];
     const note = currency !== '' && currency !== 'GBP' && local !== ''
-      ? (SYMBOLS[currency] ? `Paid ${SYMBOLS[currency]}${local}` : `Paid ${local} ${currency}`)
+      ? (symbol ? `Paid ${symbol}${local}` : `Paid ${local} ${currency}`)
       : null;
     rows.push({ bankId, date, description, amount: pence(spent), categoryHint: at(row, c.category) || null, note });
   }
@@ -201,20 +222,8 @@ export function csvCell(value: string): string {
   return /[",\r\n]/u.test(safe) ? `"${safe.replace(/"/gu, '""')}"` : safe;
 }
 
-export interface ExportEntry {
-  date: IsoDate;
-  kind: 'expense' | 'money_back';
-  description: string;
-  categoryId: string | null;
-  chapterId: string | null;
-  country: string;
-  amount: Pence;
-  paid: Readonly<Record<string, Pence>>;
-  shares: Readonly<Record<string, Pence>>;
-  notes: string | null;
-  deleted: boolean;
-}
-export interface ExportSettlement { date: IsoDate; from: string; to: string; amount: Pence; note: string | null; deleted: boolean }
+export type ExportEntry = InsightEntry & { notes: string | null };
+export type ExportSettlement = InsightSettlement & { id: string; note: string | null };
 export interface Named { id: string; name: string }
 
 export const EXPORT_COLUMNS = (a: string, b: string) => [
@@ -245,7 +254,7 @@ export function exportCsv(
       date: e.date,
       cells: [
         e.date, e.kind === 'money_back' ? 'Money back' : 'Expense', e.description, nameOf(categories, e.categoryId),
-        nameOf(chapters, e.chapterId), e.country, formatPlainPounds(e.amount), payers.map((p) => p.name).join(' and '),
+        nameOf(chapters, e.chapterId), e.country ?? '', formatPlainPounds(e.amount), payers.map((p) => p.name).join(' and '),
         formatPlainPounds(e.shares[a.id] ?? pence(0)), formatPlainPounds(e.shares[b.id] ?? pence(0)), e.notes ?? '', e.deleted ? 'yes' : '',
       ],
     });
