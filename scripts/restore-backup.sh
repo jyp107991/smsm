@@ -15,6 +15,8 @@ if ! gpg --batch --quiet --pinentry-mode loopback --decrypt --passphrase-fd 3 "$
   echo "Couldn't open $FILE: the passphrase is wrong, or the file is damaged."; exit 1
 fi
 # A newer pg_dump writes settings an older server doesn't know (e.g. transaction_timeout); skip those lines.
-{ echo "set session_replication_role = replica;"; gunzip -c "$TMP" | grep -v -E '^SET transaction_timeout'; echo "set session_replication_role = default;"; } \
+{ echo "set session_replication_role = replica;"
+  # The migrations make an empty push setup row; the backup brings the real one (same keys, so phones stay subscribed).
+  echo "do \$\$ begin if to_regclass('public.push_config') is not null then delete from public.push_config; end if; end \$\$;"; gunzip -c "$TMP" | grep -v -E '^SET transaction_timeout'; echo "set session_replication_role = default;"; } \
   | psql "$DB" -v ON_ERROR_STOP=1 -q
 echo "Restored $FILE"
