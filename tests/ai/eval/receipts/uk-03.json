@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Boots",
+ "date": "2026-10-11",
+ "currency": "GBP",
+ "total_pence": 654,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Health",
+ "items": [
+  {
+   "label": "Paracetamol 16",
+   "pence": 79
+  },
+  {
+   "label": "Toothpaste",
+   "pence": 325
+  },
+  {
+   "label": "Plasters",
+   "pence": 250
+  }
+ ]
+}

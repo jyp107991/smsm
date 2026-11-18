@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Greggs",
+ "date": "2026-11-04",
+ "currency": "GBP",
+ "total_pence": 675,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Eating out",
+ "items": [
+  {
+   "label": "Sausage Roll x2",
+   "pence": 270
+  },
+  {
+   "label": "Steak Bake",
+   "pence": 215
+  },
+  {
+   "label": "Coffee",
+   "pence": 190
+  }
+ ]
+}

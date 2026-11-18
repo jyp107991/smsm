@@ -1,0 +1,28 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Wagamama",
+ "date": "2026-09-27",
+ "currency": "GBP",
+ "total_pence": 4714,
+ "discount_pence": 0,
+ "service_pence": 429,
+ "category": "Eating out",
+ "items": [
+  {
+   "label": "Chicken Katsu Curry",
+   "pence": 1495
+  },
+  {
+   "label": "Yaki Soba",
+   "pence": 1350
+  },
+  {
+   "label": "Gyoza",
+   "pence": 650
+  },
+  {
+   "label": "Iced Tea x2",
+   "pence": 790
+  }
+ ]
+}

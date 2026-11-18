@@ -1,0 +1,24 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "The Red Lion",
+ "date": "2026-10-09",
+ "currency": "GBP",
+ "total_pence": 4604,
+ "discount_pence": 0,
+ "service_pence": 419,
+ "category": "Going out",
+ "items": [
+  {
+   "label": "Pint Lager x2",
+   "pence": 1140
+  },
+  {
+   "label": "Fish & Chips",
+   "pence": 1595
+  },
+  {
+   "label": "Burger",
+   "pence": 1450
+  }
+ ]
+}

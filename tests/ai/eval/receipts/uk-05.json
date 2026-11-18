@@ -1,0 +1,20 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Pret A Manger",
+ "date": "2026-11-02",
+ "currency": "GBP",
+ "total_pence": 885,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Eating out",
+ "items": [
+  {
+   "label": "Flat White",
+   "pence": 360
+  },
+  {
+   "label": "Ham & Cheese Toastie",
+   "pence": 525
+  }
+ ]
+}

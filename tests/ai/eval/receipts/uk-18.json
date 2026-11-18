@@ -1,0 +1,28 @@
+{
+ "source": "generated (scripts/make-eval-receipts.mjs)",
+ "merchant": "Carrefour",
+ "date": "2026-08-04",
+ "currency": "EUR",
+ "total_pence": 1440,
+ "discount_pence": 0,
+ "service_pence": 0,
+ "category": "Groceries",
+ "items": [
+  {
+   "label": "Baguette",
+   "pence": 120
+  },
+  {
+   "label": "Fromage",
+   "pence": 480
+  },
+  {
+   "label": "Vin Rouge",
+   "pence": 750
+  },
+  {
+   "label": "Eau Minerale",
+   "pence": 90
+  }
+ ]
+}

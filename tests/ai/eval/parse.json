@@ -1,0 +1,242 @@
+[
+ {
+  "text": "dinner at dishoom forty two quid, B paid",
+  "amount_pence": 4200,
+  "category": "Eating out",
+  "payer": "B"
+ },
+ {
+  "text": "B got the big tesco shop, 86.40",
+  "amount_pence": 8640,
+  "category": "Groceries",
+  "payer": "B"
+ },
+ {
+  "text": "coffees this morning three pound eighty",
+  "amount_pence": 380,
+  "category": "Eating out",
+  "payer": "A"
+ },
+ {
+  "text": "train tickets to york, 98 pounds for both",
+  "amount_pence": 9800,
+  "category": "Transport",
+  "payer": "A"
+ },
+ {
+  "text": "I paid the electricity, £64",
+  "amount_pence": 6400,
+  "category": "Utilities",
+  "payer": "A"
+ },
+ {
+  "text": "netflix again, 10.99",
+  "amount_pence": 1099,
+  "category": "Subscriptions",
+  "payer": "A"
+ },
+ {
+  "text": "B bought flowers for mum, twenty quid",
+  "amount_pence": 2000,
+  "category": "Gifts",
+  "payer": "B"
+ },
+ {
+  "text": "ikea run, 145 all in",
+  "amount_pence": 14500,
+  "category": "Household",
+  "payer": "A"
+ },
+ {
+  "text": "takeaway pizza last night, 23.50, B got it",
+  "amount_pence": 2350,
+  "category": "Eating out",
+  "payer": "B"
+ },
+ {
+  "text": "petrol 47.82",
+  "amount_pence": 4782,
+  "category": "Transport",
+  "payer": "A"
+ },
+ {
+  "text": "cinema and popcorn for us both — 31 pounds",
+  "amount_pence": 3100,
+  "category": "Going out",
+  "payer": "A"
+ },
+ {
+  "text": "paid the water bill thirty eight fifty",
+  "amount_pence": 3850,
+  "category": "Utilities",
+  "payer": "A"
+ },
+ {
+  "text": "B covered drinks at the pub, about 26",
+  "amount_pence": 2600,
+  "category": "Going out",
+  "payer": "B"
+ },
+ {
+  "text": "boots: paracetamol and plasters 3.29",
+  "amount_pence": 329,
+  "category": "Health",
+  "payer": "A"
+ },
+ {
+  "text": "groceries from lidl 18.73",
+  "amount_pence": 1873,
+  "category": "Groceries",
+  "payer": "A"
+ },
+ {
+  "text": "uber home from the party fifteen quid",
+  "amount_pence": 1500,
+  "category": "Transport",
+  "payer": "A"
+ },
+ {
+  "text": "rent for november 1450",
+  "amount_pence": 145000,
+  "category": "Rent & bills",
+  "payer": "A"
+ },
+ {
+  "text": "B sorted the broadband, 32 a month",
+  "amount_pence": 3200,
+  "category": "Utilities",
+  "payer": "B"
+ },
+ {
+  "text": "new duvet from dunelm 49.99",
+  "amount_pence": 4999,
+  "category": "Household",
+  "payer": "A"
+ },
+ {
+  "text": "birthday present for B's sister 35",
+  "amount_pence": 3500,
+  "category": "Gifts",
+  "payer": "A"
+ },
+ {
+  "text": "we had brunch, I paid, 27.60",
+  "amount_pence": 2760,
+  "category": "Eating out",
+  "payer": "A"
+ },
+ {
+  "text": "bus fares this week £9",
+  "amount_pence": 900,
+  "category": "Transport",
+  "payer": "A"
+ },
+ {
+  "text": "B paid for the hotel in bath, 189",
+  "amount_pence": 18900,
+  "category": "Travel",
+  "payer": "B"
+ },
+ {
+  "text": "spotify family 17.99",
+  "amount_pence": 1799,
+  "category": "Subscriptions",
+  "payer": "A"
+ },
+ {
+  "text": "cleaning stuff from asda six pounds twenty",
+  "amount_pence": 620,
+  "category": "Household",
+  "payer": "A"
+ },
+ {
+  "text": "vet for the cat, 72 pounds, B paid",
+  "amount_pence": 7200,
+  "category": "Other",
+  "payer": "B"
+ },
+ {
+  "text": "gym membership 30",
+  "amount_pence": 3000,
+  "category": "Health",
+  "payer": "A"
+ },
+ {
+  "text": "plants for the balcony 24",
+  "amount_pence": 2400,
+  "category": "Household",
+  "payer": "A"
+ },
+ {
+  "text": "sushi with friends, our share 41",
+  "amount_pence": 4100,
+  "category": "Eating out",
+  "payer": "A"
+ },
+ {
+  "text": "council tax 152",
+  "amount_pence": 15200,
+  "category": "Rent & bills",
+  "payer": "A"
+ },
+ {
+  "text": "B got wine and cheese for friday, 22.40",
+  "amount_pence": 2240,
+  "category": "Groceries",
+  "payer": "B"
+ },
+ {
+  "text": "parking at the hospital 4.50",
+  "amount_pence": 450,
+  "category": "Transport",
+  "payer": "A"
+ },
+ {
+  "text": "haircut for B, twenty five quid",
+  "amount_pence": 2500,
+  "category": "Other",
+  "payer": "A"
+ },
+ {
+  "text": "tickets for the gig, 2 x 38",
+  "amount_pence": 7600,
+  "category": "Going out",
+  "payer": "A"
+ },
+ {
+  "text": "new kettle 29.99",
+  "amount_pence": 2999,
+  "category": "Household",
+  "payer": "A"
+ },
+ {
+  "text": "farmers market veg 14",
+  "amount_pence": 1400,
+  "category": "Groceries",
+  "payer": "A"
+ },
+ {
+  "text": "B paid lunch at pret, 11.20",
+  "amount_pence": 1120,
+  "category": "Eating out",
+  "payer": "B"
+ },
+ {
+  "text": "tv licence 169.50",
+  "amount_pence": 16950,
+  "category": "Rent & bills",
+  "payer": "A"
+ },
+ {
+  "text": "dentist check up 25.80",
+  "amount_pence": 2580,
+  "category": "Health",
+  "payer": "A"
+ },
+ {
+  "text": "flight deposit for japan 300",
+  "amount_pence": 30000,
+  "category": "Travel",
+  "payer": "A"
+ }
+]
