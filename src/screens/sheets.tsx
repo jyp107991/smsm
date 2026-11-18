@@ -15,6 +15,9 @@ export type EntryRequest =
     mode: 'add'; prefill?: Partial<FormState>; fromQuickAdd?: { typedCategory: boolean; typedSplit: boolean };
     /** INB-2 Keep: the Inbox bill this entry settles (saved with its template and occurrence). */
     inboxItem?: string;
+    /** S7 (IMP-3) Change first: the bank row this entry keeps, and whether to make it a rule ("Always do this for"). */
+    importCard?: string;
+    importAlways?: boolean;
     /** S6a (SCAN-4): a receipt sorted later: its photo, already on its way to the bucket. */
     receiptPath?: string;
     /** S6b (ADD-8): opened from the "Scan receipt" shortcut: the camera (or the photo picker) offered at once. */

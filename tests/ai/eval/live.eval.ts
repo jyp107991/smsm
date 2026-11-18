@@ -17,6 +17,10 @@ const TODAY = '2026-11-18';
 const CATEGORIES = ['Groceries', 'Eating out', 'Going out', 'Rent & bills', 'Utilities', 'Transport', 'Subscriptions', 'Household', 'Travel', 'Gifts', 'Health', 'Other'];
 const CHAPTERS = ['Japan trip', 'New sofa'];
 
+/** Why calls failed (status and the start of the answer), counted, so a failed run says what went wrong. */
+const failures = new Map<string, number>();
+const failed = (why: string) => { failures.set(why, (failures.get(why) ?? 0) + 1); };
+
 /** One task through the models in order, as the Worker does; the first valid reply wins. */
 async function run(input: TaskInput): Promise<unknown> {
   for (const model of MODELS[input.task]) {
@@ -27,13 +31,14 @@ async function run(input: TaskInput): Promise<unknown> {
         body: JSON.stringify(buildRequest(input, model)),
         signal: AbortSignal.timeout(60_000),
       });
-      if (!res.ok) continue;
+      if (!res.ok) { failed(`${model}: HTTP ${String(res.status)} ${(await res.text()).slice(0, 160)}`); continue; }
       const body = (await res.json()) as { result?: unknown };
       const text = extractText(body.result);
-      if (text === null) continue;
+      if (text === null) { failed(`${model}: no text in ${JSON.stringify(body).slice(0, 160)}`); continue; }
       const out = validate(input.task, text);
       if (out.ok) return out.data;
-    } catch { /* next model */ }
+      failed(`${model}: invalid reply ${text.slice(0, 120)}`);
+    } catch (e) { failed(`${model}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160)); }
   }
   return null;
 }
@@ -100,6 +105,7 @@ describe.skipIf(TOKEN === '' || ACCOUNT === '')('live eval (AI.md §5)', () => {
     }
     report.push('## Ask smsm', '', `- ${String(pct(right, cases.length))}% of ${String(cases.length)} (pass ≥ 90%)`, '', ...misses.map((m) => `  - ${m}`), '');
     expect.soft(pct(right, cases.length)).toBeGreaterThanOrEqual(90);
+    report.push('## Why calls failed', '', ...[...failures].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([why, n]) => `- ${String(n)}× ${why}`), '');
     const text = `${report.join('\n')}\n`;
     writeFileSync(join(DIR, 'last-run.md'), text);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);

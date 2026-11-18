@@ -13,7 +13,7 @@ import { computeEntry, validateEntry, type EntryIssue, type PenceMap, type Split
 import {
   EXPENSE_WRITE_COLUMNS, RECURRING_WRITE_COLUMNS, SETTLEMENT_WRITE_COLUMNS,
   type CategoryMemoryRow, type CategoryMemoryWrite, type CategoryRow, type CategoryWrite, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type CommentWrite, type ExpenseRow, type ExpenseWrite, type HouseholdRow,
-  type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type RecurringColumn } from './api';
+  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type InboxPatch, type RecurringRow, type RecurringWrite, type SettlementRow, type SettlementWrite, type SoftDeletePatch, type ExpensePatch, type RecurringColumn } from './api';
 import type { Json } from './database.types';
 
 export interface ExpenseDraft {
@@ -133,7 +133,7 @@ export type MoneyOp = OpBase & (
    * made before the partner joined (BAL-6); the shares are worked out once both people exist.
    */
   | ExpenseUpsert
-  | { table: 'expenses'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
+  | { table: 'expenses'; op: 'patch'; id: string; patch: ExpensePatch; label: string }
   | { table: 'settlements'; op: 'upsert'; isNew: boolean; row: SettlementRow; input: SettlementDraft }
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   /** S3: a regular payment (added, edited, paused, resumed, ended: always the whole template, never deleted). */
@@ -156,6 +156,14 @@ export type MoneyOp = OpBase & (
   | { table: 'chapters'; op: 'upsert'; isNew: boolean; row: ChapterRow; input: null; columns?: readonly ChapterColumn[] }
   /** S5b (ACT-4): a comment added, edited or deleted (soft); an edit sends only its columns. */
   | { table: 'comments'; op: 'upsert'; isNew: boolean; row: CommentRow; input: null; columns?: readonly CommentColumn[] }
+  /**
+   * S7 (IMP-3): "Not ours" keeps only the hash of the bank's id (`id` is the hash); Undo takes it away. The bank row
+   * itself never leaves the phone, so the label names no description.
+   */
+  | { table: 'import_ignores'; op: 'insert' | 'delete'; id: string; row: ImportIgnoreRow; label: string }
+  /** S7 (IMP-3): an "always do this for …" rule made, or removed (rules aren't money: they are deleted outright). */
+  | { table: 'import_rules'; op: 'upsert'; isNew: boolean; row: ImportRuleRow; input: null }
+  | { table: 'import_rules'; op: 'delete'; id: string; row: Pick<ImportRuleRow, 'household_id' | 'match_text'>; label: string }
 );
 
 export function newId(): string {
@@ -475,7 +483,9 @@ export function opRowId(op: MoneyOp): string {
 }
 
 export function opLabel(op: MoneyOp): string {
-  if (op.op === 'patch' || op.op === 'upload') return op.label;
+  if (op.op === 'patch' || op.op === 'upload' || op.op === 'insert' || op.op === 'delete') return op.label;
+  if (op.table === 'import_ignores') return op.label;
+  if (op.table === 'import_rules') return op.row.match_text;
   if (op.table === 'inbox_items') return 'Receipt to sort';
   if (op.table === 'expenses') return expenseLabel(op.row);
   if (op.table === 'settlements') return settlementLabel(op.row);
@@ -549,4 +559,27 @@ export function categoryWrite(row: CategoryRow): CategoryWrite {
 }
 
 /** Whatever a queued write gets back from the server. */
-export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow | ChapterRow | CommentRow;
+export type QueuedRow = ExpenseRow | SettlementRow | RecurringRow | InboxItemRow | CategoryRow | ChapterRow | CommentRow | ImportRuleRow;
+
+/** S7 (IMP-3): the hashes decided "Not ours", with the waiting inserts and removals applied in order. */
+export function overlayIgnores(rows: readonly ImportIgnoreRow[], ops: readonly MoneyOp[]): Set<string> {
+  const key = (r: ImportIgnoreRow) => `${r.source}:${r.id_hash}`;
+  const out = new Set(rows.map(key));
+  for (const op of ops) {
+    if (op.table !== 'import_ignores') continue;
+    if (op.op === 'insert') out.add(key(op.row));
+    else out.delete(key(op.row));
+  }
+  return out;
+}
+
+/** S7 (IMP-3): the household's rules with the waiting ones applied (a rule replaces one for the same words). */
+export function overlayRules(rows: readonly ImportRuleRow[], ops: readonly MoneyOp[]): ImportRuleRow[] {
+  let out = [...rows];
+  for (const op of ops) {
+    if (op.table !== 'import_rules') continue;
+    if (op.op === 'upsert') out = [...out.filter((r) => r.id !== op.row.id && r.match_text !== op.row.match_text), op.row];
+    else out = out.filter((r) => r.id !== op.id && r.match_text !== op.row.match_text);
+  }
+  return out;
+}

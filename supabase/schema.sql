@@ -3,23 +3,19 @@
 --
 -- PostgreSQL database dump
 --
-
 --
 -- Name: public; Type: SCHEMA; Schema: -; Owner: -
 --
-
 CREATE SCHEMA public;
 
 --
 -- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
 --
-
 COMMENT ON SCHEMA public IS 'standard public schema';
 
 --
 -- Name: check_comment_entry(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.check_comment_entry() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -34,7 +30,6 @@ end $$;
 --
 -- Name: check_entry_chapter(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.check_entry_chapter() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -50,7 +45,6 @@ end $$;
 --
 -- Name: check_money(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.check_money() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -86,7 +80,6 @@ end $$;
 --
 -- Name: clear_category_guess(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.clear_category_guess() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -102,7 +95,6 @@ end $$;
 --
 -- Name: comments_guard(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.comments_guard() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -117,7 +109,6 @@ end $$;
 --
 -- Name: create_household(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.create_household() RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -147,7 +138,6 @@ end $$;
 --
 -- Name: decide_change(uuid, boolean); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.decide_change(p_id uuid, p_approve boolean) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -193,7 +183,6 @@ end $$;
 --
 -- Name: guard_household(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.guard_household() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -212,7 +201,6 @@ end $$;
 --
 -- Name: guard_member_identity(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.guard_member_identity() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -229,7 +217,6 @@ end $$;
 --
 -- Name: health(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.health() RETURNS jsonb
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -240,7 +227,6 @@ $$;
 --
 -- Name: increment_ai_usage(text); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.increment_ai_usage(p_kind text) RETURNS integer
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -259,7 +245,6 @@ end $$;
 --
 -- Name: join_household(text); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.join_household(p_code text) RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -287,7 +272,6 @@ end $$;
 --
 -- Name: jsonb_pence_sum(jsonb); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.jsonb_pence_sum(j jsonb) RETURNS bigint
     LANGUAGE sql IMMUTABLE
     AS $$
@@ -297,7 +281,6 @@ $$;
 --
 -- Name: log_activity(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.log_activity() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -339,7 +322,6 @@ end $$;
 --
 -- Name: my_household(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.my_household() RETURNS uuid
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'public'
@@ -350,7 +332,6 @@ $$;
 --
 -- Name: post_due_recurring(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.post_due_recurring(p_household uuid DEFAULT NULL::uuid) RETURNS integer
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -397,7 +378,6 @@ end $$;
 --
 -- Name: post_due_recurring_all(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.post_due_recurring_all() RETURNS integer
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -417,7 +397,6 @@ end $$;
 --
 -- Name: recurring_guard(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.recurring_guard() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
@@ -449,7 +428,6 @@ end $$;
 --
 -- Name: recurring_step(text, integer); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.recurring_step(p_frequency text, p_every integer) RETURNS interval
     LANGUAGE sql IMMUTABLE
     SET search_path TO 'public'
@@ -462,7 +440,6 @@ $$;
 --
 -- Name: request_change(text, jsonb); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.request_change(p_kind text, p_payload jsonb) RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -479,9 +456,304 @@ begin
 end $$;
 
 --
+-- Name: restore_backup(jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_backup(p_people jsonb, p_rows jsonb) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare
+  hid uuid := my_household();
+  r jsonb; old uuid; tgt uuid; n_rows int := 0;
+  added jsonb := '{}'::jsonb; skipped jsonb := '{}'::jsonb;
+  e expenses; s settlements; c categories; ch chapters; rc recurring; cm comments;
+  member_ids uuid[]; mapped uuid[];
+  t text;
+  cur text := '';
+begin
+  if hid is null then raise exception 'not in a household' using errcode = '42501'; end if;
+  select array_agg(user_id order by user_id) into member_ids from members where household_id = hid;
+  if coalesce(array_length(member_ids, 1), 0) <> 2 then
+    raise exception 'both of you need to have joined before restoring' using errcode = '22023';
+  end if;
+  if p_people is null or jsonb_typeof(p_people) <> 'object' then raise exception 'no people map' using errcode = '22023'; end if;
+  select array_agg(distinct v::uuid order by v::uuid) into mapped from jsonb_each_text(p_people) t(k, v);
+  if (select count(*) from jsonb_object_keys(p_people)) <> 2 or mapped is distinct from member_ids then
+    raise exception 'map the backup''s two people to the two of you' using errcode = '22023';
+  end if;
+  if p_rows is null or jsonb_typeof(p_rows) <> 'object' then raise exception 'no rows' using errcode = '22023'; end if;
+  foreach t in array array['categories','chapters','recurring','expenses','settlements','comments','category_memory','import_rules'] loop
+    if p_rows ? t and jsonb_typeof(p_rows -> t) <> 'array' then raise exception '% must be a list', t using errcode = '22023'; end if;
+    n_rows := n_rows + coalesce(jsonb_array_length(p_rows -> t), 0);
+    added := added || jsonb_build_object(t, 0);
+    skipped := skipped || jsonb_build_object(t, 0);
+  end loop;
+  if n_rows > 500 then raise exception 'at most 500 rows a call' using errcode = '22023'; end if;
+  perform set_config('smsm.restoring', 'on', true);
+
+  begin
+  -- Categories: by id, then by name; otherwise added.
+  cur := 'categories';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'categories', '[]')) loop
+    old := (r ->> 'id')::uuid;
+    if restore_target(hid, old, 'categories') is null then
+      select id into tgt from categories where household_id = hid and lower(btrim(name)) = lower(btrim(r ->> 'name')) limit 1;
+      if tgt is not null then
+        insert into restore_ids values (hid, old, tgt) on conflict do nothing;
+        skipped := jsonb_set(skipped, '{categories}', to_jsonb((skipped ->> 'categories')::int + 1));
+        continue;
+      end if;
+      c := jsonb_populate_record(null::categories, r);
+      c.id := restore_new_id(hid, old, 'categories');
+      c.household_id := hid;
+      c.default_ratio := restore_remap_keys(c.default_ratio, p_people);
+      c.emoji := coalesce(c.emoji, '•'); c.colour := coalesce(c.colour, 'stone'); c.archived := coalesce(c.archived, false);
+      c.sort := coalesce(c.sort, 0); c.updated_at := coalesce(c.updated_at, now());
+      insert into categories select c.*;
+      added := jsonb_set(added, '{categories}', to_jsonb((added ->> 'categories')::int + 1));
+    else
+      skipped := jsonb_set(skipped, '{categories}', to_jsonb((skipped ->> 'categories')::int + 1));
+    end if;
+  end loop;
+
+  cur := 'chapters';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'chapters', '[]')) loop
+    old := (r ->> 'id')::uuid;
+    if restore_target(hid, old, 'chapters') is not null then
+      skipped := jsonb_set(skipped, '{chapters}', to_jsonb((skipped ->> 'chapters')::int + 1)); continue;
+    end if;
+    ch := jsonb_populate_record(null::chapters, r);
+    ch.id := restore_new_id(hid, old, 'chapters');
+    ch.household_id := hid;
+    ch.emoji := coalesce(ch.emoji, '🌿'); ch.kind := coalesce(ch.kind, 'project'); ch.closed := coalesce(ch.closed, false);
+    ch.created_at := coalesce(ch.created_at, now()); ch.updated_at := coalesce(ch.updated_at, now());
+    ch.created_by := restore_person(ch.created_by, p_people, member_ids);
+    insert into chapters select ch.*;
+    added := jsonb_set(added, '{chapters}', to_jsonb((added ->> 'chapters')::int + 1));
+  end loop;
+
+  cur := 'recurring';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'recurring', '[]')) loop
+    old := (r ->> 'id')::uuid;
+    if restore_target(hid, old, 'recurring') is not null then
+      skipped := jsonb_set(skipped, '{recurring}', to_jsonb((skipped ->> 'recurring')::int + 1)); continue;
+    end if;
+    rc := jsonb_populate_record(null::recurring, r);
+    rc.id := restore_new_id(hid, old, 'recurring');
+    rc.household_id := hid;
+    rc.active := false;  -- paused: nothing posts on its own after a restore
+    rc.category_id := restore_ref(hid, rc.category_id, 'categories');
+    rc.paid := restore_remap_keys(rc.paid, p_people);
+    rc.shares := restore_remap_keys(rc.shares, p_people);
+    rc.split_params := restore_remap_keys(rc.split_params, p_people);
+    rc.amount_varies := coalesce(rc.amount_varies, false); rc.paid_via := coalesce(rc.paid_via, 'person');
+    rc.split_mode := coalesce(rc.split_mode, 'ratio'); rc.is_subscription := coalesce(rc.is_subscription, false);
+    rc.every := coalesce(rc.every, 1); rc.posted_count := coalesce(rc.posted_count, 0);
+    rc.created_at := coalesce(rc.created_at, now()); rc.updated_at := coalesce(rc.updated_at, now());
+    rc.created_by := restore_person(rc.created_by, p_people, member_ids);
+    insert into recurring select rc.*;
+    added := jsonb_set(added, '{recurring}', to_jsonb((added ->> 'recurring')::int + 1));
+  end loop;
+
+  -- Entries before money back, so a refund finds the entry it refunds within the same call.
+  cur := 'expenses';
+  for r in select x from jsonb_array_elements(coalesce(p_rows -> 'expenses', '[]')) x
+           order by (x ->> 'kind') = 'money_back', x ->> 'created_at' loop
+    old := (r ->> 'id')::uuid;
+    if restore_target(hid, old, 'expenses') is not null then
+      skipped := jsonb_set(skipped, '{expenses}', to_jsonb((skipped ->> 'expenses')::int + 1)); continue;
+    end if;
+    e := jsonb_populate_record(null::expenses, r);
+    e.id := restore_new_id(hid, old, 'expenses');
+    e.household_id := hid;
+    e.category_id := restore_ref(hid, e.category_id, 'categories');
+    e.chapter_id := restore_ref(hid, e.chapter_id, 'chapters');
+    e.recurring_id := restore_ref(hid, e.recurring_id, 'recurring');
+    e.refund_of := restore_ref(hid, e.refund_of, 'expenses');
+    e.account_id := null;
+    -- Photos aren't in a backup: a path from another household points at nothing here.
+    if e.receipt_path is not null and split_part(e.receipt_path, '/', 1) <> hid::text then e.receipt_path := null; end if;
+    e.paid := restore_remap_keys(e.paid, p_people);
+    e.shares := restore_remap_keys(e.shares, p_people);
+    e.split_params := restore_remap_keys(e.split_params, p_people);
+    if e.recurring_id is null then e.occurrence_date := null; end if;
+    e.kind := coalesce(e.kind, 'expense'); e.paid_via := coalesce(e.paid_via, 'person'); e.split_mode := coalesce(e.split_mode, 'ratio');
+    e.country := coalesce(e.country, 'GB'); e.tags := coalesce(e.tags, '{}'); e.source := coalesce(e.source, 'manual');
+    e.category_guess := coalesce(e.category_guess, false); e.created_at := coalesce(e.created_at, now()); e.updated_at := coalesce(e.updated_at, now());
+    e.created_by := restore_person(e.created_by, p_people, member_ids);
+    e.updated_by := restore_person(e.updated_by, p_people, member_ids);
+    insert into expenses select e.* on conflict do nothing;
+    if found then
+      added := jsonb_set(added, '{expenses}', to_jsonb((added ->> 'expenses')::int + 1));
+    else
+      skipped := jsonb_set(skipped, '{expenses}', to_jsonb((skipped ->> 'expenses')::int + 1));
+    end if;
+  end loop;
+
+  cur := 'settlements';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'settlements', '[]')) loop
+    old := (r ->> 'id')::uuid;
+    if restore_target(hid, old, 'settlements') is not null then
+      skipped := jsonb_set(skipped, '{settlements}', to_jsonb((skipped ->> 'settlements')::int + 1)); continue;
+    end if;
+    s := jsonb_populate_record(null::settlements, r);
+    s.id := restore_new_id(hid, old, 'settlements');
+    s.household_id := hid;
+    s.from_user := coalesce((p_people ->> s.from_user::text)::uuid, s.from_user);
+    s.to_user := coalesce((p_people ->> s.to_user::text)::uuid, s.to_user);
+    if not (s.from_user = any (member_ids) and s.to_user = any (member_ids)) then
+      raise exception 'a settle-up names someone who isn''t one of you' using errcode = '22023';
+    end if;
+    s.method := coalesce(s.method, 'other'); s.created_at := coalesce(s.created_at, now()); s.updated_at := coalesce(s.updated_at, now());
+    s.created_by := restore_person(s.created_by, p_people, member_ids);
+    insert into settlements select s.*;
+    added := jsonb_set(added, '{settlements}', to_jsonb((added ->> 'settlements')::int + 1));
+  end loop;
+
+  cur := 'comments';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'comments', '[]')) loop
+    old := (r ->> 'id')::uuid;
+    cm := jsonb_populate_record(null::comments, r);
+    cm.expense_id := restore_ref(hid, cm.expense_id, 'expenses');
+    if restore_target(hid, old, 'comments') is not null or cm.expense_id is null then
+      skipped := jsonb_set(skipped, '{comments}', to_jsonb((skipped ->> 'comments')::int + 1)); continue;
+    end if;
+    cm.id := restore_new_id(hid, old, 'comments');
+    cm.household_id := hid;
+    cm.author := coalesce((p_people ->> cm.author::text)::uuid, cm.author);
+    if not cm.author = any (member_ids) then
+      raise exception 'a comment names someone who isn''t one of you' using errcode = '22023';
+    end if;
+    cm.created_at := coalesce(cm.created_at, now());
+    insert into comments select cm.*;
+    added := jsonb_set(added, '{comments}', to_jsonb((added ->> 'comments')::int + 1));
+  end loop;
+
+  cur := 'category_memory';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'category_memory', '[]')) loop
+    perform restore_check_split(r ->> 'split_mode', restore_remap_keys(r -> 'split_params', p_people), member_ids);
+    insert into category_memory(household_id, key, category_id, split_mode, split_params, uses, source, updated_at)
+    values (hid, r ->> 'key', restore_ref(hid, (r ->> 'category_id')::uuid, 'categories'), r ->> 'split_mode',
+            restore_remap_keys(r -> 'split_params', p_people), coalesce((r ->> 'uses')::int, 1),
+            coalesce(r ->> 'source', 'user'), coalesce((r ->> 'updated_at')::timestamptz, now()))
+    on conflict do nothing;
+    if found then added := jsonb_set(added, '{category_memory}', to_jsonb((added ->> 'category_memory')::int + 1));
+    else skipped := jsonb_set(skipped, '{category_memory}', to_jsonb((skipped ->> 'category_memory')::int + 1)); end if;
+  end loop;
+
+  cur := 'import_rules';
+  for r in select * from jsonb_array_elements(coalesce(p_rows -> 'import_rules', '[]')) loop
+    -- A skip rule is one person's, kept on their phone: never restored into the shared record.
+    if coalesce(r ->> 'decision', '') <> 'keep' then
+      skipped := jsonb_set(skipped, '{import_rules}', to_jsonb((skipped ->> 'import_rules')::int + 1)); continue;
+    end if;
+    perform restore_check_split(r ->> 'split_mode', restore_remap_keys(r -> 'split_params', p_people), member_ids);
+    insert into import_rules(household_id, match_text, decision, category_id, split_mode, split_params)
+    values (hid, r ->> 'match_text', r ->> 'decision', restore_ref(hid, (r ->> 'category_id')::uuid, 'categories'),
+            r ->> 'split_mode', restore_remap_keys(r -> 'split_params', p_people))
+    on conflict do nothing;
+    if found then added := jsonb_set(added, '{import_rules}', to_jsonb((added ->> 'import_rules')::int + 1));
+    else skipped := jsonb_set(skipped, '{import_rules}', to_jsonb((skipped ->> 'import_rules')::int + 1)); end if;
+  end loop;
+  exception when others then
+    -- Which part of the backup was refused, for the app to say in plain words; the whole call is undone.
+    raise exception 'restore %: %', cur, sqlerrm using errcode = sqlstate;
+  end;
+
+  return jsonb_build_object('added', added, 'skipped', skipped);
+end $$;
+
+--
+-- Name: restore_check_split(text, jsonb, uuid[]); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_check_split(p_mode text, p_params jsonb, p_members uuid[]) RETURNS void
+    LANGUAGE plpgsql IMMUTABLE
+    SET search_path TO 'public'
+    AS $_$
+begin
+  if p_mode is not null and p_mode not in ('ratio', 'exact', 'for_other', 'treat') then
+    raise exception 'unknown split %', p_mode using errcode = '22023';
+  end if;
+  if p_params is null or jsonb_typeof(p_params) = 'null' then return; end if;
+  if jsonb_typeof(p_params) <> 'object' then raise exception 'a split must name its people' using errcode = '22023'; end if;
+  if exists (select 1 from jsonb_object_keys(p_params) k
+              where case when k ~ '^[0-9a-fA-F-]{36}$' then not (k::uuid = any (p_members)) else true end) then
+    raise exception 'a split names someone who isn''t one of you' using errcode = '22023';
+  end if;
+end $_$;
+
+--
+-- Name: restore_new_id(uuid, uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_new_id(p_hid uuid, p_old uuid, p_table text) RETURNS uuid
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $_$
+declare taken boolean; fresh uuid;
+begin
+  if p_old is null then return gen_random_uuid(); end if;
+  execute format('select exists (select 1 from %I where id = $1)', p_table) into taken using p_old;
+  if not taken then return p_old; end if;
+  fresh := gen_random_uuid();
+  insert into restore_ids values (p_hid, p_old, fresh)
+  on conflict (household_id, old_id) do update set new_id = excluded.new_id;
+  return fresh;
+end $_$;
+
+--
+-- Name: restore_person(uuid, jsonb, uuid[]); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_person(p_id uuid, p_people jsonb, p_members uuid[]) RETURNS uuid
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO 'public'
+    AS $$
+  select case when m = any (p_members) then m else null end
+    from (select coalesce((p_people ->> p_id::text)::uuid, p_id) as m) x
+$$;
+
+--
+-- Name: restore_ref(uuid, uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_ref(p_hid uuid, p_old uuid, p_table text) RETURNS uuid
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  select restore_target(p_hid, p_old, p_table)
+$$;
+
+--
+-- Name: restore_remap_keys(jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_remap_keys(j jsonb, p_people jsonb) RETURNS jsonb
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO 'public'
+    AS $$
+  select case when j is null or jsonb_typeof(j) <> 'object' then j
+    else coalesce((select jsonb_object_agg(coalesce(p_people ->> k, k), v) from jsonb_each(j) t(k, v)), '{}'::jsonb) end
+$$;
+
+--
+-- Name: restore_target(uuid, uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.restore_target(p_hid uuid, p_old uuid, p_table text) RETURNS uuid
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $_$
+declare found_id uuid;
+begin
+  if p_old is null then return null; end if;
+  execute format('select id from %I where id = $1 and household_id = $2', p_table) into found_id using p_old, p_hid;
+  if found_id is not null then return found_id; end if;
+  select m.new_id into found_id from restore_ids m where m.household_id = p_hid and m.old_id = p_old;
+  if found_id is not null then
+    execute format('select id from %I where id = $1 and household_id = $2', p_table) into found_id using found_id, p_hid;
+  end if;
+  return found_id;
+end $_$;
+
+--
 -- Name: save_recap_prose(text, jsonb, text); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -506,7 +778,6 @@ end $_$;
 --
 -- Name: set_identity(text, text); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.set_identity(p_name text, p_animal text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -527,7 +798,6 @@ end $$;
 --
 -- Name: set_monzo_me(text); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.set_monzo_me(p_username text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -540,7 +810,6 @@ end $_$;
 --
 -- Name: set_settle_day(integer); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.set_settle_day(p_day integer) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
@@ -561,16 +830,19 @@ end $$;
 --
 -- Name: stamp_author(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.stamp_author() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
     AS $$
+declare restoring boolean := coalesce(current_setting('smsm.restoring', true), '') = 'on';
 begin
   if tg_op = 'INSERT' then
     if auth.uid() is not null then
-      new.created_by := auth.uid();
-      if tg_table_name = 'expenses' then new.updated_by := auth.uid(); end if;
+      if not (restoring and new.created_by is not null) then new.created_by := auth.uid(); end if;
+      -- (Nested: a row of another table has no updated_by to read.)
+      if tg_table_name = 'expenses' then
+        if not (restoring and new.updated_by is not null) then new.updated_by := auth.uid(); end if;
+      end if;
     end if;
   else
     -- Nobody changes who made a row, whoever asks.
@@ -583,7 +855,6 @@ end $$;
 --
 -- Name: stamp_update(); Type: FUNCTION; Schema: public; Owner: -
 --
-
 CREATE FUNCTION public.stamp_update() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -594,9 +865,25 @@ begin
 end $$;
 
 --
+-- Name: storage_used(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.storage_used() RETURNS jsonb
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $_$
+declare hid uuid := my_household(); photos bigint := 0;
+begin
+  if hid is null then raise exception 'not in a household' using errcode = '42501'; end if;
+  if to_regclass('storage.objects') is not null then
+    execute $q$select coalesce(sum((metadata ->> 'size')::bigint), 0) from storage.objects
+               where bucket_id = 'receipts' and name like $1$q$ into photos using hid::text || '/%';
+  end if;
+  return jsonb_build_object('database_bytes', pg_database_size(current_database()), 'photo_bytes', photos);
+end $_$;
+
+--
 -- Name: accounts; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.accounts (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -611,7 +898,6 @@ CREATE TABLE public.accounts (
 --
 -- Name: activity; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.activity (
     id bigint NOT NULL,
     household_id uuid NOT NULL,
@@ -626,7 +912,6 @@ CREATE TABLE public.activity (
 --
 -- Name: activity_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
-
 ALTER TABLE public.activity ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.activity_id_seq
     START WITH 1
@@ -639,7 +924,6 @@ ALTER TABLE public.activity ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 --
 -- Name: ai_usage; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.ai_usage (
     household_id uuid NOT NULL,
     day date NOT NULL,
@@ -650,7 +934,6 @@ CREATE TABLE public.ai_usage (
 --
 -- Name: app_config; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.app_config (
     key text NOT NULL,
     value jsonb NOT NULL
@@ -659,7 +942,6 @@ CREATE TABLE public.app_config (
 --
 -- Name: categories; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.categories (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -676,7 +958,6 @@ CREATE TABLE public.categories (
 --
 -- Name: category_memory; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.category_memory (
     household_id uuid NOT NULL,
     key text NOT NULL,
@@ -692,7 +973,6 @@ CREATE TABLE public.category_memory (
 --
 -- Name: change_requests; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.change_requests (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -710,7 +990,6 @@ CREATE TABLE public.change_requests (
 --
 -- Name: chapters; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.chapters (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -732,7 +1011,6 @@ CREATE TABLE public.chapters (
 --
 -- Name: client_errors; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.client_errors (
     id bigint NOT NULL,
     user_id uuid DEFAULT auth.uid() NOT NULL,
@@ -747,7 +1025,6 @@ CREATE TABLE public.client_errors (
 --
 -- Name: client_errors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
-
 ALTER TABLE public.client_errors ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.client_errors_id_seq
     START WITH 1
@@ -760,7 +1037,6 @@ ALTER TABLE public.client_errors ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 --
 -- Name: comments; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.comments (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -775,7 +1051,6 @@ CREATE TABLE public.comments (
 --
 -- Name: expenses; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.expenses (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -827,7 +1102,6 @@ CREATE TABLE public.expenses (
 --
 -- Name: households; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.households (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     join_code text DEFAULT upper(substr(md5((gen_random_uuid())::text), 1, 6)) NOT NULL,
@@ -843,7 +1117,6 @@ CREATE TABLE public.households (
 --
 -- Name: import_ignores; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.import_ignores (
     household_id uuid NOT NULL,
     source text NOT NULL,
@@ -854,7 +1127,6 @@ CREATE TABLE public.import_ignores (
 --
 -- Name: import_rules; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.import_rules (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -864,14 +1136,13 @@ CREATE TABLE public.import_rules (
     split_mode text,
     split_params jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT import_rules_decision_check CHECK ((decision = ANY (ARRAY['keep'::text, 'skip'::text]))),
+    CONSTRAINT import_rules_decision_check CHECK ((decision = 'keep'::text)),
     CONSTRAINT import_rules_split_mode_check CHECK ((split_mode = ANY (ARRAY['ratio'::text, 'exact'::text, 'for_other'::text, 'treat'::text])))
 );
 
 --
 -- Name: inbox_items; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.inbox_items (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -893,7 +1164,6 @@ CREATE TABLE public.inbox_items (
 --
 -- Name: join_attempts; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.join_attempts (
     user_id uuid NOT NULL,
     at timestamp with time zone DEFAULT now() NOT NULL
@@ -902,7 +1172,6 @@ CREATE TABLE public.join_attempts (
 --
 -- Name: members; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.members (
     household_id uuid NOT NULL,
     user_id uuid NOT NULL,
@@ -918,7 +1187,6 @@ CREATE TABLE public.members (
 --
 -- Name: settlements; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.settlements (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -940,7 +1208,6 @@ CREATE TABLE public.settlements (
 --
 -- Name: member_net; Type: VIEW; Schema: public; Owner: -
 --
-
 CREATE VIEW public.member_net WITH (security_invoker='true') AS
  SELECT household_id,
     user_id,
@@ -960,7 +1227,6 @@ CREATE VIEW public.member_net WITH (security_invoker='true') AS
 --
 -- Name: recaps; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.recaps (
     household_id uuid NOT NULL,
     period text NOT NULL,
@@ -973,7 +1239,6 @@ CREATE TABLE public.recaps (
 --
 -- Name: recurring; Type: TABLE; Schema: public; Owner: -
 --
-
 CREATE TABLE public.recurring (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     household_id uuid NOT NULL,
@@ -1005,996 +1270,868 @@ CREATE TABLE public.recurring (
 );
 
 --
+-- Name: restore_ids; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE public.restore_ids (
+    household_id uuid NOT NULL,
+    old_id uuid NOT NULL,
+    new_id uuid NOT NULL
+);
+
+--
 -- Name: accounts accounts_household_id_provider_external_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.accounts
     ADD CONSTRAINT accounts_household_id_provider_external_id_key UNIQUE (household_id, provider, external_id);
 
 --
 -- Name: accounts accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.accounts
     ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
 
 --
 -- Name: activity activity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.activity
     ADD CONSTRAINT activity_pkey PRIMARY KEY (id);
 
 --
 -- Name: ai_usage ai_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.ai_usage
     ADD CONSTRAINT ai_usage_pkey PRIMARY KEY (household_id, day, kind);
 
 --
 -- Name: app_config app_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.app_config
     ADD CONSTRAINT app_config_pkey PRIMARY KEY (key);
 
 --
 -- Name: categories categories_household_id_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.categories
     ADD CONSTRAINT categories_household_id_name_key UNIQUE (household_id, name);
 
 --
 -- Name: categories categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.categories
     ADD CONSTRAINT categories_pkey PRIMARY KEY (id);
 
 --
 -- Name: category_memory category_memory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.category_memory
     ADD CONSTRAINT category_memory_pkey PRIMARY KEY (household_id, key);
 
 --
 -- Name: change_requests change_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.change_requests
     ADD CONSTRAINT change_requests_pkey PRIMARY KEY (id);
 
 --
 -- Name: chapters chapters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.chapters
     ADD CONSTRAINT chapters_pkey PRIMARY KEY (id);
 
 --
 -- Name: client_errors client_errors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.client_errors
     ADD CONSTRAINT client_errors_pkey PRIMARY KEY (id);
 
 --
 -- Name: comments comments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.comments
     ADD CONSTRAINT comments_pkey PRIMARY KEY (id);
 
 --
 -- Name: expenses expenses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_pkey PRIMARY KEY (id);
 
 --
 -- Name: households households_join_code_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.households
     ADD CONSTRAINT households_join_code_key UNIQUE (join_code);
 
 --
 -- Name: households households_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.households
     ADD CONSTRAINT households_pkey PRIMARY KEY (id);
 
 --
 -- Name: import_ignores import_ignores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.import_ignores
     ADD CONSTRAINT import_ignores_pkey PRIMARY KEY (household_id, source, id_hash);
 
 --
 -- Name: import_rules import_rules_household_id_match_text_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.import_rules
     ADD CONSTRAINT import_rules_household_id_match_text_key UNIQUE (household_id, match_text);
 
 --
 -- Name: import_rules import_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.import_rules
     ADD CONSTRAINT import_rules_pkey PRIMARY KEY (id);
 
 --
 -- Name: inbox_items inbox_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.inbox_items
     ADD CONSTRAINT inbox_items_pkey PRIMARY KEY (id);
 
 --
 -- Name: members members_household_id_animal_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_household_id_animal_key UNIQUE (household_id, animal);
 
 --
 -- Name: members members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_pkey PRIMARY KEY (household_id, user_id);
 
 --
 -- Name: recaps recaps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.recaps
     ADD CONSTRAINT recaps_pkey PRIMARY KEY (household_id, period);
 
 --
 -- Name: recurring recurring_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.recurring
     ADD CONSTRAINT recurring_pkey PRIMARY KEY (id);
 
 --
+-- Name: restore_ids restore_ids_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.restore_ids
+    ADD CONSTRAINT restore_ids_pkey PRIMARY KEY (household_id, old_id);
+
+--
 -- Name: settlements settlements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.settlements
     ADD CONSTRAINT settlements_pkey PRIMARY KEY (id);
 
 --
 -- Name: activity_household_at; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE INDEX activity_household_at ON public.activity USING btree (household_id, at DESC);
 
 --
 -- Name: change_requests_one_pending; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE UNIQUE INDEX change_requests_one_pending ON public.change_requests USING btree (household_id, kind) WHERE (status = 'pending'::text);
 
 --
 -- Name: comments_expense; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE INDEX comments_expense ON public.comments USING btree (expense_id, created_at);
 
 --
 -- Name: expenses_chapter; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE INDEX expenses_chapter ON public.expenses USING btree (chapter_id) WHERE (chapter_id IS NOT NULL);
 
 --
 -- Name: expenses_external; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE UNIQUE INDEX expenses_external ON public.expenses USING btree (household_id, source, external_id) WHERE (external_id IS NOT NULL);
 
 --
 -- Name: expenses_household_date; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE INDEX expenses_household_date ON public.expenses USING btree (household_id, date DESC);
 
 --
 -- Name: expenses_occurrence; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE UNIQUE INDEX expenses_occurrence ON public.expenses USING btree (recurring_id, occurrence_date) WHERE (recurring_id IS NOT NULL);
 
 --
 -- Name: inbox_external; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE UNIQUE INDEX inbox_external ON public.inbox_items USING btree (household_id, source, external_id) WHERE (external_id IS NOT NULL);
 
 --
 -- Name: inbox_occurrence; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE UNIQUE INDEX inbox_occurrence ON public.inbox_items USING btree (recurring_id, occurrence_date) WHERE (recurring_id IS NOT NULL);
 
 --
 -- Name: join_attempts_user_at; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE INDEX join_attempts_user_at ON public.join_attempts USING btree (user_id, at);
 
 --
 -- Name: members_one_household; Type: INDEX; Schema: public; Owner: -
 --
-
 CREATE UNIQUE INDEX members_one_household ON public.members USING btree (user_id);
 
 --
 -- Name: categories categories_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER categories_log AFTER INSERT OR UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: categories categories_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER categories_stamp BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
 -- Name: chapters chapters_author; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER chapters_author BEFORE INSERT OR UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: chapters chapters_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER chapters_log AFTER INSERT OR UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: chapters chapters_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER chapters_stamp BEFORE UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
 -- Name: comments comments_entry; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER comments_entry BEFORE INSERT ON public.comments FOR EACH ROW EXECUTE FUNCTION public.check_comment_entry();
 
 --
 -- Name: comments comments_guard; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER comments_guard BEFORE UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.comments_guard();
 
 --
 -- Name: comments comments_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER comments_log AFTER INSERT OR UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: expenses expenses_author; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER expenses_author BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: expenses expenses_category_guess; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER expenses_category_guess BEFORE UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.clear_category_guess();
 
 --
 -- Name: expenses expenses_chapter; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER expenses_chapter BEFORE INSERT OR UPDATE OF chapter_id, household_id ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.check_entry_chapter();
 
 --
 -- Name: expenses expenses_check_money; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER expenses_check_money BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.check_money();
 
 --
 -- Name: expenses expenses_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER expenses_log AFTER INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: expenses expenses_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER expenses_stamp BEFORE UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
 -- Name: households households_guard; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER households_guard BEFORE UPDATE ON public.households FOR EACH ROW EXECUTE FUNCTION public.guard_household();
 
 --
 -- Name: inbox_items inbox_items_author; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER inbox_items_author BEFORE INSERT OR UPDATE ON public.inbox_items FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: inbox_items inbox_items_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER inbox_items_log AFTER INSERT OR UPDATE ON public.inbox_items FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: inbox_items inbox_items_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER inbox_items_stamp BEFORE UPDATE ON public.inbox_items FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
 -- Name: members members_guard; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER members_guard BEFORE UPDATE ON public.members FOR EACH ROW EXECUTE FUNCTION public.guard_member_identity();
 
 --
 -- Name: recurring recurring_author; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER recurring_author BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: recurring recurring_check_money; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER recurring_check_money BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.check_money();
 
 --
 -- Name: recurring recurring_guard; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER recurring_guard BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.recurring_guard();
 
 --
 -- Name: recurring recurring_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER recurring_log AFTER INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: recurring recurring_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER recurring_stamp BEFORE UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
 -- Name: settlements settlements_author; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER settlements_author BEFORE INSERT OR UPDATE ON public.settlements FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 
 --
 -- Name: settlements settlements_log; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER settlements_log AFTER INSERT OR UPDATE ON public.settlements FOR EACH ROW EXECUTE FUNCTION public.log_activity();
 
 --
 -- Name: settlements settlements_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
-
 CREATE TRIGGER settlements_stamp BEFORE UPDATE ON public.settlements FOR EACH ROW EXECUTE FUNCTION public.stamp_update();
 
 --
 -- Name: accounts accounts_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.accounts
     ADD CONSTRAINT accounts_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: accounts accounts_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.accounts
     ADD CONSTRAINT accounts_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id);
 
 --
 -- Name: activity activity_actor_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.activity
     ADD CONSTRAINT activity_actor_fkey FOREIGN KEY (actor) REFERENCES auth.users(id);
 
 --
 -- Name: activity activity_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.activity
     ADD CONSTRAINT activity_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: ai_usage ai_usage_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.ai_usage
     ADD CONSTRAINT ai_usage_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: categories categories_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.categories
     ADD CONSTRAINT categories_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: category_memory category_memory_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.category_memory
     ADD CONSTRAINT category_memory_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE CASCADE;
 
 --
 -- Name: category_memory category_memory_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.category_memory
     ADD CONSTRAINT category_memory_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: change_requests change_requests_decided_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.change_requests
     ADD CONSTRAINT change_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES auth.users(id);
 
 --
 -- Name: change_requests change_requests_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.change_requests
     ADD CONSTRAINT change_requests_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: change_requests change_requests_requested_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.change_requests
     ADD CONSTRAINT change_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES auth.users(id);
 
 --
 -- Name: chapters chapters_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.chapters
     ADD CONSTRAINT chapters_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
 
 --
 -- Name: chapters chapters_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.chapters
     ADD CONSTRAINT chapters_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: comments comments_author_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.comments
     ADD CONSTRAINT comments_author_fkey FOREIGN KEY (author) REFERENCES auth.users(id);
 
 --
 -- Name: comments comments_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.comments
     ADD CONSTRAINT comments_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id) ON DELETE CASCADE;
 
 --
 -- Name: comments comments_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.comments
     ADD CONSTRAINT comments_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: expenses expenses_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id) ON DELETE SET NULL;
 
 --
 -- Name: expenses expenses_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE SET NULL;
 
 --
 -- Name: expenses expenses_chapter_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_chapter_id_fkey FOREIGN KEY (chapter_id) REFERENCES public.chapters(id) ON DELETE SET NULL;
 
 --
 -- Name: expenses expenses_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
 
 --
 -- Name: expenses expenses_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: expenses expenses_recurring_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_recurring_id_fkey FOREIGN KEY (recurring_id) REFERENCES public.recurring(id) ON DELETE SET NULL;
 
 --
 -- Name: expenses expenses_refund_of_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_refund_of_fkey FOREIGN KEY (refund_of) REFERENCES public.expenses(id) ON DELETE SET NULL;
 
 --
 -- Name: expenses expenses_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id);
 
 --
 -- Name: import_ignores import_ignores_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.import_ignores
     ADD CONSTRAINT import_ignores_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: import_rules import_rules_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.import_rules
     ADD CONSTRAINT import_rules_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE SET NULL;
 
 --
 -- Name: import_rules import_rules_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.import_rules
     ADD CONSTRAINT import_rules_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: inbox_items inbox_items_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.inbox_items
     ADD CONSTRAINT inbox_items_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
 
 --
 -- Name: inbox_items inbox_items_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.inbox_items
     ADD CONSTRAINT inbox_items_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id) ON DELETE SET NULL;
 
 --
 -- Name: inbox_items inbox_items_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.inbox_items
     ADD CONSTRAINT inbox_items_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: inbox_items inbox_items_recurring_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.inbox_items
     ADD CONSTRAINT inbox_items_recurring_id_fkey FOREIGN KEY (recurring_id) REFERENCES public.recurring(id) ON DELETE CASCADE;
 
 --
 -- Name: join_attempts join_attempts_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.join_attempts
     ADD CONSTRAINT join_attempts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 --
 -- Name: members members_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: members members_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 --
 -- Name: recaps recaps_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.recaps
     ADD CONSTRAINT recaps_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: recurring recurring_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.recurring
     ADD CONSTRAINT recurring_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE SET NULL;
 
 --
 -- Name: recurring recurring_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.recurring
     ADD CONSTRAINT recurring_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
 
 --
 -- Name: recurring recurring_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.recurring
     ADD CONSTRAINT recurring_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
+-- Name: restore_ids restore_ids_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+ALTER TABLE ONLY public.restore_ids
+    ADD CONSTRAINT restore_ids_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
+
+--
 -- Name: settlements settlements_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.settlements
     ADD CONSTRAINT settlements_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
 
 --
 -- Name: settlements settlements_from_user_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.settlements
     ADD CONSTRAINT settlements_from_user_fkey FOREIGN KEY (from_user) REFERENCES auth.users(id);
 
 --
 -- Name: settlements settlements_household_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.settlements
     ADD CONSTRAINT settlements_household_id_fkey FOREIGN KEY (household_id) REFERENCES public.households(id) ON DELETE CASCADE;
 
 --
 -- Name: settlements settlements_to_user_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
 ALTER TABLE ONLY public.settlements
     ADD CONSTRAINT settlements_to_user_fkey FOREIGN KEY (to_user) REFERENCES auth.users(id);
 
 --
 -- Name: accounts; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: accounts accounts_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY accounts_all ON public.accounts USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: activity act_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY act_read ON public.activity FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: activity; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.activity ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: ai_usage; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.ai_usage ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: ai_usage ai_usage_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY ai_usage_read ON public.ai_usage FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: app_config; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.app_config ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: categories; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: categories categories_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY categories_all ON public.categories USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: category_memory; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.category_memory ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: category_memory category_memory_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY category_memory_all ON public.category_memory USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: change_requests; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.change_requests ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: chapters; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.chapters ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: chapters chapters_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY chapters_all ON public.chapters USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: client_errors; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.client_errors ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: comments; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: comments comments_ins; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY comments_ins ON public.comments FOR INSERT WITH CHECK (((household_id = public.my_household()) AND (author = auth.uid())));
 
 --
 -- Name: comments comments_sel; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY comments_sel ON public.comments FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: comments comments_upd; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY comments_upd ON public.comments FOR UPDATE USING ((author = auth.uid())) WITH CHECK ((author = auth.uid()));
 
 --
 -- Name: app_config config_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY config_read ON public.app_config FOR SELECT USING (true);
 
 --
 -- Name: change_requests cr_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY cr_read ON public.change_requests FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: client_errors errors_ins; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY errors_ins ON public.client_errors FOR INSERT WITH CHECK ((user_id = auth.uid()));
 
 --
 -- Name: expenses; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: expenses expenses_ins; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY expenses_ins ON public.expenses FOR INSERT WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: expenses expenses_sel; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY expenses_sel ON public.expenses FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: expenses expenses_upd; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY expenses_upd ON public.expenses FOR UPDATE USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: households hh_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY hh_read ON public.households FOR SELECT USING ((id = public.my_household()));
 
 --
 -- Name: households hh_update; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY hh_update ON public.households FOR UPDATE USING ((id = public.my_household())) WITH CHECK ((id = public.my_household()));
 
 --
 -- Name: households; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.households ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: import_ignores; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.import_ignores ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: import_ignores import_ignores_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY import_ignores_all ON public.import_ignores USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: import_rules; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.import_rules ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: import_rules import_rules_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY import_rules_all ON public.import_rules USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: inbox_items; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.inbox_items ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: inbox_items inbox_items_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY inbox_items_all ON public.inbox_items USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: join_attempts; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.join_attempts ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: members mem_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY mem_read ON public.members FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: members; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: recaps; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.recaps ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: recaps recaps_read; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY recaps_read ON public.recaps FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: recurring; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.recurring ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: recurring recurring_all; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY recurring_all ON public.recurring USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
+
+--
+-- Name: restore_ids; Type: ROW SECURITY; Schema: public; Owner: -
+--
+ALTER TABLE public.restore_ids ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: settlements; Type: ROW SECURITY; Schema: public; Owner: -
 --
-
 ALTER TABLE public.settlements ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: settlements settlements_ins; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY settlements_ins ON public.settlements FOR INSERT WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: settlements settlements_sel; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY settlements_sel ON public.settlements FOR SELECT USING ((household_id = public.my_household()));
 
 --
 -- Name: settlements settlements_upd; Type: POLICY; Schema: public; Owner: -
 --
-
 CREATE POLICY settlements_upd ON public.settlements FOR UPDATE USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
 
 --
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: -
 --
-
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO anon;
 
 --
 -- Name: FUNCTION check_comment_entry(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.check_comment_entry() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.check_comment_entry() TO service_role;
 
 --
 -- Name: FUNCTION check_entry_chapter(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.check_entry_chapter() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.check_entry_chapter() TO service_role;
 
 --
 -- Name: FUNCTION check_money(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.check_money() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.check_money() TO authenticated;
 GRANT ALL ON FUNCTION public.check_money() TO service_role;
@@ -2002,21 +2139,18 @@ GRANT ALL ON FUNCTION public.check_money() TO service_role;
 --
 -- Name: FUNCTION clear_category_guess(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.clear_category_guess() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.clear_category_guess() TO service_role;
 
 --
 -- Name: FUNCTION comments_guard(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.comments_guard() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.comments_guard() TO service_role;
 
 --
 -- Name: FUNCTION create_household(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.create_household() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.create_household() TO authenticated;
 GRANT ALL ON FUNCTION public.create_household() TO service_role;
@@ -2024,7 +2158,6 @@ GRANT ALL ON FUNCTION public.create_household() TO service_role;
 --
 -- Name: FUNCTION decide_change(p_id uuid, p_approve boolean); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) TO authenticated;
 GRANT ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) TO service_role;
@@ -2032,7 +2165,6 @@ GRANT ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) TO serv
 --
 -- Name: FUNCTION guard_household(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.guard_household() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.guard_household() TO authenticated;
 GRANT ALL ON FUNCTION public.guard_household() TO service_role;
@@ -2040,7 +2172,6 @@ GRANT ALL ON FUNCTION public.guard_household() TO service_role;
 --
 -- Name: FUNCTION guard_member_identity(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.guard_member_identity() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.guard_member_identity() TO authenticated;
 GRANT ALL ON FUNCTION public.guard_member_identity() TO service_role;
@@ -2048,7 +2179,6 @@ GRANT ALL ON FUNCTION public.guard_member_identity() TO service_role;
 --
 -- Name: FUNCTION health(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.health() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.health() TO authenticated;
 GRANT ALL ON FUNCTION public.health() TO service_role;
@@ -2057,7 +2187,6 @@ GRANT ALL ON FUNCTION public.health() TO anon;
 --
 -- Name: FUNCTION increment_ai_usage(p_kind text); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.increment_ai_usage(p_kind text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.increment_ai_usage(p_kind text) TO authenticated;
 GRANT ALL ON FUNCTION public.increment_ai_usage(p_kind text) TO service_role;
@@ -2065,7 +2194,6 @@ GRANT ALL ON FUNCTION public.increment_ai_usage(p_kind text) TO service_role;
 --
 -- Name: FUNCTION join_household(p_code text); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.join_household(p_code text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.join_household(p_code text) TO authenticated;
 GRANT ALL ON FUNCTION public.join_household(p_code text) TO service_role;
@@ -2073,7 +2201,6 @@ GRANT ALL ON FUNCTION public.join_household(p_code text) TO service_role;
 --
 -- Name: FUNCTION jsonb_pence_sum(j jsonb); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO authenticated;
 GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO service_role;
@@ -2081,7 +2208,6 @@ GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO service_role;
 --
 -- Name: FUNCTION log_activity(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.log_activity() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.log_activity() TO authenticated;
 GRANT ALL ON FUNCTION public.log_activity() TO service_role;
@@ -2089,7 +2215,6 @@ GRANT ALL ON FUNCTION public.log_activity() TO service_role;
 --
 -- Name: FUNCTION my_household(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.my_household() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.my_household() TO authenticated;
 GRANT ALL ON FUNCTION public.my_household() TO service_role;
@@ -2097,7 +2222,6 @@ GRANT ALL ON FUNCTION public.my_household() TO service_role;
 --
 -- Name: FUNCTION post_due_recurring(p_household uuid); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.post_due_recurring(p_household uuid) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO authenticated;
 GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO service_role;
@@ -2105,21 +2229,18 @@ GRANT ALL ON FUNCTION public.post_due_recurring(p_household uuid) TO service_rol
 --
 -- Name: FUNCTION post_due_recurring_all(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.post_due_recurring_all() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.post_due_recurring_all() TO service_role;
 
 --
 -- Name: FUNCTION recurring_guard(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.recurring_guard() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.recurring_guard() TO service_role;
 
 --
 -- Name: FUNCTION recurring_step(p_frequency text, p_every integer); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) TO authenticated;
 GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) TO service_role;
@@ -2127,15 +2248,56 @@ GRANT ALL ON FUNCTION public.recurring_step(p_frequency text, p_every integer) T
 --
 -- Name: FUNCTION request_change(p_kind text, p_payload jsonb); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO authenticated;
 GRANT ALL ON FUNCTION public.request_change(p_kind text, p_payload jsonb) TO service_role;
 
 --
+-- Name: FUNCTION restore_backup(p_people jsonb, p_rows jsonb); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_backup(p_people jsonb, p_rows jsonb) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_backup(p_people jsonb, p_rows jsonb) TO authenticated;
+GRANT ALL ON FUNCTION public.restore_backup(p_people jsonb, p_rows jsonb) TO service_role;
+
+--
+-- Name: FUNCTION restore_check_split(p_mode text, p_params jsonb, p_members uuid[]); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_check_split(p_mode text, p_params jsonb, p_members uuid[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_check_split(p_mode text, p_params jsonb, p_members uuid[]) TO service_role;
+
+--
+-- Name: FUNCTION restore_new_id(p_hid uuid, p_old uuid, p_table text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_new_id(p_hid uuid, p_old uuid, p_table text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_new_id(p_hid uuid, p_old uuid, p_table text) TO service_role;
+
+--
+-- Name: FUNCTION restore_person(p_id uuid, p_people jsonb, p_members uuid[]); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_person(p_id uuid, p_people jsonb, p_members uuid[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_person(p_id uuid, p_people jsonb, p_members uuid[]) TO service_role;
+
+--
+-- Name: FUNCTION restore_ref(p_hid uuid, p_old uuid, p_table text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_ref(p_hid uuid, p_old uuid, p_table text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_ref(p_hid uuid, p_old uuid, p_table text) TO service_role;
+
+--
+-- Name: FUNCTION restore_remap_keys(j jsonb, p_people jsonb); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_remap_keys(j jsonb, p_people jsonb) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_remap_keys(j jsonb, p_people jsonb) TO service_role;
+
+--
+-- Name: FUNCTION restore_target(p_hid uuid, p_old uuid, p_table text); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.restore_target(p_hid uuid, p_old uuid, p_table text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.restore_target(p_hid uuid, p_old uuid, p_table text) TO service_role;
+
+--
 -- Name: FUNCTION save_recap_prose(p_period text, p_stats jsonb, p_prose text); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) TO authenticated;
 GRANT ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_prose text) TO service_role;
@@ -2143,7 +2305,6 @@ GRANT ALL ON FUNCTION public.save_recap_prose(p_period text, p_stats jsonb, p_pr
 --
 -- Name: FUNCTION set_identity(p_name text, p_animal text); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.set_identity(p_name text, p_animal text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO authenticated;
 GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO service_role;
@@ -2151,7 +2312,6 @@ GRANT ALL ON FUNCTION public.set_identity(p_name text, p_animal text) TO service
 --
 -- Name: FUNCTION set_monzo_me(p_username text); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.set_monzo_me(p_username text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO authenticated;
 GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO service_role;
@@ -2159,7 +2319,6 @@ GRANT ALL ON FUNCTION public.set_monzo_me(p_username text) TO service_role;
 --
 -- Name: FUNCTION set_settle_day(p_day integer); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.set_settle_day(p_day integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.set_settle_day(p_day integer) TO authenticated;
 GRANT ALL ON FUNCTION public.set_settle_day(p_day integer) TO service_role;
@@ -2167,7 +2326,6 @@ GRANT ALL ON FUNCTION public.set_settle_day(p_day integer) TO service_role;
 --
 -- Name: FUNCTION stamp_author(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.stamp_author() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.stamp_author() TO authenticated;
 GRANT ALL ON FUNCTION public.stamp_author() TO service_role;
@@ -2175,139 +2333,123 @@ GRANT ALL ON FUNCTION public.stamp_author() TO service_role;
 --
 -- Name: FUNCTION stamp_update(); Type: ACL; Schema: public; Owner: -
 --
-
 REVOKE ALL ON FUNCTION public.stamp_update() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.stamp_update() TO authenticated;
 GRANT ALL ON FUNCTION public.stamp_update() TO service_role;
 
 --
+-- Name: FUNCTION storage_used(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.storage_used() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.storage_used() TO authenticated;
+GRANT ALL ON FUNCTION public.storage_used() TO service_role;
+
+--
 -- Name: TABLE accounts; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.accounts TO authenticated;
 
 --
 -- Name: TABLE activity; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.activity TO authenticated;
 
 --
 -- Name: TABLE ai_usage; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.ai_usage TO authenticated;
 
 --
 -- Name: TABLE app_config; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.app_config TO authenticated;
 
 --
 -- Name: TABLE categories; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.categories TO authenticated;
 
 --
 -- Name: TABLE category_memory; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.category_memory TO authenticated;
 
 --
 -- Name: TABLE change_requests; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.change_requests TO authenticated;
 
 --
 -- Name: TABLE chapters; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.chapters TO authenticated;
 
 --
 -- Name: TABLE client_errors; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT INSERT ON TABLE public.client_errors TO authenticated;
 
 --
 -- Name: TABLE comments; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.comments TO authenticated;
 
 --
 -- Name: TABLE expenses; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.expenses TO authenticated;
 
 --
 -- Name: TABLE households; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,UPDATE ON TABLE public.households TO authenticated;
 
 --
 -- Name: TABLE import_ignores; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.import_ignores TO authenticated;
 
 --
 -- Name: TABLE import_rules; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.import_rules TO authenticated;
 
 --
 -- Name: TABLE inbox_items; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.inbox_items TO authenticated;
 
 --
 -- Name: TABLE members; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.members TO authenticated;
 
 --
 -- Name: TABLE settlements; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.settlements TO authenticated;
 
 --
 -- Name: TABLE member_net; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.member_net TO authenticated;
 
 --
 -- Name: TABLE recaps; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT ON TABLE public.recaps TO authenticated;
 
 --
 -- Name: TABLE recurring; Type: ACL; Schema: public; Owner: -
 --
-
 GRANT SELECT,INSERT,UPDATE ON TABLE public.recurring TO authenticated;
 
 --
 -- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: -
 --
-
 ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated;
 ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA public GRANT ALL ON FUNCTIONS TO service_role;
 
 --
 -- PostgreSQL database dump complete
 --
-

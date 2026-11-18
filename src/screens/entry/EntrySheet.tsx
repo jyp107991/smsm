@@ -19,7 +19,7 @@ import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
 import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, editExpense, endRecurring, keepInboxItem, newId, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
+  addExpense, deleteExpense, editExpense, endRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
   currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, forgetPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
   useSmartFeatures, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
@@ -125,7 +125,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const home = useHousehold().data?.home_country ?? homeCountry();
   const placeRef = useRef<HTMLInputElement>(null);
   const placeTouched = useRef(false);
-  const capture = request.mode === 'add' && request.inboxItem === undefined && request.prefill?.place === undefined;
+  const capture = request.mode === 'add' && request.inboxItem === undefined && request.importCard === undefined && request.prefill?.place === undefined;
   useEffect(() => {
     if (!capture) return;
     let live = true;
@@ -412,6 +412,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         undo = () => {
           if ('draft' in before) editExpense(id, changedFields(draft, before.draft, false));
         };
+      } else if (request.mode === 'add' && request.importCard !== undefined) {
+        // IMP-3 Change first: the bank row kept as changed here, still marked with its source and bank id.
+        id = keepImportNow(request.importCard, { ...draft, id: rowId, always: request.importAlways ?? false });
+        undo = () => {
+          if (undoKeep(id)) toast.show({ message: strings.entry.removed(draft.description) });
+        };
       } else if (request.mode === 'add' && request.inboxItem !== undefined) {
         // INB-2 Keep: the bill becomes an entry with its template and occurrence, and leaves the Inbox.
         id = keepInboxItem(request.inboxItem, { ...draft, id: rowId });
@@ -586,7 +592,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           url={photo.url}
           reading={reading}
           onRemove={removePhoto}
-          onSortLater={request.inboxItem === undefined ? () => { sortLaterNow(); } : null}
+          onSortLater={request.inboxItem === undefined && request.importCard === undefined ? () => { sortLaterNow(); } : null}
         />
       ) : photoMode && smart && online ? (
         <div><PhotoButton label={strings.smart.scan} scan autoOpen={startScan} onPicked={(file) => { pick(file, true); }} /></div>
@@ -770,7 +776,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           </div>
         ) : null}
         {/* REC-1: an expense can become a regular payment, keeping what was typed. */}
-        {request.mode === 'add' && request.inboxItem === undefined && !rec && !isBack ? (
+        {request.mode === 'add' && request.inboxItem === undefined && request.importCard === undefined && !rec && !isBack ? (
           <div className="mt-4">
             <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setS((prev) => ({ ...prev, foreign: null })); setErrors([]); }}>{strings.recurring.repeat}</Button>
           </div>

@@ -18,7 +18,7 @@ export interface WriteProblem {
   /** The id of the refused write (one per write, not per entry). */
   id: string;
   table: MoneyOp['table'];
-  op: 'upsert' | 'patch' | 'upload';
+  op: 'upsert' | 'patch' | 'upload' | 'insert' | 'delete';
   /** The entry it was for. */
   rowId: string;
   /** "Tesco £42.50". */
@@ -62,7 +62,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
   const reason = refusalReason(message, code);
   return {
     message: REFUSAL_MESSAGES[reason],
-    input: op.op === 'upsert' ? op.input : op.op === 'upload' ? { id: op.id } : { id: op.id, ...op.patch },
+    input: op.op === 'upsert' ? op.input : op.op === 'patch' ? { id: op.id, ...op.patch } : { id: op.id },
     id: op.opId,
     table: op.table,
     op: op.op,
@@ -76,7 +76,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
   };
 }
 
-const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories', 'chapters', 'comments', 'receipts']), rowId: z.string(), label: z.string() }));
+const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories', 'chapters', 'comments', 'receipts', 'import_ignores', 'import_rules']), rowId: z.string(), label: z.string() }));
 
 export interface ProblemStore {
   load: () => Promise<void>;

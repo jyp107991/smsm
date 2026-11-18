@@ -8,7 +8,7 @@ import { z } from 'zod';
 import {
   ApiError,
   type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChapterRow, type CommentRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
-  type InboxItemRow, type RecurringRow, type SettlementRow,
+  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type RecurringRow, type SettlementRow,
 } from './api';
 import { keys } from './keys';
 
@@ -157,5 +157,27 @@ export function inboxQuery(api: Api, uid: string | null, hid: Hid) {
   return queryOptions({
     queryKey: keys.inbox(uid ?? ''),
     queryFn: uid && hid ? async () => check(z.array(inboxSchema), 'inbox', await api.inboxItems(hid)) as InboxItemRow[] : skipToken,
+  });
+}
+
+const importIgnoreSchema = z.looseObject({ household_id: id, source: z.enum(['csv', 'monzo']), id_hash: z.string().regex(/^[0-9a-f]{64}$/) });
+const importRuleSchema = z.looseObject({
+  id, household_id: id, match_text: z.string(), decision: z.enum(['keep', 'skip']), category_id: id.nullable(), split_mode: z.string().nullable(),
+  split_params: z.unknown(),
+});
+
+/** S7 (IMP-3): the hashes of bank rows decided "Not ours" (never the rows themselves). */
+export function importIgnoresQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.importIgnores(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(importIgnoreSchema), 'import ignores', await api.importIgnores(hid)) as ImportIgnoreRow[] : skipToken,
+  });
+}
+
+/** S7 (IMP-3): the household's "always do this for …" rules. */
+export function importRulesQuery(api: Api, uid: string | null, hid: Hid) {
+  return queryOptions({
+    queryKey: keys.importRules(uid ?? ''),
+    queryFn: uid && hid ? async () => check(z.array(importRuleSchema), 'import rules', await api.importRules(hid)) as ImportRuleRow[] : skipToken,
   });
 }

@@ -88,3 +88,22 @@
     background-image: linear-gradient(var(--wash-strong), var(--wash-strong));
   }
 }
+
+/*
+ * S7 (EXP-1): printing (the monthly statement's "Save as PDF"). Paper is always the light theme, whatever the
+ * phone is set to; no navigation; a row of a table is never split across two pages.
+ */
+@media print {
+  :root,
+  :root[data-theme],
+  [data-scheme] {
+    color-scheme: light !important;
+  }
+  nav,
+  [role='tablist'] {
+    display: none !important;
+  }
+  tr {
+    break-inside: avoid;
+  }
+}

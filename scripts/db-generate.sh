@@ -4,6 +4,8 @@
 #   src/data/database.types.ts      TypeScript types (never written by hand)
 # Usage: PGHOST=... PGUSER=... [PGPASSWORD=...] scripts/db-generate.sh [--check]
 #   --check  regenerate into a temp dir and fail if the committed files differ (CI).
+# The blank line after each comment header is dropped: CI's pg_dump left one out where ours didn't (S7, 18 Nov),
+# so it is never written and the snapshot reads the same from either.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DB=smsm_gen_$$
@@ -22,7 +24,8 @@ OUT=$(mktemp -d)
     | grep -v -E '^(-- Dumped (from|by)|\\(un)?restrict |SET |SELECT pg_catalog.set_config)' \
     | grep -v -E 'ALTER COLUMN .* SET \(pg_attver=' \
     | sed -E 's/FOR ROLE [a-z_]+ IN SCHEMA/FOR ROLE <owner> IN SCHEMA/' \
-    | cat -s
+    | cat -s \
+    | awk 'prev == "--" && $0 == "" { prev = $0; next } { print; prev = $0 }'
 } > "$OUT/schema.sql"
 
 HOST=${PGHOST:-127.0.0.1}; case "$HOST" in /*) HOST=127.0.0.1;; esac
@@ -32,7 +35,7 @@ npx --no-install supabase gen types --remote="$URL" --schema public > "$OUT/data
 
 if [ "${1:-}" = "--check" ]; then
   ok=1
-  diff -q "$OUT/schema.sql" supabase/schema.sql >/dev/null || { echo "supabase/schema.sql is stale: run npm run db:generate"; diff "$OUT/schema.sql" supabase/schema.sql | head -40; ok=0; }
+  diff -q "$OUT/schema.sql" supabase/schema.sql >/dev/null || { echo "supabase/schema.sql is stale: run npm run db:generate"; diff -u "$OUT/schema.sql" supabase/schema.sql | cat -A | head -60; ok=0; }
   diff -q "$OUT/database.types.ts" src/data/database.types.ts >/dev/null || { echo "src/data/database.types.ts is stale: run npm run db:generate"; diff "$OUT/database.types.ts" src/data/database.types.ts | head -40; ok=0; }
   [ $ok = 1 ] && echo "generated files up to date"
   [ $ok = 1 ]

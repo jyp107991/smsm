@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { pence, sumPence, parseAmount, formatPence } from './money';
+import { pence, sumPence, parseAmount, parseStatementAmount, formatPence } from './money';
 
 const MAX = 100_000_000; // £1,000,000 in pence
 
@@ -211,5 +211,33 @@ describe('formatPence', () => {
 
   it('a negative amount reads as the minus sign followed by the positive amount', () => {
     fc.assert(fc.property(fc.integer({ min: 1, max: MAX }), (p) => formatPence(pence(-p)) === `−${formatPence(pence(p))}`));
+  });
+});
+
+describe('parseStatementAmount (IMP-1: a bank statement amount, signed, in pence)', () => {
+  it('IMP-1: signs, brackets, pounds signs, spaces and thousands commas', () => {
+    expect(parseStatementAmount('-12.50')).toBe(-1250);
+    expect(parseStatementAmount('−12.5')).toBe(-1250);
+    expect(parseStatementAmount('+3')).toBe(300);
+    expect(parseStatementAmount('12')).toBe(1200);
+    expect(parseStatementAmount('.5')).toBe(50);
+    expect(parseStatementAmount('(12.50)')).toBe(-1250);
+    expect(parseStatementAmount('£1,234.56')).toBe(123456);
+    expect(parseStatementAmount('-£5.00')).toBe(-500);
+    expect(parseStatementAmount(' £ 1 234.00 ')).toBe(123400);
+    expect(parseStatementAmount('12,345')).toBe(1234500);
+    expect(parseStatementAmount('1,000,000')).toBe(100_000_000);
+    expect(parseStatementAmount('1,000,000.00')).toBe(100_000_000);
+  });
+
+  it('IMP-1: zero is zero (never −0)', () => {
+    expect(Object.is(parseStatementAmount('0.00'), 0)).toBe(true);
+    expect(Object.is(parseStatementAmount('-0.00'), 0)).toBe(true);
+  });
+
+  it('IMP-1: anything else is unreadable', () => {
+    for (const bad of ['', 'abc', '12.505', '12.', '12,34', '1,23.00', '(12.50', 'x(5)', '(5)x', '5-', '+', '-', '1,000,000.01', '9'.repeat(20)]) {
+      expect(parseStatementAmount(bad), bad).toBeNull();
+    }
   });
 });

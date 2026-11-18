@@ -25,6 +25,7 @@ import { savePending } from './settle/monzo';
 import { MonzoQuestionProvider } from './settle/question';
 import { SettleSheet } from './settle/SettleSheet';
 import { Settings } from './settings/Settings';
+import { StatementPage } from './statement/Statement';
 import { usePeople } from './shared/people';
 import { FromOutside } from './shell/FromOutside';
 import { SheetsContext, type EntryRequest, type SettleRequest } from './sheets';
@@ -108,6 +109,8 @@ function Page({ route }: { route: Route }) {
       return <Chapters />;
     case 'chapter':
       return <ChapterPage key={route.id} id={route.id} />;
+    case 'statement':
+      return <StatementPage key={route.month} month={route.month} />;
   }
 }
 
@@ -133,7 +136,8 @@ function MainApp() {
 
   // A new page starts at its top.
   const path = route.name === 'entry' ? `entry:${route.id}` : route.name === 'chapter' ? `chapter:${route.id}`
-    : route.name === 'recap' ? `recap:${route.month}` : route.name === 'year' ? `year:${route.year}` : route.name;
+    : route.name === 'recap' ? `recap:${route.month}` : route.name === 'year' ? `year:${route.year}`
+    : route.name === 'statement' ? `statement:${route.month}` : route.name;
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [path]);

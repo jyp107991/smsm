@@ -181,6 +181,25 @@ export function addExpense(input: ExpenseDraft & { id?: string }, layer = active
 }
 
 /**
+ * S7 (IMP-3): an entry kept from a bank statement: the person's entry as `addExpense` makes it (at once, offline
+ * too), marked with where it came from and the bank's own id, so the same row can never be imported twice
+ * (the expenses_external index). Its chapter and country are as given (an import is history, not "now").
+ */
+export function addImportedExpense(
+  input: ExpenseDraft & { id?: string },
+  from: { source: 'monzo' | 'csv'; externalId: string },
+  layer = activeDataLayer(),
+): string {
+  const { id, ...draft } = input;
+  const ctx = context(layer);
+  if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
+  const built = expenseRowFor(ctx, { chapterId: null, ...draft });
+  const row: ExpenseRow = { ...built.row, id: id ?? built.row.id, source: from.source, external_id: from.externalId };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
+  return row.id;
+}
+
+/**
  * ACT-5: either person can edit any entry; only the fields given change. Also how a refused write is fixed
  * (OFF-5): edit the kept entry by its id and it is saved again; the problem clears once it is stored.
  */
@@ -225,6 +244,20 @@ export function deleteExpense(id: string, layer = activeDataLayer()): boolean {
   // Q-F4: already deleted (a second tap, or the other phone got there first): nothing to do, nothing logged.
   if (row.deleted_at !== null) return false;
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: layer.now().toISOString() }, label: expenseLabel(row) });
+  return true;
+}
+
+/**
+ * S7 (IMP-3, Undo of Keep): an imported entry taken back: deleted (soft: it stays in history) with its bank id cleared,
+ * so the same bank row can be offered and kept again. True when something changed.
+ */
+export function unkeepImportedExpense(id: string, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const { row, onServer } = currentExpense(layer, id);
+  if (dropRefusedNew(layer, 'expenses', id, onServer)) return true;
+  if (row.deleted_at !== null && row.external_id === null) return false;
+  const patch = { deleted_at: row.deleted_at ?? layer.now().toISOString(), external_id: null };
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch, label: expenseLabel(row) });
   return true;
 }
 

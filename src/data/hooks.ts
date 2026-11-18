@@ -8,14 +8,14 @@ import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } fro
 import { balanceState, nextOneOn, netPositions, type BalanceState } from '../core/balance';
 import type { Pence } from '../core/money';
 import type { UserId } from '../core/split';
-import type { ActivityRow, CategoryRow, ChangeRequestRow, ChapterRow, CommentRow, ExpenseRow, HouseholdRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
+import type { ActivityRow, CategoryRow, ChangeRequestRow, ChapterRow, CommentRow, ExpenseRow, HouseholdRow, ImportRuleRow, InboxItemRow, MemberRow, RecurringRow, SettlementRow } from './api';
 import { activeDataLayer, DataContext } from './context';
 import type { Memory } from '../core/categorise';
 import { MEMORY_KEY, MONEY_KEY } from './keys';
 import type { WriteProblem } from './problems';
 import {
-  activityQuery, categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery, recurringQuery,
-  settlementsQuery,
+  activityQuery, categoriesQuery, changesQuery, chaptersQuery, commentsQuery, expensesQuery, householdQuery, importRulesQuery, inboxQuery, membersQuery, membershipQuery, memoryQuery,
+  recurringQuery, settlementsQuery,
 } from './queries';
 import { currentChapterId, setCurrentChapter, subscribeCurrentChapter } from './mutations';
 import { storedCountry, storedUseLocation, subscribePlaces } from './places';
@@ -24,7 +24,7 @@ import type { DataLayer } from './queryClient';
 import { expenseToLedger, memoryMap, settlementToLedger } from './rows';
 import { userIdOf, type SessionState } from './session';
 import type { WindowRole } from './windows';
-import { overlay, overlayMemory, partnerCompleter, type MemoryOp, type MoneyOp } from './writes';
+import { overlay, overlayMemory, overlayRules, partnerCompleter, type MemoryOp, type MoneyOp } from './writes';
 
 export interface DataResult<T> {
   /** Undefined until the first copy is on the phone. */
@@ -195,6 +195,16 @@ export function useInbox(): DataResult<InboxItemRow[]> {
     () => q.data && overlay(q.data, ops, 'inbox_items').filter((i) => i.status === 'open').sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0)),
     [q.data, ops],
   );
+  return result(q, data);
+}
+
+/** S7 (IMP-3): the household's "always do this for …" rules, oldest first, with waiting changes applied. */
+export function useImportRules(): DataResult<ImportRuleRow[]> {
+  const { api } = useDataLayer();
+  const { uid, hid } = useHid();
+  const q = useQuery(importRulesQuery(api, uid, hid));
+  const ops = useWaitingOps();
+  const data = useMemo(() => q.data && overlayRules(q.data, ops), [q.data, ops]);
   return result(q, data);
 }
 

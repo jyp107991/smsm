@@ -427,6 +427,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"restore_ids": {
+                  Row: {
+                    "household_id": string,"new_id": string,"old_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "household_id": string,"new_id": string,"old_id": string
+                  }
+                  Update: {
+                    "household_id"?: string,"new_id"?: string,"old_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "restore_ids_household_id_fkey"
+      columns: ["household_id"]
+isOneToOne: false
+      referencedRelation: "households"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"settlements": {
                   Row: {
                     "amount_pence": number,"created_at": string,"created_by": string | null,"date": string,"deleted_at": string | null,"from_user": string,"household_id": string,"id": string,"method": string,"note": string | null,"to_user": string,"updated_at": string
@@ -518,6 +538,27 @@ isOneToOne: false
 "request_change":
 { Args: { "p_kind": string,"p_payload": Json }; Returns: string
                            },
+"restore_backup":
+{ Args: { "p_people": Json,"p_rows": Json }; Returns: Json
+                           },
+"restore_check_split":
+{ Args: { "p_members": (string)[],"p_mode": string,"p_params": Json }; Returns: undefined
+                           },
+"restore_new_id":
+{ Args: { "p_hid": string,"p_old": string,"p_table": string }; Returns: string
+                           },
+"restore_person":
+{ Args: { "p_id": string,"p_members": (string)[],"p_people": Json }; Returns: string
+                           },
+"restore_ref":
+{ Args: { "p_hid": string,"p_old": string,"p_table": string }; Returns: string
+                           },
+"restore_remap_keys":
+{ Args: { "j": Json,"p_people": Json }; Returns: Json
+                           },
+"restore_target":
+{ Args: { "p_hid": string,"p_old": string,"p_table": string }; Returns: string
+                           },
 "save_recap_prose":
 { Args: { "p_period": string,"p_prose": string,"p_stats": Json }; Returns: string
                            },
@@ -529,6 +570,9 @@ isOneToOne: false
                            },
 "set_settle_day":
 { Args: { "p_day": number }; Returns: undefined
+                           },
+"storage_used":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            }
           }
           Enums: {
