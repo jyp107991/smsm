@@ -49,7 +49,8 @@ export function Comments({ expenseId }: { expenseId: string }) {
   };
 
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-3">
+    // A comment's notification opens the entry here (NOT-2: /entry/<id>#comments).
+    <section id="comments" aria-labelledby={id} className="flex scroll-mt-4 flex-col gap-3">
       <h2 id={id} className="text-subtitle rule-ledger m-0">{strings.comments.title}</h2>
       {comments.length === 0 ? <p className="text-secondary text-ink-2 m-0">{strings.comments.none}</p> : (
         <ol aria-labelledby={id} className="m-0 flex list-none flex-col p-0">

@@ -59,3 +59,9 @@ enabled = false
 
 [auth.mfa]
 max_enrolled_factors = 10
+
+# S8: the push function is called by the database (pg_net) with the database's own token, which the function
+# checks itself, so the gateway's JWT check is off for it. It holds no secret of its own.
+[functions.push]
+enabled = true
+verify_jwt = false

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import {
   ApiError,
   type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChapterRow, type CommentRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
-  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type RecurringRow, type SettlementRow,
+  type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type NotificationPrefsRow, type RecurringRow, type SettlementRow,
 } from './api';
 import { keys } from './keys';
 
@@ -98,6 +98,19 @@ export function commentsQuery(api: Api, uid: string | null, hid: Hid) {
   return queryOptions({
     queryKey: keys.comments(uid ?? ''),
     queryFn: uid && hid ? async () => check(z.array(commentSchema), 'comments', await api.comments(hid)) as CommentRow[] : skipToken,
+  });
+}
+
+const prefsSchema = z.looseObject({
+  user_id: id, entries: z.boolean(), settle_ups: z.boolean(), comments: z.boolean(), bills_today: z.boolean(), bills_tomorrow: z.boolean(),
+  recap: z.boolean(), balance: z.boolean(), balance_threshold_pence: z.number().int().positive(),
+});
+
+/** S8 (NOT-1): this person's notification switches (null: none saved yet, the defaults). Theirs on every phone. */
+export function notificationPrefsQuery(api: Api, uid: string | null) {
+  return queryOptions({
+    queryKey: keys.notificationPrefs(uid ?? ''),
+    queryFn: uid ? async () => check(prefsSchema.nullable(), 'notification settings', await api.notificationPrefs(uid)) as NotificationPrefsRow | null : skipToken,
   });
 }
 

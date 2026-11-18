@@ -23,8 +23,12 @@
 | `accounts` | bank accounts (Monzo later) | |
 | `ai_usage`, `client_errors`, `app_config` | operations | usage counts; crash reports (insert-only); `min_client_version` |
 | view `member_net` | the balance in SQL | one row per person; the two sum to zero |
+| `notification_prefs` | one person's notification switches (S8) | own row only; written by `set_notification_prefs`; no row = the defaults |
+| `push_subscriptions` | each phone allowed to show notifications (S8) | own rows only; written by `save_push_subscription` / `remove_push_subscription` |
+| `notification_outbox` | notifications waiting to be sent (S8) | filled by triggers and the daily job, never by phones; no client access |
+| `push_config` | the push function's keys, its address and the database's token (S8) | one row; no client access; the public key through `push_public_key()` |
 
-**To add in their slices, as migrations with tests:** `push_subscriptions` and `notification_prefs` (port MacroPy's pattern); Storage buckets `receipts` and `backups` (private; object path starts with the household id; policies compare the first path segment with `my_household()`); for Monzo later, `monzo_connections` (tokens, no client access).
+**To add in their slices, as migrations with tests:** Storage buckets `receipts` and `backups` (private; object path starts with the household id; policies compare the first path segment with `my_household()`); for Monzo later, `monzo_connections` (tokens, no client access).
 
 ## 2. RPCs
 `create_household()`, `join_household(code)`, `set_identity(name, animal)`, `set_monzo_me(name)`, `request_change(kind, payload)`, `decide_change(id, approve)`, `post_due_recurring(household?)`, `my_household()`. All `security definer`, all check the caller. `post_due_recurring` turns fixed templates into expenses and "amount varies" templates into inbox items, always at the home country and outside any chapter, and is safe to call from both phones at once.

@@ -32,6 +32,10 @@ export {
   storageUsed, lastStorageUsed, FREE_DATABASE_BYTES, FREE_PHOTO_BYTES, NEARLY_FULL, RESTORE_CHUNK,
   type ImportCard, type ImportCounts, type ImportRuleView, type RestorePlan, type RestoreRefusal, type StorageFigure,
 } from './imports';
+export {
+  notificationPrefs, setNotificationPref, useNotificationPrefs, pushState, enablePush, disablePush, refreshPush, badgeCount, useAppBadge, useRefreshPush,
+  PushNotReadyError, DEFAULT_PREFS, PREF_KEYS, type NotificationPrefs, type PrefKey, type PushState,
+} from './notifications';
 export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, forgetPhoto, photoBlob, photoUrl, sortLater, sortPhotoLater, recapWording, askSmsm, takeShared, parseLoose, guessCategory, type LooseReading } from './smartActions';
 export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';
 export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';

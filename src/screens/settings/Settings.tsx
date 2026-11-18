@@ -27,14 +27,15 @@ import { RATIO_PRESETS } from '../entry/form';
 import { savePending } from '../settle/monzo';
 import { Toggle } from '../entry/RecurringParts';
 import { WhereYouAre } from '../places/WhereYouAre';
+import { NotificationsSection } from './Notifications';
 import { SettleDay } from './SettleDay';
 import { ExportSection, RestoreSection, StorageSection } from './Export';
 import { ImportRulesSection, ImportSection } from './Import';
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, anchor, children }: { title: string; anchor?: string; children: ReactNode }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-4">
+    <section aria-labelledby={id} id={anchor} className="flex scroll-mt-4 flex-col gap-4">
       <h2 id={id} className="text-heading rule-ledger m-0">{title}</h2>
       {children}
     </section>
@@ -69,7 +70,8 @@ export function Settings() {
         <h1 className="text-title m-0">{strings.settings.title}</h1>
       </header>
 
-      <Section title={strings.settings.us}>
+      {/* A notification about a change request opens here (NOT-2: /settings#approvals). */}
+      <Section title={strings.settings.us} anchor="approvals">
         <ApprovalBanners />
         <ul className="m-0 flex list-none flex-col p-0">
           {people.list.map((p) => (
@@ -168,6 +170,11 @@ export function Settings() {
       </Section>
       <Section title={strings.storage.section}>
         <StorageSection />
+      </Section>
+
+      {/* S8 (NOT-1): this phone, and the person's switches for every phone. */}
+      <Section title={strings.notifications.section} anchor="notifications">
+        <NotificationsSection />
       </Section>
 
       <Section title={strings.places.whereYouAre}>
