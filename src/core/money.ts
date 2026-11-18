@@ -66,3 +66,24 @@ export function formatPlainPounds(p: Pence): string {
   if (!Number.isSafeInteger(p) || p < 0) throw new RangeError(`not a plain amount of pence: ${String(p)}`);
   return `${String(Math.floor(p / 100))}.${String(p % 100).padStart(2, '0')}`;
 }
+
+/**
+ * S7 (IMP-1): an amount as a bank statement writes it, signed, in pence: "-12.50", "−12.5", "£1,234.56",
+ * "(12.50)" (brackets mean negative), "+3", "12" — at most two decimals, at most £1,000,000 either way.
+ * Zero is allowed (the caller decides what it means); junk gives null.
+ */
+export function parseStatementAmount(text: string): number | null {
+  let s = text.normalize('NFKC').trim().replace(/[£\s]/gu, '');
+  let sign = 1;
+  const bracket = /^\((.*)\)$/u.exec(s);
+  if (bracket) { sign = -1; s = bracket[1] ?? ''; }
+  if (/^[-−]/u.test(s)) { sign = -sign; s = s.slice(1); } else if (s.startsWith('+')) s = s.slice(1);
+  s = s.replace(/^£/u, '');
+  const m = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/u.exec(s) ?? /^()\.(\d{1,2})$/u.exec(s);
+  if (!m) return null;
+  const whole = m[1] ? Number(m[1].replace(/,/g, '')) : 0;
+  const frac = m[2] === undefined ? 0 : Number(m[2].padEnd(2, '0'));
+  const total = whole * 100 + frac;
+  if (!Number.isSafeInteger(total) || total > MAX_PENCE) return null;
+  return total === 0 ? 0 : sign * total;
+}
