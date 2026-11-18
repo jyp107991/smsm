@@ -1,0 +1,83 @@
+{
+  "type": "object",
+  "properties": {
+    "merchant": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "date": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "total_pence": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "pence": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "label",
+          "pence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "discount_pence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "service_pence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  },
+  "required": [
+    "merchant",
+    "date",
+    "currency",
+    "total_pence",
+    "items",
+    "discount_pence",
+    "service_pence",
+    "category",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

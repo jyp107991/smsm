@@ -15,6 +15,10 @@
  * S5b (docs/slices/S5b.md "Interfaces"): comments can be seeded (`comments`; the in-memory Api keeps them in
  * `controls.tables.comments`), the household's settle day set (`settleDay`, households.settle_day), and the date
  * moved (`today`, default TODAY) for the phone and the "server" alike.
+ *
+ * S6a (docs/slices/S6.md "Data"): the smart-feature service (`ai`), where the phone keeps photos (`photos`) and the
+ * photo shrinker (`downscale`) can be passed and reach the data layer's options, so tests use fakes (jsdom has no
+ * canvas or IndexedDB, and never the network). Category memory can be seeded (`categoryMemory`).
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import { createMemoryApi, type MemoryControls, type MemoryTables } from '../../src/data/memoryApi';
@@ -58,7 +62,7 @@ export function storedExpense(over: Partial<ExpenseRow> = {}): ExpenseRow {
     id: '00000000-0000-4000-8000-00000000e001', household_id: HID, kind: 'expense', description: 'Lamp', amount_pence: 4000, date: TODAY,
     category_id: categoryId('Household'), paid: { [JAE_ID]: 4000 }, paid_via: 'person', split_mode: 'ratio', split_params: { [JAE_ID]: 50, [SAM_ID]: 50 },
     shares: { [JAE_ID]: 2000, [SAM_ID]: 2000 }, chapter_id: null, country: 'GB', place: null, lat: null, lng: null, original_amount: null,
-    original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, source: 'manual', external_id: null, merchant: null,
+    original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, category_guess: false, source: 'manual', external_id: null, merchant: null,
     external_category: null, account_id: null, recurring_id: null, occurrence_date: null, refund_of: null, created_by: JAE_ID,
     created_at: '2026-11-10T12:00:00.000Z', updated_by: JAE_ID, updated_at: '2026-11-10T12:00:00.000Z', deleted_at: null, bill_total_pence: null, items: null,
     ...over,
@@ -133,6 +137,10 @@ export function couple(
     comments?: CommentRow[]; settleDay?: number | null; today?: string;
     /** S4b: fake location / place-name and exchange-rate services (data layer options `geo`, `rates`). */
     geo?: unknown; rates?: unknown;
+    /** S6a: fake smart features, photo store and photo shrinker (data layer options `ai`, `photos`, `downscale`). */
+    ai?: unknown; photos?: unknown; downscale?: unknown;
+    /** S6a: what the household has taught the app (category_memory rows). */
+    categoryMemory?: MemoryTables['categoryMemory'];
     /** The household's approved default split (PPL-5), e.g. { [JAE_ID]: 60, [SAM_ID]: 40 }. */
     defaultRatio?: Record<string, number> | null;
     /** The phone's storage and network, to restart the app over the same storage or start offline. */
@@ -159,13 +167,18 @@ export function couple(
   const seed = {
     households: [household], members, categories, expenses: opts.expenses ?? [], changeRequests: opts.changeRequests ?? [],
     settlements: opts.settlements ?? [], activity: opts.activity ?? [], recurring: opts.recurring ?? [], inboxItems: opts.inboxItems ?? [],
-    chapters: opts.chapters ?? [], comments: opts.comments ?? [],
+    chapters: opts.chapters ?? [], comments: opts.comments ?? [], categoryMemory: opts.categoryMemory ?? [],
   } as Partial<MemoryTables>;
   const apiOpts = { user: { userId: me, email: null }, today: () => today } as Parameters<typeof createMemoryApi>[1];
   const { api, controls } = createMemoryApi(seed, apiOpts);
   const network = manualNetwork(opts.online ?? true);
   // `geo` and `rates` are S4b's additions to the data layer options (docs/slices/S4b.md).
-  const services = { ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }) } as Pick<DataLayerOptions, 'geo' | 'rates'>;
+  // `ai`, `photos` and `downscale` are S6a's (docs/slices/S6.md "Data").
+  const services = {
+    ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }),
+    ...(opts.ai === undefined ? {} : { ai: opts.ai }), ...(opts.photos === undefined ? {} : { photos: opts.photos }),
+    ...(opts.downscale === undefined ? {} : { downscale: opts.downscale }),
+  } as Pick<DataLayerOptions, 'geo' | 'rates'>;
   const layer = createDataLayer(Object.assign({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => today }, services));
   return { layer, controls, network };
 }

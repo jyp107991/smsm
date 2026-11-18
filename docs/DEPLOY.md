@@ -46,18 +46,15 @@ The schema, migrations, storage buckets, scheduled jobs and functions are applie
 (If the owner prefers MacroPy's arrangement, Cloudflare building directly from the repo, use build command `npm ci && npm run verify && npm run build` so a failing check still blocks the deploy; migrations and functions then deploy from GitHub Actions alone.)
 
 ## 3. GitHub repository secrets and variables
-Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `CLOUDFLARE_API_TOKEN`, `GEMINI_API_KEY`.
+Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `CLOUDFLARE_API_TOKEN`.
 Variables: `SUPABASE_PROJECT_REF`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, later `VITE_VAPID_PUBLIC_KEY`.
 No secret is ever committed. The Supabase URL and publishable key are safe in the app; everything else lives only in GitHub secrets or Supabase secrets.
 
 ## 4. Phones
 Open the address in Chrome → menu → Install app. Sign in, start the household, share the join code.
 
-## 5. Gemini (S6)
-1. Create an API key in Google AI Studio.
-2. `supabase secrets set GEMINI_API_KEY=... GEMINI_MODEL=<current stable Flash-Lite id>` (or add them as GitHub secrets for the pipeline to set).
-3. (Or add `GEMINI_API_KEY` as a GitHub secret now; the pipeline sets it in Supabase when S6 arrives.)
-4. **Billing: off.** The owner has chosen the free tier (a private tool for one household). If the daily free limit ever gets in the way, turning billing on in Google AI Studio needs no code change.
+## 5. Smart features (S6)
+Nothing to set up: they run on Cloudflare Workers AI through the app's own Worker (the `AI` binding in `wrangler.jsonc`), on the free daily allowance of the Cloudflare account the app is deployed to. No API key, no secret. The deploy passes the Supabase URL and the public publishable key to the Worker as vars (from the repository's existing variables). If a deploy ever reports that the Cloudflare token can't use Workers AI, add "Workers AI: Read" to that token's permissions in the Cloudflare dashboard.
 
 ## 6. Notifications (S8)
 As MacroPy `docs/DEPLOY.md` §4: generate VAPID keys, `supabase secrets set`, deploy the function, schedule it.

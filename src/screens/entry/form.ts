@@ -47,6 +47,10 @@ export interface FormState {
   lng?: number | null;
   /** PLC-6: paid in another currency: while set, `amountText` is the foreign amount and this holds the rate. */
   foreign?: { currency: string; rateText: string } | null;
+  /** S6a: the receipt photo's path; its lines (shared or one person's) and the receipt's own total, when scanned. */
+  receiptPath?: string | null;
+  items?: readonly { label: string; pence: Pence; shared: boolean }[] | null;
+  billTotal?: Pence | null;
 }
 
 export function blankForm(opts: { me: UserId; people: readonly Person[]; today: IsoDate; split: SplitParams }): FormState {
@@ -265,6 +269,9 @@ export function draftOf(s: FormState, people: readonly Person[]): { draft: Expen
       ...(s.lat !== undefined ? { lat: s.lat } : {}),
       ...(s.lng !== undefined ? { lng: s.lng } : {}),
       ...(s.foreign ? { original: { amount: s.amountText.trim().replace(/,/g, ''), currency: s.foreign.currency, rate: s.foreign.rateText.trim() } } : {}),
+      ...(s.receiptPath !== undefined ? { receiptPath: s.receiptPath } : {}),
+      ...(s.items !== undefined ? { items: s.items } : {}),
+      ...(s.billTotal !== undefined ? { billTotal: s.billTotal } : {}),
     },
   };
 }

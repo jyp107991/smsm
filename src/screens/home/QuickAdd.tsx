@@ -14,7 +14,8 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import { formatPence, formatPlainPounds } from '../../core/money';
 import {
-  addExpense, deleteExpense, newId, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold, useSyncStatus, locate, type Located } from '../../data';
+  addExpense, deleteExpense, guessCategory, newId, parseLoose, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold,
+  useOnline, useSmartFeatures, useSyncStatus, locate, type Located } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { useKeyboardOpen } from '../../ui/keyboard';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -25,7 +26,7 @@ import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { blankForm, withSplit, type FormState } from '../entry/form';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
-import { readingWords, readQuickAdd, type Reading } from '../shared/suggest';
+import { defaultSplit, readingWords, readQuickAdd, type Reading } from '../shared/suggest';
 import { useSheets } from '../sheets';
 import { AddButton } from './AddButton';
 
@@ -44,6 +45,10 @@ export function QuickAdd() {
   const [text, setText] = useState('');
   // Q-U3: Enter with nothing it can read as an amount says what it needs.
   const [needsAmount, setNeedsAmount] = useState(false);
+  // ADD-9: loose words being read (by the AI), and what the box holds now (a late reading for old words is dropped).
+  const [loose, setLoose] = useState(false);
+  const looseFor = useRef<string | null>(null);
+  const textNow = useRef('');
   // Q-F1: the text just saved; a second Enter on it before the box clears (Enter held) saves nothing more.
   const savedText = useRef<string | null>(null);
   const { otherWindow } = useSyncStatus();
@@ -51,6 +56,11 @@ export function QuickAdd() {
   const box = useRef<HTMLDivElement>(null);
   const today = layer.today();
   const me = people.me;
+  const smart = useSmartFeatures();
+  const online = useOnline();
+  /** ADD-9: the usual split for a category the reading named (the household's, or the category's own). */
+  const defaultSplitFor = (categoryId: string | null) =>
+    defaultSplit({ remembered: null, category: categories.find((c) => c.id === categoryId), householdRatio: household?.default_ratio, people: people.list, me: me?.id ?? '' });
 
   const reading: Reading | null = useMemo(() => {
     if (!me || text.trim() === '') return null;
@@ -96,7 +106,42 @@ export function QuickAdd() {
     e.preventDefault();
     if (savedText.current === text) return;
     if (!reading) {
-      if (text.trim() !== '') setNeedsAmount(true);
+      if (text.trim() === '') return;
+      // ADD-9: words the grammar can't read go to the AI, with smart features on and a connection; the reading
+      // opens the full form (never saves by itself). Otherwise, or if it fails, today's answer.
+      if (smart && online && me) {
+        // Once per wording (a second Enter while it reads sends nothing more).
+        if (looseFor.current === text) return;
+        const words = text;
+        looseFor.current = words;
+        setLoose(true);
+        void parseLoose(words).then((r) => {
+          // A reply for words that have since changed, or arriving after another sheet opened, is let go.
+          const stale = textNow.current !== words || document.querySelector('[role="dialog"][data-state="open"]') !== null;
+          if (looseFor.current === words) { looseFor.current = null; setLoose(false); }
+          if (stale) return;
+          if (!r.ok || (r.data.amount === null && r.data.description === null)) { setNeedsAmount(true); return; }
+          const d = r.data;
+          const partner = people.list.find((p) => p.id !== me.id);
+          // The split it read, in the app's terms ("A paid 60%" is this phone's person's share).
+          const read = d.split === null ? null
+            : d.split.mode === 'treat' ? { mode: 'treat' as const }
+            : d.split.mode === 'for_other' ? { mode: 'for_other' as const }
+            : d.split.ratio != null && partner ? { mode: 'ratio' as const, ratio: { [me.id]: d.split.ratio, [partner.id]: 100 - d.split.ratio } } : null;
+          const base = blankForm({ me: me.id, people: people.list, today, split: read ?? defaultSplitFor(d.categoryId) });
+          sheets.openEntry({
+            mode: 'add',
+            prefill: {
+              ...base, amountText: d.amount === null ? '' : formatPlainPounds(d.amount), description: d.description ?? '',
+              categoryId: d.categoryId ?? base.categoryId, categoryTouched: d.categoryId !== null, payer: d.payer ?? me.id,
+              splitTouched: read !== null, date: d.date ?? today, tags: d.tags, ...(d.chapterId ? { chapterId: d.chapterId } : {}),
+            },
+          });
+          setText('');
+        });
+        return;
+      }
+      setNeedsAmount(true);
       return;
     }
     if (!complete) {
@@ -120,6 +165,8 @@ export function QuickAdd() {
       return;
     }
     savedText.current = text;
+    // CAT-2 step 4: nothing known about the words, so the AI may guess a moment later (marked as a guess).
+    void guessCategory(id);
     // The next entry looks again (the phone may have moved).
     here.current = null;
     looking.current = false;
@@ -168,7 +215,7 @@ export function QuickAdd() {
           disabled={otherWindow}
           placeholder={strings.home.quickAddPlaceholder}
           value={text}
-          onChange={(e) => { setText(e.target.value); setNeedsAmount(false); savedText.current = null; lookUp(); }}
+          onChange={(e) => { setText(e.target.value); textNow.current = e.target.value; setNeedsAmount(false); savedText.current = null; lookUp(); }}
           onKeyDown={holdEnterWhileComposing}
           enterKeyHint="send"
           autoComplete="off"
@@ -205,6 +252,8 @@ export function QuickAdd() {
             </button>
             {!reading.confident ? <p className="text-caption text-ink-2 m-0 truncate px-1">{strings.home.checkReading}</p> : null}
           </>
+        ) : loose ? (
+          <p className="text-secondary text-ink-2 m-0 px-1 py-2" role="status">{strings.home.readingWords}</p>
         ) : needsAmount ? (
           <p className="text-secondary text-ink m-0 px-1 py-2" role="status">{strings.home.quickAddNeedsAmount}</p>
         ) : (

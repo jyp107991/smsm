@@ -1,0 +1,20 @@
+{
+  "id": "chatcmpl-test",
+  "object": "chat.completion",
+  "model": "test-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```json\n{\n  \"merchant\": \"ローソン 京都四条店\",\n  \"date\": \"2026-11-05\",\n  \"currency\": \"JPY\",\n  \"total_pence\": 64800,\n  \"items\": [\n    {\n      \"label\": \"おにぎり 鮭\",\n      \"pence\": 18000\n    },\n    {\n      \"label\": \"お茶 500ml\",\n      \"pence\": 16000\n    },\n    {\n      \"label\": \"からあげクン\",\n      \"pence\": 30800\n    }\n  ],\n  \"discount_pence\": 0,\n  \"service_pence\": 0,\n  \"category\": \"Groceries\",\n  \"confidence\": \"high\"\n}\n```"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1260,
+    "completion_tokens": 210,
+    "total_tokens": 1470
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "response": "{\"merchant\":\"Tesco Express\",\"date\":\"2027-03-01\",\"currency\":\"GBP\",\"total_pence\":1399,\"items\":[{\"label\":\"Milk\",\"pence\":120},{\"label\":\"Sourdough\",\"pence\":250},{\"label\":\"Bananas\",\"pence\":95},{\"label\":\"Washing-up liquid\",\"pence\":135},{\"label\":\"Red wine\",\"pence\":899}],\"discount_pence\":100,\"service_pence\":0,\"category\":\"Groceries\",\"confidence\":\"high\"}",
+  "usage": {
+    "prompt_tokens": 1210,
+    "completion_tokens": 160,
+    "total_tokens": 1370
+  }
+}

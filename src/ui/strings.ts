@@ -160,6 +160,7 @@ export const strings = {
     quickAddHint: 'An amount, then anything: 12 lunch yesterday',
     /** S2 polish Q-U3: Enter in quick add with no amount it can read. */
     quickAddNeedsAmount: 'Start with an amount, like 12.50.',
+    readingWords: 'Reading that…',
     checkReading: 'Some of that isn’t clear. Tap the line to check it.',
     addExpense: 'Add expense',
     sameAsLast: 'Same as last time',
@@ -197,6 +198,7 @@ export const strings = {
       missing: 'It was no longer there to change.',
       category: 'Its category has been removed. Pick another one and save again.',
       chapter: 'Its chapter isn’t there any more. Pick another one (or Everyday) and save again.',
+      photo: 'The receipt photo couldn’t be kept with it; the entry itself is saved.',
       other: 'It couldn’t be saved. Open it to check it and save again.',
     },
     fix: 'Fix it',
@@ -621,6 +623,26 @@ export const strings = {
       `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${amount} on average. A standing order of ${amount} a month would keep you about square.`,
   },
   /** S5b: comments on an entry (ACT-4). */
+  /** S6a: smart features (SCAN-1…5, ADD-9, CAT-2 step 4). */
+  smart: {
+    section: 'Receipts and loose words',
+    switchLabel: 'Smart features',
+    switchLine: 'Reads receipts and loose wording with Cloudflare’s AI. Only the photo or the words are sent, never names or balances.',
+    scan: 'Scan receipt',
+    addPhoto: 'Add photo',
+    photo: 'Receipt photo',
+    removePhoto: 'Remove photo',
+    sortLater: 'Sort it later',
+    reading: 'Reading the receipt…',
+    couldnt: 'Couldn’t read that. Fill it in by hand.',
+    enough: 'That’s enough reading for today. Fill it in by hand.',
+    itemise: 'Itemise',
+    itemiseHint: 'Untick what was just one person’s.',
+    mismatch: (lines: string, total: string) => `The lines add up to ${lines} but the total says ${total}. Set the amount.`,
+    sortedLater: 'In the Inbox to sort later.',
+    receiptToSort: 'Receipt to sort',
+    guess: (name: string) => `${name} (a guess)`,
+  },
   comments: {
     title: 'Comments',
     none: 'No comments yet.',

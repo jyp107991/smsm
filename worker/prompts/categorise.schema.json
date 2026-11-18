@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "category"
+  ],
+  "additionalProperties": false
+}

@@ -15,6 +15,8 @@ export type EntryRequest =
     mode: 'add'; prefill?: Partial<FormState>; fromQuickAdd?: { typedCategory: boolean; typedSplit: boolean };
     /** INB-2 Keep: the Inbox bill this entry settles (saved with its template and occurrence). */
     inboxItem?: string;
+    /** S6a (SCAN-4): a receipt sorted later: its photo, already on its way to the bucket. */
+    receiptPath?: string;
   }
   /** S3: a new regular payment (optionally prefilled, e.g. from "looks monthly"), or edit one by its id. */
   | { mode: 'recurring'; id?: string; prefill?: Partial<FormState>; schedule?: Partial<ScheduleState> }

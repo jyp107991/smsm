@@ -7,7 +7,7 @@ import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
   backupJson, build, ChangesWaitingError, monzoNameOf, requestChange, setMonzoMe, signOut, useChangeRequests,
-  useHousehold, useSyncStatus,
+  setSmartFeatures, useHousehold, useSmartFeatures, useSyncStatus,
 } from '../../data';
 import { holdEnterWhileComposing } from '../../ui/keys';
 import { Button, Choices, Field, ICON, Segmented, Sheet, useToast } from '../../ui/primitives';
@@ -24,6 +24,7 @@ import { plainError } from '../shared/plain';
 import { ratioWords } from '../shared/words';
 import { RATIO_PRESETS } from '../entry/form';
 import { savePending } from '../settle/monzo';
+import { Toggle } from '../entry/RecurringParts';
 import { WhereYouAre } from '../places/WhereYouAre';
 import { SettleDay } from './SettleDay';
 
@@ -160,6 +161,11 @@ export function Settings() {
 
       <Section title={strings.places.whereYouAre}>
         <WhereYouAre />
+      </Section>
+
+      {/* S6a: one switch for the smart features, this phone only (off until turned on). */}
+      <Section title={strings.smart.section}>
+        <SmartSwitch />
       </Section>
 
       <Section title={strings.settings.look}>
@@ -433,4 +439,9 @@ function CheckForUpdates() {
       <p role="status" aria-label={strings.update.checkStatus} className="text-caption text-ink-2 m-0 min-h-[1.25rem]">{answer ?? ''}</p>
     </div>
   );
+}
+
+function SmartSwitch() {
+  const on = useSmartFeatures();
+  return <Toggle label={strings.smart.switchLabel} hint={strings.smart.switchLine} on={on} onChange={setSmartFeatures} />;
 }

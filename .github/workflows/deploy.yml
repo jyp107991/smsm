@@ -57,7 +57,7 @@ jobs:
             echo "No Edge Functions yet."
           fi
       - name: Deploy the app
-        run: set -o pipefail; npx wrangler deploy 2>&1 | scripts/redact.sh | tee deploy-app.log
+        run: set -o pipefail; npx wrangler deploy --var "SUPABASE_URL:$VITE_SUPABASE_URL" --var "SUPABASE_ANON_KEY:$VITE_SUPABASE_PUBLISHABLE_KEY" 2>&1 | scripts/redact.sh | tee deploy-app.log
       - name: Deploy the demo and gallery
         run: set -o pipefail; npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | scripts/redact.sh | tee deploy-demo.log
       - name: Smoke test

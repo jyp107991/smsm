@@ -545,9 +545,12 @@ export function keepInboxItem(itemId: string, input: ExpenseDraft & { id?: strin
   if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
   const built = expenseRowFor(ctx, draft);
   const home = layer.household()?.home_country ?? 'GB';
+  // A regular bill is at home and in no chapter (REC-4, PLC-5); a receipt sorted later (SCAN-4) keeps what was chosen.
+  const bill = item.source !== 'scan';
   const row: ExpenseRow = {
-    ...built.row, id: id ?? built.row.id, source: item.recurring_id ? 'recurring' : built.row.source, recurring_id: item.recurring_id,
-    occurrence_date: item.occurrence_date, country: home, chapter_id: null,
+    ...built.row, id: id ?? built.row.id, source: item.recurring_id ? 'recurring' : item.source === 'scan' ? 'scan' : built.row.source,
+    recurring_id: item.recurring_id, occurrence_date: item.occurrence_date,
+    ...(bill ? { country: home, chapter_id: null } : {}),
   };
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'inbox_items', op: 'patch', id: item.id, patch: { status: 'kept', expense_id: row.id }, label: row.description });

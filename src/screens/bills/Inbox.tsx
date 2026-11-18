@@ -42,6 +42,11 @@ export function Inbox() {
   const item = items?.[0];
 
   const keep = (it: InboxItemRow, bill: Bill) => {
+    // SCAN-4: a receipt sorted later opens the Add sheet with its photo (read then, if smart features are on).
+    if (it.source === 'scan' && it.receipt_path) {
+      sheets.openEntry({ mode: 'add', inboxItem: it.id, receiptPath: it.receipt_path });
+      return;
+    }
     const template: RecurringRow | undefined = templates?.find((t) => t.id === it.recurring_id);
     const base: Partial<FormState> = template ? formFromTemplate(template, people.list, bill.date) : {};
     sheets.openEntry({
@@ -61,7 +66,7 @@ export function Inbox() {
   const dismiss = (it: InboxItemRow, bill: Bill) => {
     try {
       dismissInboxItem(it.id);
-      toast.show({ message: strings.inbox.dismissed(bill.description) });
+      toast.show({ message: strings.inbox.dismissed(it.source === 'scan' ? strings.smart.receiptToSort : bill.description) });
     } catch (err) {
       toast.show({ message: plainError(err) });
     }
@@ -106,11 +111,21 @@ function InboxCard({ item, count, today, onKeep, onDismiss }: {
   onDismiss: (it: InboxItemRow, bill: Bill) => void;
 }) {
   const bill = billOf(item);
+  const receipt = item.source === 'scan';
   return (
     <article className="bg-surface border-line flex flex-col gap-4 rounded-[16px] border px-5 py-5">
       <p className="text-caption text-ink-2 nums-list m-0">{strings.inbox.counter(1, count)}</p>
-      <p className="text-subtitle m-0 break-words">{strings.inbox.due(bill.description)}</p>
-      <p className="text-secondary text-ink-2 nums-list m-0">{strings.inbox.usual(formatPence(pence(bill.estimate)), formatDate(bill.date, today))}</p>
+      {receipt ? (
+        <>
+          <p className="text-subtitle m-0 break-words">{strings.smart.receiptToSort}</p>
+          <p className="text-secondary text-ink-2 m-0">{formatDate(item.created_at.slice(0, 10), today)}</p>
+        </>
+      ) : (
+        <>
+          <p className="text-subtitle m-0 break-words">{strings.inbox.due(bill.description)}</p>
+          <p className="text-secondary text-ink-2 nums-list m-0">{strings.inbox.usual(formatPence(pence(bill.estimate)), formatDate(bill.date, today))}</p>
+        </>
+      )}
       <div className="flex flex-wrap gap-3">
         <Button onClick={() => { onKeep(item, bill); }}>{strings.inbox.keep}</Button>
         <Button variant="plain" onClick={() => { onDismiss(item, bill); }}>{strings.inbox.notOurs}</Button>

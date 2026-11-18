@@ -19,7 +19,7 @@
 - [ ] S2: approve Claude Code's proposal for how sign-in codes reach both of you.
 - [ ] S0: on the gallery, choose the logo variant and the type option; confirm the palette, including the fifth colour (read as `#D6D9C7`, partly hidden in the screenshot).
 - [ ] S2: both install; both save a monzo.me name in Settings.
-- [ ] S6: Gemini key; ten receipt photos for the eval.
+- [ ] S6: ten receipt photos for the eval (no key needed).
 - [ ] S7: a Monzo CSV.
 
 ## Known risks

@@ -9,7 +9,7 @@ import { strings } from '../ui/strings';
 import { opLabel, opRowId, type MoneyOp, type QueuedRow } from './writes';
 
 /** Why the server said no, in categories the interface can explain (strings.sync.reasons). */
-export type RefusalReason = 'money' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'other';
+export type RefusalReason = 'money' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'other';
 
 /** What the person is told (DESIGN §5: plain words, no codes); the words live with the interface's (TXT-7). */
 export const REFUSAL_MESSAGES: Record<RefusalReason, string> = strings.sync.reasons;
@@ -18,7 +18,7 @@ export interface WriteProblem {
   /** The id of the refused write (one per write, not per entry). */
   id: string;
   table: MoneyOp['table'];
-  op: 'upsert' | 'patch';
+  op: 'upsert' | 'patch' | 'upload';
   /** The entry it was for. */
   rowId: string;
   /** "Tesco £42.50". */
@@ -44,6 +44,8 @@ const MONEY_REFUSAL = new RegExp([
 ].join('|'), 'i');
 
 export function refusalReason(message: string, code: string): RefusalReason {
+  // S6a: a receipt photo that couldn't go up (gone from the phone, or refused by the bucket); its entry is saved.
+  if (code === 'photo-missing' || /mime type|payload too large|maximum allowed size/i.test(message)) return 'photo';
   if (code === '42501' || /row-level security|permission denied/i.test(message)) return 'not-allowed';
   if (/non-member|only the two of you/i.test(message)) return 'not-member';
   // The database's own money checks (check_money, the amount constraints) and the phone's (validateEntry);
@@ -60,7 +62,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
   const reason = refusalReason(message, code);
   return {
     message: REFUSAL_MESSAGES[reason],
-    input: op.op === 'upsert' ? op.input : { id: op.id, ...op.patch },
+    input: op.op === 'upsert' ? op.input : op.op === 'upload' ? { id: op.id } : { id: op.id, ...op.patch },
     id: op.opId,
     table: op.table,
     op: op.op,
@@ -74,7 +76,7 @@ export function problemFrom(op: MoneyOp, message: string, code: string, now: Dat
   };
 }
 
-const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories', 'chapters', 'comments']), rowId: z.string(), label: z.string() }));
+const stored = z.array(z.looseObject({ id: z.string(), table: z.enum(['expenses', 'settlements', 'recurring', 'inbox_items', 'categories', 'chapters', 'comments', 'receipts']), rowId: z.string(), label: z.string() }));
 
 export interface ProblemStore {
   load: () => Promise<void>;

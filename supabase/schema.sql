@@ -84,6 +84,22 @@ begin
 end $$;
 
 --
+-- Name: clear_category_guess(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.clear_category_guess() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+begin
+  -- A guess is written together with its mark; any other change of category is a person's, and ends the guess.
+  if new.category_id is distinct from old.category_id and new.category_guess is not distinct from old.category_guess then
+    new.category_guess := false;
+  end if;
+  return new;
+end $$;
+
+--
 -- Name: comments_guard(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -220,6 +236,25 @@ CREATE FUNCTION public.health() RETURNS jsonb
     AS $$
   select jsonb_build_object('ok', true, 'min_client_version', (select value from app_config where key = 'min_client_version'))
 $$;
+
+--
+-- Name: increment_ai_usage(text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.increment_ai_usage(p_kind text) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare hid uuid := my_household(); n int;
+begin
+  if hid is null then raise exception 'not in a household'; end if;
+  if p_kind not in ('scan', 'parse', 'categorise', 'recap', 'ask') then raise exception 'unknown kind'; end if;
+  insert into ai_usage(household_id, day, kind, calls)
+  values (hid, (now() at time zone 'Europe/London')::date, p_kind, 1)
+  on conflict (household_id, day, kind) do update set calls = ai_usage.calls + 1
+  returning calls into n;
+  return n;
+end $$;
 
 --
 -- Name: join_household(text); Type: FUNCTION; Schema: public; Owner: -
@@ -755,6 +790,7 @@ CREATE TABLE public.expenses (
     updated_by uuid,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
+    category_guess boolean DEFAULT false NOT NULL,
     CONSTRAINT expenses_amount_pence_check CHECK ((amount_pence > 0)),
     CONSTRAINT expenses_description_check CHECK ((length(TRIM(BOTH FROM description)) > 0)),
     CONSTRAINT expenses_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'money_back'::text]))),
@@ -1230,6 +1266,12 @@ CREATE TRIGGER comments_log AFTER INSERT OR UPDATE ON public.comments FOR EACH R
 --
 
 CREATE TRIGGER expenses_author BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
+
+--
+-- Name: expenses expenses_category_guess; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER expenses_category_guess BEFORE UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.clear_category_guess();
 
 --
 -- Name: expenses expenses_chapter; Type: TRIGGER; Schema: public; Owner: -
@@ -1933,6 +1975,13 @@ GRANT ALL ON FUNCTION public.check_money() TO authenticated;
 GRANT ALL ON FUNCTION public.check_money() TO service_role;
 
 --
+-- Name: FUNCTION clear_category_guess(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.clear_category_guess() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.clear_category_guess() TO service_role;
+
+--
 -- Name: FUNCTION comments_guard(); Type: ACL; Schema: public; Owner: -
 --
 
@@ -1979,6 +2028,14 @@ REVOKE ALL ON FUNCTION public.health() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.health() TO authenticated;
 GRANT ALL ON FUNCTION public.health() TO service_role;
 GRANT ALL ON FUNCTION public.health() TO anon;
+
+--
+-- Name: FUNCTION increment_ai_usage(p_kind text); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.increment_ai_usage(p_kind text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.increment_ai_usage(p_kind text) TO authenticated;
+GRANT ALL ON FUNCTION public.increment_ai_usage(p_kind text) TO service_role;
 
 --
 -- Name: FUNCTION join_household(p_code text); Type: ACL; Schema: public; Owner: -

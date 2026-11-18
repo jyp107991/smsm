@@ -1,0 +1,8 @@
+{
+  "response": "{\"merchant\":\"Tesco Express\",\"date\":\"2026-11-12\",\"currency\":\"GBP\",\"total_pence\":\"13.99\",\"items\":[{\"label\":\"Milk\",\"pence\":\"1.20\"}],\"discount_pence\":100,\"service_pence\":0,\"category\":\"Groceries\",\"confidence\":\"sure\"}",
+  "usage": {
+    "prompt_tokens": 1210,
+    "completion_tokens": 160,
+    "total_tokens": 1370
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "response": "{\"merchant\":\"The Crown\",\"date\":\"2026-11-13\",\"currency\":\"GBP\",\"total_pence\":4250,\"items\":[{\"label\":\"Fish and chips\",\"pence\":1450},{\"label\":\"Burger\",\"pence\":1395},{\"label\":\"Two pints\",\"pence\":1275}],\"discount_pence\":0,\"service_pence\":0,\"category\":\"Eating out\",\"confidence\":\"high\"}",
+  "usage": {
+    "prompt_tokens": 1210,
+    "completion_tokens": 160,
+    "total_tokens": 1370
+  }
+}
