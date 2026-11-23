@@ -3,7 +3,7 @@
  * at a time: total and comparison; where it went; trend; who paid; fairness; by country (more than one); notes.
  * Every figure is the core's (core/insights) and has a "What's this?" definition. One balance: nothing here is a debt.
  */
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { memo, useId, useMemo, useState, type ReactNode } from 'react';
 import { addMonths, startOfMonth, type IsoDate } from '../../core/dates';
 import {
   byCategory, byCountry, fairness, monthlyTotals, notes, periodOf, previousPeriod, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
@@ -55,16 +55,28 @@ export function Insights() {
   const period: Period = chapter
     ? periodOf('chapter', today, { id: chapter.id, startDate: chapter.start_date, endDate: chapter.end_date })
     : periodOf(choice as Exclude<PeriodChoice, 'chapter'>, today);
-  const opts = { everydayOnly: !withChapters };
-  const total = sharedSpend(entries, period, opts);
-  // CHP-5: a comparison is always of everyday spending, so a trip or a wedding never makes a month look alarming.
-  const prev = previousPeriod(period);
-  const everydayNow = sharedSpend(entries, period, { everydayOnly: true });
-  const before = prev ? sharedSpend(entries, prev, { everydayOnly: true }) : null;
-  const cats = byCategory(entries, period, opts);
-  const countries = byCountry(entries, period, opts);
-  const paid = pair ? whoPaid(entries, period, pair, opts) : {};
-  const trend = monthlyTotals(entries, lastTwelve(today), opts);
+  // S9 (performance audit P4): the totals are worked out once per period and data, not on every render.
+  const periodKey = `${period.kind}:${String(period.from)}:${String(period.to)}:${String(period.chapterId)}`;
+  const pairKey = pair ? `${pair[0]}:${pair[1]}` : '';
+  const { total, everydayNow, before, cats, countries, paid, trend } = useMemo(() => {
+    const opts = { everydayOnly: !withChapters };
+    // CHP-5: a comparison is always of everyday spending, so a trip or a wedding never makes a month look alarming.
+    const prev = previousPeriod(period);
+    const two = pairKey === '' ? null : (pairKey.split(':') as [string, string]);
+    return {
+      total: sharedSpend(entries, period, opts),
+      everydayNow: sharedSpend(entries, period, { everydayOnly: true }),
+      before: prev ? sharedSpend(entries, prev, { everydayOnly: true }) : null,
+      cats: byCategory(entries, period, opts),
+      countries: byCountry(entries, period, opts),
+      paid: two ? whoPaid(entries, period, two, opts) : {},
+      trend: monthlyTotals(entries, lastTwelve(today), opts),
+    };
+    // `period` is rebuilt each render; its days (periodKey) are what it is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, periodKey, pairKey, withChapters, today]);
+
+  const fairnessEntries = useMemo(() => (withChapters ? entries : entries.filter((e) => e.chapterId === null)), [entries, withChapters]);
 
   const beforeWords = choice === 'month' ? strings.insights.beforeMonth : choice === '3months' ? strings.insights.before3
     : choice === '12months' ? strings.insights.before12 : strings.insights.beforeYear;
@@ -135,7 +147,7 @@ export function Insights() {
         <Lines label={strings.insights.whoPaid} items={people.list.map((p) => ({ key: p.id, name: p.name, amount: paid[p.id] ?? pence(0) }))} />
       </Figure>
 
-      <Fairness entries={withChapters ? entries : entries.filter((e) => e.chapterId === null)} people={people.list} today={today} split={household?.default_ratio ?? null} />
+      <Fairness entries={fairnessEntries} people={people.list} today={today} split={household?.default_ratio ?? null} />
 
       {countries.length > 1 ? (
         <Figure title={strings.insights.byCountry} define={strings.insights.define.byCountry}>
@@ -193,7 +205,8 @@ export function Figure({ title, define, hideTitle = false, compact = false, chil
   );
 }
 
-function Fairness({ entries, people, today, split }: { entries: readonly InsightEntry[]; people: readonly Person[]; today: IsoDate; split: unknown }) {
+/** Memoised (S9): its two lines read every entry; they change only with the entries, the people or the split. */
+const Fairness = memo(function Fairness({ entries, people, today, split }: { entries: readonly InsightEntry[]; people: readonly Person[]; today: IsoDate; split: unknown }) {
   const [a, b] = people;
   if (!a || !b) return null;
   const ratio = split && typeof split === 'object' ? split as Record<string, number> : { [a.id]: 50, [b.id]: 50 };
@@ -210,7 +223,7 @@ function Fairness({ entries, people, today, split }: { entries: readonly Insight
       </dl>
     </Figure>
   );
-}
+});
 
 function NotesSection({ entries, settlements, templates, categories, people, today }: {
   entries: readonly InsightEntry[]; settlements: readonly SettlementRow[] | undefined;

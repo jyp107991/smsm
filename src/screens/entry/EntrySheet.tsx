@@ -12,7 +12,7 @@
  */
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
+import { startTransition, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay } from '../../core/dates';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
@@ -458,7 +458,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       duration: 5000,
       about: id,
     });
-    onDone();
+    // S9 (performance audit P4): the saved row and its toast are drawn first; the sheet starts sliding away
+    // straight after, as its own (lower priority) step.
+    startTransition(onDone);
   };
 
   /** S3 (REC-1, REC-6): saves the regular payment; an edit changes future occurrences only. */

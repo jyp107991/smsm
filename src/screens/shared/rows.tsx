@@ -9,11 +9,12 @@
  * clear of it (Q-U8).
  */
 import { MessageCircle } from 'lucide-react';
-import type { MouseEvent, ReactNode } from 'react';
+import { memo, type MouseEvent, type ReactNode } from 'react';
 import { formatPence, pence } from '../../core/money';
 import type { CategoryRow, ExpenseRow, SettlementRow } from '../../data';
 import { cx } from '../../ui/primitives/util';
 import { go, pathOf } from '../../ui/router';
+import { SharedHead } from '../../ui/rig/Animal';
 import { strings } from '../../ui/strings';
 import { CategoryMark, isPlaceholderEmoji } from './CategoryMark';
 import { Head } from './Head';
@@ -32,8 +33,15 @@ function Tag({ children }: { children: ReactNode }) {
   return <span className="text-caption text-ink-2 bg-sunk shrink-0 rounded-[8px] px-1.5 py-px">{children}</span>;
 }
 
-export function EntryRowView({ row, categories, people, pending = false, comments = 0 }: {
+/** S9: the payer's head as the rig (`Head`), or as a `<use>` of the page's shared head symbols (a long list). */
+function PayerHead({ animal, size, shared }: { animal: 'cat' | 'dog'; size: number; shared: boolean }) {
+  return shared ? <span aria-hidden="true" className="inline-flex shrink-0"><SharedHead kind={animal} size={size} /></span> : <Head animal={animal} size={size} />;
+}
+
+export const EntryRowView = memo(function EntryRowView({ row, categories, people, pending = false, comments = 0, shared = false }: {
   row: ExpenseRow;
+  /** S9: draw the head from the shared symbols (`HeadSymbols` is on the page). */
+  shared?: boolean;
   /** S5b (ACT-4): live comments on it, from the list's `useCommentCounts()`. */
   comments?: number;
   categories: readonly CategoryRow[];
@@ -69,11 +77,11 @@ export function EntryRowView({ row, categories, people, pending = false, comment
         {comments > 0 ? <span aria-hidden="true" className="text-caption text-ink-2 nums-list inline-flex shrink-0 items-center gap-0.5"><MessageCircle size={13} strokeWidth={2} />{comments}</span> : null}
         {pending ? <span aria-hidden="true" className="bg-oak size-1.5 shrink-0 rounded-full" /> : null}
       </span>
-      {payer ? <Head animal={payer.animal} size={22} /> : <span aria-hidden="true" />}
+      {payer ? <PayerHead animal={payer.animal} size={22} shared={shared} /> : <span aria-hidden="true" />}
       <span className="nums-list text-right whitespace-nowrap">{amount}</span>
     </a>
   );
-}
+});
 
 /** Q-L16: a category's emoji on a small sunk disc, so it sits quietly beside the words; "Other" keeps its dot. */
 function RowMark({ emoji, colour }: { emoji: string | null; colour: string }) {
@@ -85,7 +93,7 @@ function RowMark({ emoji, colour }: { emoji: string | null; colour: string }) {
   );
 }
 
-export function SettlementRowView({ row, people }: { row: SettlementRow; people: readonly Person[] }) {
+export const SettlementRowView = memo(function SettlementRowView({ row, people, shared = false }: { row: SettlementRow; people: readonly Person[]; shared?: boolean }) {
   const from = people.find((p) => p.id === row.from_user);
   const to = people.find((p) => p.id === row.to_user);
   return (
@@ -96,12 +104,12 @@ export function SettlementRowView({ row, people }: { row: SettlementRow; people:
       className={cx(ROW, 'text-ink', row.deleted_at !== null && 'opacity-60')}
     >
       <span className="flex justify-center -space-x-1.5" aria-hidden="true">
-        {from ? <Head animal={from.animal} size={15} /> : null}
-        {to ? <Head animal={to.animal} size={15} /> : null}
+        {from ? <PayerHead animal={from.animal} size={15} shared={shared} /> : null}
+        {to ? <PayerHead animal={to.animal} size={15} shared={shared} /> : null}
       </span>
       <span className="text-moss col-span-3 min-w-0 truncate">
         {strings.activity.settled(from?.name ?? '', to?.name ?? '', formatPence(pence(row.amount_pence)))}
       </span>
     </a>
   );
-}
+});

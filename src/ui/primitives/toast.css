@@ -1,0 +1,41 @@
+/*
+ * The toast's arrival and exit (S9, performance audit P4): CSS animations on the compositor, nothing measured.
+ * The slot rises 8 px and fades in with the old spring's feel (stiffness 520, damping 40, sampled as linear());
+ * a replacement toast makes a small arrival of its own (scale only); the slot fades out over 180 ms when it
+ * empties. Under reduced motion: cross-fades only (app.css shortens every animation, and nothing moves here).
+ */
+.toast-slot {
+  animation: toast-in 260ms var(--toast-spring) both;
+}
+.toast-arrival {
+  animation: toast-swap 260ms var(--toast-spring) both;
+}
+.toast-slot.toast-leaving {
+  animation: toast-out 180ms ease-out both;
+}
+.toast-slot {
+  --toast-spring: linear(0, 0.0553, 0.1785, 0.3248, 0.4686, 0.5967, 0.7038, 0.7893, 0.855, 0.9037, 0.9388, 0.9632, 0.9796, 0.9902, 0.9967, 1.0005, 1);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-swap {
+  from { transform: scale(0.98); }
+  to { transform: none; }
+}
+@keyframes toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; transform: scale(0.98); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes toast-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .toast-arrival { animation: none; }
+  @keyframes toast-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+}

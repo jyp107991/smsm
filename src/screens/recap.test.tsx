@@ -269,7 +269,8 @@ describe('where recaps appear (INS-2, INS-4, INS-7)', () => {
     fireEvent.click(await screen.findByRole('link', { name: RECAP_READY }));
     await screen.findByRole('heading', { level: 1, name: 'October 2026' });
     expect(location.pathname).toBe('/recap/2026-10');
-    expect(localStorage.getItem('smsm-recap-seen')).toBe('2026-10');
+    // The page marks the month seen in an effect after its (deferred) render.
+    await waitFor(() => { expect(localStorage.getItem('smsm-recap-seen')).toBe('2026-10'); });
     fireEvent.click(await screen.findByRole('tab', { name: 'Home' }));
     await home();
     await waitFor(() => { expect(screen.queryByRole('link', { name: RECAP_READY })).toBeNull(); });

@@ -4,6 +4,7 @@
  * household is full; the theme; the version; Sign out (warning first if changes wait). S7: import from a bank
  * statement and its rules, export (entries CSV, monthly statement, Download a backup), restore, storage.
  */
+import { rememberNotHome } from '../../ui/boot';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
@@ -274,6 +275,8 @@ function SignOut() {
     setError(null);
     try {
       await signOut({ discardWaiting });
+      // S9 review: the next start shows sign-in, so its first paint is plain paper, not Home's outline.
+      rememberNotHome();
       // A "Did it go through?" question belongs to the person who asked it, not the next one to sign in.
       void savePending(null);
       go({ name: 'home' }, { replace: true });

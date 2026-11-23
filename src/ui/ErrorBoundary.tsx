@@ -1,3 +1,4 @@
+import { dismissBoot } from './boot';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { reporter } from '../data/reporting';
 import { strings } from './strings';
@@ -15,6 +16,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
   override render() {
     if (!this.state.failed) return this.props.children;
+    // S9: the static first paint (index.html) never stays over the message.
+    dismissBoot();
     return (
       <main role="alert" className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-5">
         <p>{strings.errors.generic}</p>

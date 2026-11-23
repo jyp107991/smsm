@@ -5,13 +5,14 @@
  * (Q-U7), and only
  * the banners that are needed: an approval waiting, a change the server refused (OFF-5). Settings is the gear.
  */
-import { useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import { Settings as Gear } from 'lucide-react';
 import { formatDay } from '../../core/dates';
 import {
   dismissProblem, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus, type ExpenseDraft, type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
 import { Logo } from '../../ui/Logo';
+import { rememberHome, useBootDone } from '../../ui/boot';
 import { Button, ICON } from '../../ui/primitives';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
@@ -30,8 +31,12 @@ import { RecapBanners } from '../insights/RecapLinks';
 import { QuickAdd } from './QuickAdd';
 
 export function Home() {
+  // S9: Home is drawn, so the static first paint (index.html) goes in this frame; and its shape is kept for the next one.
+  useBootDone();
+  const column = useRef<HTMLDivElement>(null);
+  useEffect(() => rememberHome(column.current?.querySelector('header') ?? null, column.current?.querySelector<HTMLElement>(`:scope > section[aria-label="${strings.home.balance}"]`) ?? null), []);
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10">
+    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10">
       <header className="flex min-h-12 items-center gap-2.5">
         <Logo size={30} />
         <h1 className="text-wordmark m-0 flex-1 text-[1.75rem] leading-none">{strings.app.name}</h1>

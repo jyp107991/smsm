@@ -1,12 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Drawer } from 'vaul';
-import { X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { focusedElement, returnFocus } from '../focus';
-import { closeLayer, openLayer } from '../history';
-import { strings } from '../strings';
-import { Button } from './Button';
-import { cx, ICON } from './util';
-import { swallowRepeatTap, watchTaps } from '../taps';
+import { closeLayer, layerHeldBy, openLayer } from '../history';
+import { LoadBoundary, retryable } from '../loadRetry';
 
 export interface SheetProps {
   open: boolean;
@@ -27,240 +22,100 @@ export interface SheetProps {
   children: ReactNode;
 }
 
-/**
- * A bottom sheet (vaul): 28 px top corners, the one soft shadow, drag down to close.
- *
- * Android's back gesture closes it, as people expect (DESIGN §6): while open the sheet owns one
- * history entry (through the one history coordinator, src/ui/history.ts), so "back" pops that entry
- * instead of leaving the page. Closing any other way removes the entry again, and navigating away while
- * it is open removes it before the new page is pushed, so it is never left behind.
- *
- * Focus goes back to whatever opened it when it closes, however it closes (Escape, Close, back, Save):
- * what had focus as it opened is kept, and focus returns there, or to the page's fallback (the balance
- * sentence on Home, src/ui/focus.ts; never a text box, which would bring the keyboard up) when that has gone. (Radix would return it to a Drawer.Trigger; there is none.)
- *
- * The keyboard: index.html sets `interactive-widget=resizes-content`, so the viewport (and `dvh`)
- * shrinks when the keyboard opens and the footer stays visible above it. vaul's own input repositioning
- * is turned off so the two don't fight.
- */
-/**
- * The sheets that are open, innermost last. A sheet sliding away is still the top layer for Radix until it has
- * gone, so it hands an Escape on to the open sheet under it (a quick second Escape after closing the date grid
- * closes the Add sheet, as it would with no animation).
- */
-const openSheets: { escape: () => void }[] = [];
+/** How long after closing a sheet stays mounted: vaul's slide away (0.5 s) and a little more. */
+const CLOSE_MS = 600;
 
-export function Sheet({ open, onOpenChange, title, description, dirty = false, full = false, footer, children }: SheetProps) {
-  const id = useId();
-  const [confirming, setConfirming] = useState(false);
-  const active = useRef(false);
+type Impl = (props: SheetProps & { layerId?: string }) => ReactNode;
+const file = retryable(() => import('./SheetImpl'));
+/** Fetches the sheet's own file (with vaul), once. The app does this in idle time after the first screen. */
+export function preloadSheet(): Promise<void> {
+  return file.load().then(() => undefined);
+}
+const makeWaiting = () => lazy(async () => ({ default: (await file.load({ onScreen: true })).default as Impl }));
+let Waiting = makeWaiting();
+
+/**
+ * While the sheet's file is on its way, the sheet already behaves as one (S9 review): it owns its history entry,
+ * so back closes it rather than leaving the page; Escape closes it; focus goes back to what opened it. When the
+ * file arrives the sheet itself takes the same history entry over.
+ */
+function Pending({ id, open, onOpenChange }: { id: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const opener = useRef<HTMLElement | null>(null);
-
-  // Before the content mounts (the portal renders a beat later), so this is still the opener.
-  // A sheet opened over another (the date grid over the Add sheet) stacks above it, scrim and all.
-  const [stacked, setStacked] = useState({ open: false, depth: 0 });
-  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth });
-  const depth = stacked.depth;
+  const latest = useRef(onOpenChange);
+  useEffect(() => { latest.current = onOpenChange; });
+  const wasOpen = useRef(false);
   useLayoutEffect(() => {
     if (open) opener.current = focusedElement();
   }, [open]);
-
-  // Q-F1: when the sheet really closes (not StrictMode re-running its effects), the rest of a double tap on
-  // Save doesn't land on what the sheet uncovers.
-  const wasOpen = useRef(open);
   useEffect(() => {
-    if (wasOpen.current && !open) swallowRepeatTap();
-    wasOpen.current = open;
-  }, [open]);
-
-  // A closed sheet never reopens still asking.
-  if (!open && confirming) setConfirming(false);
-
-  /**
-   * Closed from inside (Close, Escape, a tap outside, Discard): the sheet's history entry goes at once, in
-   * the same event, so a navigation that follows straight after (a link, a typed address) isn't cut short
-   * by a late "back". Closes from outside (Save) take the entry in the effect below.
-   */
-  const close = () => {
-    closeLayer(id);
-    onOpenChange(false);
-  };
-  const askOrClose = () => {
-    if (dirty) setConfirming(true);
-    else close();
-  };
-
-  // What the history coordinator calls back with reads the latest props (it outlives renders).
-  const latest = useRef({ dirty, confirming, onOpenChange, askOrClose });
-  useEffect(() => {
-    latest.current = { dirty, confirming, onOpenChange, askOrClose };
-  });
-
-  // Escape handed on from a sheet closing over this one: as Escape would do here.
-  useEffect(() => {
-    if (!open) return;
-    const entry = {
-      escape: () => {
-        const l = latest.current;
-        if (l.confirming) setConfirming(false);
-        else l.askOrClose();
-      },
-    };
-    openSheets.push(entry);
-    return () => {
-      const at = openSheets.indexOf(entry);
-      if (at !== -1) openSheets.splice(at, 1);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    active.current = true;
-    const handlers = {
-      // The back gesture has already popped this sheet's entry.
-      onBack: () => {
-        const l = latest.current;
-        if (l.confirming) {
-          // Back while asking means "keep editing".
-          openLayer(id, handlers);
-          setConfirming(false);
-        } else if (l.dirty) {
-          openLayer(id, handlers);
-          setConfirming(true);
-        } else {
-          l.onOpenChange(false);
-        }
-      },
-      // Leaving the page (a navigation) closes the sheet without asking: the person chose to go.
-      onLeave: () => { latest.current.onOpenChange(false); },
-    };
+    if (!open) {
+      // Closed before the sheet ever showed: focus goes back where it was.
+      if (wasOpen.current) returnFocus(opener.current);
+      return;
+    }
+    wasOpen.current = true;
+    const handlers = { onBack: () => { latest.current(false); }, onLeave: () => { latest.current(false); } };
     openLayer(id, handlers);
-    watchTaps();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !layerHeldBy(id, handlers)) return;
+      closeLayer(id);
+      latest.current(false);
+    };
+    window.addEventListener('keydown', onKey);
     return () => {
-      active.current = false;
-      // Deferred, so a re-run of this effect (StrictMode, a re-render) keeps the entry it already has.
-      setTimeout(() => {
-        if (!active.current) closeLayer(id);
-      }, 0);
+      window.removeEventListener('keydown', onKey);
+      // Deferred: when the sheet's file has arrived, the sheet has taken the entry over by then.
+      setTimeout(() => { if (layerHeldBy(id, handlers)) closeLayer(id); }, 0);
     };
   }, [open, id]);
-
-  return (
-    <Drawer.Root
-      open={open}
-      onOpenChange={(next) => {
-        if (next) onOpenChange(true);
-        else askOrClose();
-      }}
-      dismissible={!dirty}
-      repositionInputs={false}
-    >
-      <Drawer.Portal>
-        {/* The scrim (Q-L3): warm ink by day, black by night, so the sheet reads as lifted off a dimmed page. */}
-        <Drawer.Overlay className="bg-scrim fixed inset-0" style={{ zIndex: 40 + 10 * depth }} />
-        <Drawer.Content
-          {...(description ? {} : { 'aria-describedby': undefined })}
-          // While it slides away it is no longer there to read or press (a sheet over a sheet closes on top of
-          // one that stays open: the date grid over the Add sheet, Q-L13).
-          aria-hidden={open ? undefined : true}
-          inert={!open}
-          onEscapeKeyDown={(event) => {
-            if (!open) {
-              event.preventDefault();
-              openSheets[openSheets.length - 1]?.escape();
-            } else if (confirming) {
-              event.preventDefault();
-              setConfirming(false);
-            } else if (dirty) {
-              event.preventDefault();
-              setConfirming(true);
-            }
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            returnFocus(opener.current);
-            opener.current = null;
-          }}
-          onPointerDownOutside={(event) => {
-            if (dirty) {
-              event.preventDefault();
-              setConfirming(true);
-            }
-          }}
-          style={{ zIndex: 50 + 10 * depth }}
-          className={cx(
-            'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
-            'max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
-            full && 'h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
-          )}
-        >
-          {/* The drag handle: decoration only (the whole sheet drags; Close and back are the accessible ways out). */}
-          <div aria-hidden="true" className="bg-line mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full" />
-          <header className="flex shrink-0 items-start gap-2 pt-2 pr-2 pl-5">
-            <div className="min-w-0 flex-1 pt-2">
-              <Drawer.Title className="text-title break-words">{title}</Drawer.Title>
-              {description ? <Drawer.Description className="text-secondary text-ink-2 mt-1">{description}</Drawer.Description> : null}
-            </div>
-            <button
-              type="button"
-              onClick={askOrClose}
-              aria-label={strings.ui.close}
-              className="text-ink-2 press hover:text-ink inline-flex size-11 shrink-0 items-center justify-center rounded-full"
-            >
-              <X size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
-            </button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-3 pb-4">{children}</div>
-          {confirming ? (
-            <DiscardConfirm
-              onKeep={() => {
-                setConfirming(false);
-              }}
-              onDiscard={() => {
-                setConfirming(false);
-                close();
-              }}
-            />
-          ) : footer ? (
-            // Toasts stay clear of the footer (Save), wherever the keyboard leaves it.
-            <div data-toast-avoid="" className="border-line shrink-0 border-t px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">{footer}</div>
-          ) : (
-            <div aria-hidden="true" className="h-[env(safe-area-inset-bottom)] shrink-0" />
-          )}
-        </Drawer.Content>
-      </Drawer.Portal>
-    </Drawer.Root>
-  );
+  return null;
 }
 
-/** The question asked before typed changes are thrown away, inside the sheet where the footer was. */
-function DiscardConfirm({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () => void }) {
-  const titleId = useId();
-  const bodyId = useId();
+/**
+ * The one sheet component (SheetImpl.tsx: a vaul bottom sheet with its history entry, focus return and
+ * "Discard your changes?").
+ *
+ * S9 (performance audit P2, P4): a sheet that has never opened, or has finished sliding away, isn't mounted at
+ * all. Each mounted vaul root reads the page's scroll position as it mounts (a forced layout), and a screen holds
+ * several closed sheets (Activity's filters): mounting them with the screen cost a layout each on a long page. The
+ * sheet's code (vaul and the dialog parts) is fetched after the first screen, not with it; a sheet opened before
+ * that waits for its file and then rises as usual. If the file doesn't arrive, the sheet says so with Try again.
+ */
+export function Sheet(props: SheetProps) {
+  const { open, onOpenChange } = props;
+  const layerId = useId();
+  // How this opening is drawn: straight away when the file is here, else through React.lazy, which then stays
+  // until the sheet has gone (switching while open would remount it mid-rise).
+  const [mounted, setMounted] = useState<'ready' | 'waiting' | null>(open ? (file.loaded() ? 'ready' : 'waiting') : null);
+  const [, setTries] = useState(0);
+  if (open && !mounted) setMounted(file.loaded() ? 'ready' : 'waiting');
+  useEffect(() => {
+    if (open || !mounted) return;
+    const timer = setTimeout(() => { setMounted(null); }, CLOSE_MS);
+    return () => { clearTimeout(timer); };
+  }, [open, mounted]);
+  if (!mounted) return null;
+  const loaded = file.loaded();
+  const Ready = loaded ? (loaded.default as Impl) : null;
+  if (mounted === 'ready' && Ready) return <Ready {...props} />;
+  const Now = Waiting;
+  if (!open && file.failures() > 0) return null;
   return (
-    <div
-      role="alertdialog"
-      aria-modal="false"
-      aria-labelledby={titleId}
-      aria-describedby={bodyId}
-      data-toast-avoid=""
-      className="border-line shrink-0 border-t px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+    <LoadBoundary
+      floating
+      onRetry={() => {
+        if (file.failures() >= 3) {
+          location.reload();
+          return;
+        }
+        Waiting = makeWaiting();
+        setTries((n) => n + 1);
+      }}
+      onClose={() => { onOpenChange(false); }}
     >
-      <p id={titleId} className="font-semibold">
-        {strings.ui.discardTitle}
-      </p>
-      <p id={bodyId} className="text-secondary text-ink-2 mt-0.5">
-        {strings.ui.discardBody}
-      </p>
-      <div className="mt-3 flex flex-wrap gap-3">
-        {/* Focus goes to the safe choice. */}
-        <Button variant="plain" onClick={onKeep} autoFocus className="flex-auto">
-          {strings.ui.keepEditing}
-        </Button>
-        <Button variant="destructive" onClick={onDiscard} className="flex-auto">
-          {strings.ui.discard}
-        </Button>
-      </div>
-    </div>
+      <Suspense fallback={<Pending id={layerId} open={open} onOpenChange={onOpenChange} />}>
+        <Now {...props} layerId={layerId} />
+      </Suspense>
+    </LoadBoundary>
   );
 }

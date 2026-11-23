@@ -158,6 +158,11 @@ export function closeLayer(id: string): void {
   });
 }
 
+/** Whether the layer `id` is open and still answered by these handlers (not since taken over by another call). */
+export function layerHeldBy(id: string, handlers: { onBack: () => void }): boolean {
+  return layers.some((l) => l.id === id && l.onBack === handlers.onBack);
+}
+
 export function isLayerOpen(id: string): boolean {
   return layers.some((l) => l.id === id);
 }

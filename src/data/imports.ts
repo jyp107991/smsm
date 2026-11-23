@@ -17,7 +17,7 @@
  */
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { createStore, del, delMany, get, keys as idbKeys, set, type UseStore } from 'idb-keyval';
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { exportCsv, type BankRow, type ExportEntry, type ExportSettlement, type ImportSource, type Named } from '../core/csv';
 import type { IsoDate } from '../core/dates';
 import { pence, type Pence } from '../core/money';
@@ -68,7 +68,7 @@ export interface ImportCounts {
 
 const waitingSchema = z.object({
   id: z.string(), source: z.enum(['monzo', 'csv']), bankId: z.string(), hash: z.string(), date: z.string(), description: z.string(),
-  amount: z.number().int().positive(), note: z.string().nullable(), categoryHint: z.string().nullable(),
+  amount: z.int().check(z.positive()), note: z.nullable(z.string()), categoryHint: z.nullable(z.string()),
 });
 type Waiting = z.infer<typeof waitingSchema>;
 const skipRuleSchema = z.object({ id: z.string(), match_text: z.string(), created_at: z.string() });
@@ -668,15 +668,15 @@ export type RestoreRefusal = 'notBackup' | 'notTwo';
 const objectRow = z.looseObject({ id: z.string() });
 const backupSchema = z.looseObject({
   format: z.enum(['smsm-backup-1', 'smsm-backup-2']),
-  members: z.array(z.looseObject({ user_id: z.string(), display_name: z.string().nullable().optional() })),
+  members: z.array(z.looseObject({ user_id: z.string(), display_name: z.optional(z.nullable(z.string())) })),
   expenses: z.array(objectRow),
-  settlements: z.array(objectRow).optional(),
-  categories: z.array(objectRow).optional(),
-  chapters: z.array(objectRow).optional(),
-  recurring: z.array(objectRow).optional(),
-  comments: z.array(objectRow).optional(),
-  category_memory: z.array(z.looseObject({ key: z.string() })).optional(),
-  import_rules: z.array(z.looseObject({ match_text: z.string(), decision: z.string().optional() })).optional(),
+  settlements: z.optional(z.array(objectRow)),
+  categories: z.optional(z.array(objectRow)),
+  chapters: z.optional(z.array(objectRow)),
+  recurring: z.optional(z.array(objectRow)),
+  comments: z.optional(z.array(objectRow)),
+  category_memory: z.optional(z.array(z.looseObject({ key: z.string() }))),
+  import_rules: z.optional(z.array(z.looseObject({ match_text: z.string(), decision: z.optional(z.string()) }))),
 });
 
 /** EXP-1: reads an smsm backup (format 1 or 2) and says what restoring it would add; anything else is refused. */

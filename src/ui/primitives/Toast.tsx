@@ -1,8 +1,8 @@
 import { createContext, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
 import { strings } from '../strings';
 import { cx, ICON } from './util';
+import './toast.css';
 
 export interface ToastAction {
   label: string;
@@ -112,12 +112,25 @@ function OwnToasts({ children }: { children: ReactNode }) {
  * same moment (ADD-6). Only when the slot empties does the toast animate out.
  */
 export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDismiss: (id: number) => void }) {
-  const reduce = useReducedMotion() ?? false;
   const current = showing(toasts);
+  // S9 (performance audit P4): the slot comes and goes with CSS animations (toast.css), not a JS animation
+  // library measuring the card: the last toast stays for its short exit, inert, then goes.
+  const [leaving, setLeaving] = useState<ToastEntry | null>(null);
+  const [last, setLast] = useState<ToastEntry | undefined>(current);
+  if (current !== last) {
+    setLast(current);
+    setLeaving(current === undefined && last !== undefined ? last : null);
+  }
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => { setLeaving(null); }, EXIT_MS);
+    return () => { clearTimeout(timer); };
+  }, [leaving]);
   const layer = useRef<HTMLDivElement>(null);
   const place = useClearPlace(layer, current !== undefined, current?.about);
   // Toasts already read out: the update prompt coming back after a passing toast isn't read again.
   const [announced] = useState(() => new Set<number>());
+  const slot = current ?? leaving;
   return (
     <div
       ref={layer}
@@ -126,12 +139,13 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
       style={place.top !== null ? { top: `${String(place.top)}px` } : { bottom: `max(${String(place.bottom)}px, calc(env(safe-area-inset-bottom) + 1rem))` }}
       className="pointer-events-none fixed inset-x-0 z-[90] flex flex-col items-center gap-2 px-4"
     >
-      <AnimatePresence initial={false}>
-        {current ? <ToastSlot key="toast" toast={current} reduce={reduce} onDismiss={onDismiss} announced={announced} /> : null}
-      </AnimatePresence>
+      {slot ? <ToastSlot toast={slot} present={current !== undefined} onDismiss={onDismiss} announced={announced} /> : null}
     </div>
   );
 }
+
+/** The exit's length (toast.css), in ms. */
+const EXIT_MS = 180;
 
 /** The room kept between a toast and what it stays clear of, in px. */
 const CLEARANCE = 12;
@@ -255,32 +269,25 @@ function clearPlace(card: DOMRect, about: string | undefined): { bottom: number;
 /**
  * The slot. While the last toast plays its exit it is still on screen, so it is made inert and hidden from
  * assistive tech: its Undo can't be pressed once it is going. A toast shown meanwhile takes the slot back.
+ * No layout animation: the layer is moved clear of the tab bar as the toast arrives (useClearPlace), and
+ * animating that move slid the toast up over the tab bar for a moment (owner, 17 Nov: "clipping"). It rises
+ * less than the room it keeps (CLEARANCE), so even arriving it never touches what it avoids.
  */
-function ToastSlot({ toast, reduce, onDismiss, announced }: {
+function ToastSlot({ toast, present, onDismiss, announced }: {
   toast: ToastEntry;
-  reduce: boolean;
+  present: boolean;
   onDismiss: (id: number) => void;
   announced: Set<number>;
 }) {
-  const present = useIsPresent();
   return (
-    <motion.div
-      // No layout animation: the layer is moved clear of the tab bar as the toast arrives (useClearPlace),
-      // and animating that move slid the toast up over the tab bar for a moment (owner, 17 Nov: "clipping").
-      // It rises less than the room it keeps (CLEARANCE), so even arriving it never touches what it avoids.
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
-      transition={reduce ? { duration: 0.18 } : { type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
-      className={cx('w-full max-w-md', present ? 'pointer-events-auto' : 'pointer-events-none')}
-    >
+    <div className={cx('toast-slot w-full max-w-md', present ? 'pointer-events-auto' : 'toast-leaving pointer-events-none')}>
       <div inert={!present} aria-hidden={present ? undefined : true}>
         {/* Keyed by toast: a replacement starts its own timer and makes its own small arrival. */}
-        <Arrival key={toast.id} id={toast.id} reduce={reduce} announced={announced}>
+        <Arrival key={toast.id} id={toast.id} announced={announced}>
           <Toast {...toast} onDismiss={() => { onDismiss(toast.id); }} />
         </Arrival>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -289,18 +296,13 @@ function ToastSlot({ toast, reduce, onDismiss, announced }: {
  * comes back (the sticky update prompt after a passing toast), its content is marked `aria-live="off"`, so it
  * is shown again without being announced again.
  */
-function Arrival({ id, reduce, announced, children }: { id: number; reduce: boolean; announced: Set<number>; children: ReactNode }) {
+function Arrival({ id, announced, children }: { id: number; announced: Set<number>; children: ReactNode }) {
   const [quiet] = useState(() => announced.has(id));
   useEffect(() => { announced.add(id); }, [announced, id]);
   return (
-    <motion.div
-      aria-live={quiet ? 'off' : undefined}
-      initial={reduce ? false : { scale: 0.98 }}
-      animate={{ scale: 1 }}
-      transition={{ type: 'spring', stiffness: 520, damping: 40, mass: 1 }}
-    >
+    <div aria-live={quiet ? 'off' : undefined} className="toast-arrival">
       {children}
-    </motion.div>
+    </div>
   );
 }
 

@@ -296,3 +296,10 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - **S8 live** (PR #16, `ef201e9`, deploy run 44266710730 green): migration applied, push function deployed and initialised ("Push function ready"), smoke test passed (it checks `health()` reports push set up). Settings → Notifications → "Allow notifications on this phone".
 - **To check on two real phones:** allow on both; one person adds an entry; the other should see "⟨name⟩ added ⟨thing⟩ £x · ⟨balance⟩" within seconds, and tapping it opens the entry.
 - **Next:** S9 (hardening → v1.0): release QA (ENGINEERING §9), performance on a mid-range phone profile, larger-screen layout, fix everything found, tag v1.0.0.
+
+## 2026-11-23: icon; S9 started (release QA)
+- **Logo:** the live app already served logo C, but an installed Android app keeps its home-screen icon until the manifest's icons change. Icon files renamed `app-c-*` (PR #17, `789a9c0`). If the old icon persists after a day: remove from home screen, add again from Chrome.
+- **S9 acceptance pass** (fresh agent, demo only): balance right to the penny after 40+ money operations; 24 findings, top: past recaps show today's balance; quick add records pounds while abroad; search misses straight apostrophes; Insights compares against months before the household existed. Full list `docs/qa/S9-acceptance.md`.
+- **S9 performance and larger-screen audit:** cold LCP 3.8 s (fails 2.5 s); Activity freezes 2.5 s on open (all rows mounted, per-row drag measurement); Korean font slices fetched on English pages; ≥ 900 px layout (rail, two panes) not built. Full report `docs/qa/S9-performance.md`.
+- **In progress:** performance fixes (builder). **Next:** acceptance fixes and the larger-screen layout, data-safety pass, then v1.0.0.
+- **Rounding (finding 22):** kept as built: largest remainder, and the payer's share takes a leftover penny only on a tie (£7.01 at 60/40 gives Jae £4.21 by the larger remainder). Recorded in DECISIONS.
