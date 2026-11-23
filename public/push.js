@@ -11,7 +11,7 @@
  *   focus the browser refuses never stops the window going to the path.
  */
 const SMSM_BADGE = '/icons/badge-96.png';
-const SMSM_ICON = '/icons/icon-192.png';
+const SMSM_ICON = '/icons/app-c-192.png';
 
 function smsmPayload(data) {
   if (!data) return null;

@@ -11,10 +11,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 const jobs: { src: string; out: string; size: number; inset?: number }[] = [
-  { src: 'icon.svg', out: 'icon-192.png', size: 192 },
-  { src: 'icon.svg', out: 'icon-512.png', size: 512 },
-  { src: 'icon.svg', out: 'icon-maskable-512.png', size: 512 },
-  { src: 'icon-monochrome.svg', out: 'icon-monochrome-512.png', size: 512 },
+  { src: 'icon.svg', out: 'app-c-192.png', size: 192 },
+  { src: 'icon.svg', out: 'app-c-512.png', size: 512 },
+  { src: 'icon.svg', out: 'app-c-maskable-512.png', size: 512 },
+  { src: 'icon-monochrome.svg', out: 'app-c-monochrome-512.png', size: 512 },
   // S8: the notification's badge (Android uses only its shape).
   { src: 'icon-monochrome.svg', out: 'badge-96.png', size: 96 },
 ];
