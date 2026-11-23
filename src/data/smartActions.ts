@@ -20,7 +20,7 @@ import { normaliseKey } from '../core/text';
 import type { CategoryRow, ChapterRow, InboxItemRow, RecurringRow } from './api';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
-import { currentCountry, editExpense } from './mutations';
+import { currentCountry, editExpense, learned } from './mutations';
 import { receiptPath } from './photos';
 import type { DataLayer } from './queryClient';
 import { memoryMap } from './rows';
@@ -260,7 +260,7 @@ export async function guessCategory(expenseId: string, layer = activeDataLayer()
     if (!now || now.deleted_at !== null || !unset(now.category_id)) return;
     editExpense(expenseId, { categoryId, categoryGuess: true }, layer);
     const key = normaliseKey(row.description);
-    const before = layer.memory().find((m) => m.key === key);
+    const before = learned(layer.memory(), key);
     if (key !== '' && before?.source !== 'user') {
       layer.remember({
         opId: newId(), by: uid,

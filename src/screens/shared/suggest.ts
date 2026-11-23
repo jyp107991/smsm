@@ -8,7 +8,7 @@ import seedList from '../../../content/merchants.json';
 import { suggest, type Memory } from '../../core/categorise';
 import { formatDay, type IsoDate } from '../../core/dates';
 import { formatForeign } from '../../core/fx';
-import { formatPence } from '../../core/money';
+import { formatPence, parseForeignAmount } from '../../core/money';
 import { parseQuickAdd, quickAddProblem, type QuickAddContext, type QuickAddProblem, type QuickAddReading } from '../../core/quickadd';
 import { resolveDefaultSplit, type SplitParams, type UserId } from '../../core/split';
 import { normaliseKey, tidyDescription } from '../../core/text';
@@ -156,7 +156,9 @@ export function readQuickAdd(text: string, ctx: QuickAddCtx): Reading | null {
 
 /** ADD-2: the reading's first words: the amount as typed ("£42.50"; abroad, "¥2,000"). */
 export function readingAmount(r: QuickAddReading): string {
-  return r.original ? formatForeign(r.original.amount, r.original.currency) : formatPence(r.amount);
+  if (!r.original) return formatPence(r.amount);
+  // Abroad, an amount it couldn't read in that currency ("1.200,50") is shown as typed, never as a figure it isn't.
+  return parseForeignAmount(r.original.amount) === null ? `${r.original.amount} ${r.original.currency}` : formatForeign(r.original.amount, r.original.currency);
 }
 
 /**

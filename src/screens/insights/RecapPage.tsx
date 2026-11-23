@@ -78,15 +78,18 @@ export function RecapPage({ month }: { month: string }) {
   const spent = recap.total > 0;
 
   const owes = balance.status === 'ready' && balance.state.kind === 'owes';
+  const worded = wording !== null && wording.month === month;
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-8 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
       {header}
       <article className="bg-surface flex flex-col gap-8 rounded-[20px] px-5 py-6">
         <Part title={strings.recap.headline} hidden>
-          <p className="text-sentence nums-list m-0">{spent ? (wording?.month === month ? wording.headline : recap.headline) : strings.recap.nothing}</p>
-          {spent && wording?.month === month && wording.aside ? <p className="text-body text-ink-2 m-0">{wording.aside}</p> : null}
-          {spent && recap.comparison !== null && recap.total !== recap.everyday ? (
+          <p className="text-sentence nums-list m-0">{spent ? (worded ? wording.headline : recap.headline) : strings.recap.nothing}</p>
+          {spent && worded && wording.aside ? <p className="text-body text-ink-2 m-0">{wording.aside}</p> : null}
+          {/* The chapters line belongs to the template's everyday headline: kept wording (from before S9a, or any
+              wording) may already count the chapters in its total, so beside it the line would count them twice. */}
+          {spent && !worded && recap.comparison !== null && recap.total !== recap.everyday ? (
             <p className="text-body text-ink-2 nums-list m-0">{strings.recap.chaptersLine(formatPence(pence(recap.total - recap.everyday)))}</p>
           ) : null}
         </Part>

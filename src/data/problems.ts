@@ -5,11 +5,12 @@
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
 import * as z from 'zod/mini';
+import { formatPence, parseStatementAmount, pence } from '../core/money';
 import { strings } from '../ui/strings';
 import { opLabel, opRowId, type MoneyOp, type QueuedRow } from './writes';
 
 /** Why the server said no, in categories the interface can explain (strings.sync.reasons). */
-export type RefusalReason = 'money' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'other';
+export type RefusalReason = 'money' | 'money-back' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'other';
 
 /** What the person is told (DESIGN §5: plain words, no codes); the words live with the interface's (TXT-7). */
 export const REFUSAL_MESSAGES: Record<RefusalReason, string> = strings.sync.reasons;
@@ -43,6 +44,25 @@ const MONEY_REFUSAL = new RegExp([
   '_amount_pence_check', 'violates check constraint "settlements_check"', 'invalid input syntax for type bigint',
 ].join('|'), 'i');
 
+/**
+ * MB-2, MB-3 (S9a review): the database's money-back refusals (check_refund_limit), each with its own line, the one the
+ * sheet shows for the same thing: more than is still to come back, an original that was deleted, an original edited
+ * below what has come back on it, an original that isn't one of the household's expenses.
+ */
+const MONEY_BACK_REFUSAL = /still to come back|the original was deleted|more than the new amount|money back can only be for an expense/i;
+
+/** The money-back refusal's line, with the server's figure in it; null for any other refusal. */
+export function moneyBackLine(message: string): string | null {
+  const found = /£\d[\d,]*\.\d{2}/.exec(message)?.[0];
+  const amount = found === undefined ? null : parseStatementAmount(found);
+  // The database writes "£1500.00"; the line reads as the app writes money ("£1,500.00").
+  const figure = amount === null ? undefined : formatPence(pence(amount));
+  if (/still to come back/i.test(message) && figure) return strings.entry.moreThanLeft(figure);
+  if (/more than the new amount/i.test(message) && figure) return strings.entry.backMoreThanAmount(figure);
+  if (/the original was deleted/i.test(message)) return strings.invalid.originalDeleted;
+  return MONEY_BACK_REFUSAL.test(message) ? strings.sync.reasons['money-back'] : null;
+}
+
 export function refusalReason(message: string, code: string): RefusalReason {
   // S6a: a receipt photo that couldn't go up (gone from the phone, or refused by the bucket); its entry is saved.
   if (code === 'photo-missing' || /mime type|payload too large|maximum allowed size/i.test(message)) return 'photo';
@@ -51,6 +71,7 @@ export function refusalReason(message: string, code: string): RefusalReason {
   // The database's own money checks (check_money, the amount constraints) and the phone's (validateEntry);
   // not any message that merely mentions an amount (e.g. a column the server doesn't know).
   if (MONEY_REFUSAL.test(message)) return 'money';
+  if (MONEY_BACK_REFUSAL.test(message)) return 'money-back';
   if (code === 'PGRST116' || /no row/i.test(message)) return 'missing';
   // check_entry_chapter (migration 9), or a chapter that was itself refused.
   if (/chapter is not one of yours|chapter_id_fkey/i.test(message)) return 'chapter';
@@ -61,7 +82,7 @@ export function refusalReason(message: string, code: string): RefusalReason {
 export function problemFrom(op: MoneyOp, message: string, code: string, now: Date): WriteProblem {
   const reason = refusalReason(message, code);
   return {
-    message: REFUSAL_MESSAGES[reason],
+    message: (reason === 'money-back' ? moneyBackLine(message) : null) ?? REFUSAL_MESSAGES[reason],
     input: op.op === 'upsert' ? op.input : op.op === 'patch' ? { id: op.id, ...op.patch } : { id: op.id },
     id: op.opId,
     table: op.table,

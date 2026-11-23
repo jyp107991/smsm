@@ -101,6 +101,7 @@ export const strings = {
     comment: 'Write a comment of up to 500 characters.',
     notYours: 'Only whoever wrote a comment can change it.',
     settleDay: 'Pick a day from the 1st to the 28th.',
+    originalDeleted: 'The original was deleted, so this can’t be money back for it.',
   },
 
   // ───────────── S2: the daily loop ─────────────
@@ -198,6 +199,8 @@ export const strings = {
     /** Why the server said no to a waiting change (src/data/problems.ts RefusalReason). */
     reasons: {
       money: 'The amounts didn’t add up, so it wasn’t saved. Open it to fix it.',
+      /** S9a review: the money back and its original don't fit (the specific line is the problem's own message). */
+      'money-back': 'It doesn’t fit with the entry it’s money back for, so it wasn’t saved. Open it to fix it.',
       'not-member': 'It names someone who isn’t in your household, so it wasn’t saved.',
       'not-allowed': 'This phone wasn’t allowed to save it. Sign in again and try once more.',
       missing: 'It was no longer there to change.',
@@ -262,6 +265,8 @@ export const strings = {
     noBalanceChange: (name: string) => `${name} paid for ${name}, so this won’t change the balance.`,
     /** S9a (MB-2): money back over what its original still has to come back. */
     moreThanLeft: (left: string) => `That’s more than the ${left} still to come back.`,
+    /** S9a review (MB-2): an original edited below the money back already linked to it. */
+    backMoreThanAmount: (back: string) => `Money back on this is ${back}, more than the new amount.`,
     /** S2 polish Q-F2: the form refuses a date after the phone's today, as quick add does. */
     dateAfterToday: 'That date is after today.',
     summaryShares: (payer: string, amount: string, shares: string) => `${payer} paid ${amount} · ${shares}`,
@@ -605,7 +610,6 @@ export const strings = {
     comparison: (amount: string, diff: string, more: boolean, before: string) => `${amount}, ${diff} ${more ? 'more' : 'less'} than ${before}`,
     same: (amount: string, before: string) => `${amount}, the same as ${before}`,
     withChapters: (total: string, everyday: string) => `${total} in all · everyday ${everyday}`,
-    beforeMonth: 'the same days last month',
     before3: 'the same stretch 3 months earlier',
     before12: 'the same stretch a year earlier',
     beforeYear: 'the same days last year',
@@ -623,7 +627,7 @@ export const strings = {
     uncategorised: 'No category',
     whatsThis: 'What’s this?',
     define: {
-      total: 'Shared spending: what the two of you spent together (split, exact or a treat), less money back. Paying for the other person and settling up don’t count. It is compared with the same stretch just before, everyday spending only, once your entries go back that far.',
+      total: 'Shared spending: what the two of you spent together (split, exact or a treat), less money back. Paying for the other person and settling up don’t count. It is compared with the same stretch just before, everyday spending only, once your entries go back that far. This month is compared with your usual pace, as on Home: what usually lands by this day of the month.',
       whereItWent: 'Shared spending by category, largest first. Money back counts against its own category.',
       trend: 'Shared spending in each of the last 12 months.',
       whoPaid: 'What each of you handed over for shared spending in this period, less money back each received.',
