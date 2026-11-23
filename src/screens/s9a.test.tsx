@@ -245,7 +245,7 @@ function steadyHousehold(): ExpenseRow[] {
 }
 
 describe('Home’s pace matches Insights (fix 5, INS-1)', () => {
-  it('INS-1: spending as usual with the rent still to come: Home says on pace, not "under", and Insights says the same as last month', async () => {
+  it('INS-1: spending as usual with the rent still to come: Home says on pace, not "under", and Insights says the same (one pace)', async () => {
     const rent = storedRecurring({ amount_pence: 150000, start_date: '2026-07-25', posted_count: 4 });
     const c = couple({ expenses: steadyHousehold(), recurring: [rent] });
     show(c.layer);
@@ -255,7 +255,8 @@ describe('Home’s pace matches Insights (fix 5, INS-1)', () => {
     await findSentence(home, /on your usual pace/);
     fireEvent.click(screen.getByRole('tab', { name: 'Insights' }));
     await screen.findByRole('heading', { level: 1, name: 'Insights' });
-    await findSentence(await screen.findByRole('main'), /£140\.00, the same as the same days last month/);
+    // S9a review (finding 11): Insights' month so far is compared by the same pace as Home (was "the same days last month").
+    await findSentence(await screen.findByRole('main'), /^£140\.00 · on your usual pace$/);
   });
 });
 
@@ -265,7 +266,8 @@ describe('Insights compares like with like (fix 4, INS-4)', () => {
     at('/insights');
     show(c.layer);
     const main = await screen.findByRole('main');
-    await findSentence(main, /^£40\.00, £10\.00 more than the same days last month$/);
+    // S9a review (finding 11): by Home's pace: Jun–Oct to the 14th average £6.00 (only October's £30.00 by then).
+    await findSentence(main, /^£40\.00 · about £30 over your usual pace$/);
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Period' })).getByRole('radio', { name: 'Last 12 months' }));
     await findSentence(main, /£90\.00 in all|Not enough history yet/);
     expect(sentences(main, /a year earlier/)).toHaveLength(0);
@@ -544,7 +546,7 @@ describe('the standing-order hint (fix 23, INS-6)', () => {
     show(c.layer);
     const main = await screen.findByRole('main');
     await screen.findByRole('heading', { level: 1, name: 'Insights' });
-    await findSentence(main, /in all|than the same days/);
+    await findSentence(main, /in all|usual pace/);
     expect(sentences(main, hint)).toHaveLength(0);
   });
 });

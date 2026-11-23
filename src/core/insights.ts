@@ -161,18 +161,30 @@ export function usual(entries: readonly InsightEntry[], m: Month, opts: { catego
 }
 
 /**
+ * INS-1 (S9a review): the day of a comparison month that matches `day` of this month (`length` days long). Up to the
+ * 28th, the same day, unless it is the last. On this month's last day, and after the 28th, the same distance from its
+ * end, so a bill on the last day lands on the last day of every month: on this month's last day every month counts
+ * in full; on 30 October (one day before the end) a 30-day September counts to the 29th. Never before the 1st.
+ */
+export function sameDayIn(day: number, length: number, otherLength: number): number {
+  if (day < 28 || (day === 28 && length > 28)) return day;
+  return Math.max(1, otherLength - (length - day));
+}
+
+/**
  * INS-1 (S9a): what usually lands by this day of the month: over the usual's months (the previous 3–6 full months),
- * the mean of each month's everyday spending dated on or before this day of the month (clamped to that month's
- * length). A bill that usually lands on the 25th isn't counted before the 25th, so it is never "money saved". As a
+ * the mean of each month's everyday spending dated on or before this day of the month (sameDayIn: after the 28th,
+ * counted from the month's end, so a bill on the 31st is on the 30th in a 30-day month). A bill that usually lands on the 25th isn't counted before the 25th, so it is never "money saved". As a
  * fraction `total / months` (exact); null with fewer than 3 months.
  */
 export function usualByDay(entries: readonly InsightEntry[], today: IsoDate): { total: number; months: number } | null {
   const months = fullMonths(entries, month(today));
   if (months.length < 3) return null;
   const day = Number(today.slice(8, 10));
+  const length = daysInMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
   let total = 0;
   for (const m of months) {
-    const last = Math.min(day, daysInMonth(Number(m.slice(0, 4)), Number(m.slice(5, 7))));
+    const last = sameDayIn(day, length, daysInMonth(Number(m.slice(0, 4)), Number(m.slice(5, 7))));
     total += sharedSpend(entries, { kind: 'month', from: firstOf(m), to: `${m}-${String(last).padStart(2, '0')}`, chapterId: null }, { everydayOnly: true });
   }
   return { total, months: months.length };

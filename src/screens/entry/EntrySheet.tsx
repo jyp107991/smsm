@@ -47,7 +47,7 @@ import { RecurringHistory, Toggle } from './RecurringParts';
 import { TagsField } from './TagsField';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
-  blankForm, draftOf, followExact, formFromRow, movesBalance, parsedAmount, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, stillToComeBack, sumWords, summaryWords,
+  backSoFar, blankForm, draftOf, followExact, formFromRow, movesBalance, parsedAmount, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, stillToComeBack, sumWords, summaryWords,
   withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
 } from './form';
 
@@ -407,10 +407,23 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     // As the database: only a change that raises it is checked (an older refund can still be renamed).
     const raises = !(existing && existing.kind === 'money_back' && existing.deleted_at === null && existing.refund_of === draft.refundOf
       && draft.amount <= existing.amount_pence);
+    // MB-3 (S9a review): money back is never for an original that was deleted (the database refuses it too).
+    if (original && raises && original.deleted_at !== null) {
+      setErrors([strings.invalid.originalDeleted]);
+      return;
+    }
     if (original && raises) {
       const left = stillToComeBack(original, entries, existing?.id);
       if (draft.amount > left) {
         setErrors([strings.entry.moreThanLeft(formatPence(left))]);
+        return;
+      }
+    }
+    // MB-2 (S9a review): an original is never edited below what has already come back on it (the database too).
+    if (existing && existing.kind === 'expense' && draft.kind === 'expense' && draft.amount < existing.amount_pence) {
+      const back = backSoFar(existing, entries);
+      if (back > draft.amount) {
+        setErrors([strings.entry.backMoreThanAmount(formatPence(back))]);
         return;
       }
     }

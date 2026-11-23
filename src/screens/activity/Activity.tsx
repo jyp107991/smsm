@@ -31,6 +31,7 @@ import { cx } from '../../ui/primitives/util';
 import { Animal, HeadSymbols } from '../../ui/rig/Animal';
 import { prefersReducedMotion } from '../../ui/rig/motion';
 import { strings } from '../../ui/strings';
+import { plainError } from '../shared/plain';
 import { duplicateDraft } from '../entry/form';
 import { usePeople } from '../shared/people';
 import { CategoryMark } from '../shared/CategoryMark';
@@ -386,14 +387,21 @@ function useSwipe({ shown, people, today, toast }: { shown: readonly Item[]; peo
       if (!deleteExpense(row.id)) return;
       t.show({
         message: strings.entry.deleted(row.description),
-        action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
+        action: { label: strings.entry.undo, onAction: () => { try { restoreExpense(row.id); } catch (err) { t.show({ message: plainError(err) }); } } },
         duration: 5000,
       });
     } else {
       const draft = duplicateDraft(row, who, day);
       if (!draft) return;
       // Q-F1: each swipe is its own action, with its own row id made here.
-      const copy = addExpense({ ...draft, id: newId() });
+      let copy: string;
+      try {
+        copy = addExpense({ ...draft, id: newId() });
+      } catch (err) {
+        // MB-3 (S9a review): e.g. a copy of money back whose original was deleted.
+        t.show({ message: plainError(err) });
+        return;
+      }
       tickSaved();
       // Q-U8: says what happened; a swipe is easy to make by mistake, so its toast offers Undo.
       t.show({

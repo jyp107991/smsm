@@ -2,35 +2,63 @@
 --
 --   * MB-2: a money back may not be more than its original still has to come back: the original's amount less its
 --     other live linked money back. Refused on insert, and on an edit that raises it (more money, another original,
---     a restore); an unrelated edit of a row from before this rule is never refused. Money back with no original
---     (selling something shared, MB-1) has no such limit. A restore from a backup (smsm.restoring) is not checked:
---     it puts back what was there.
+--     a restore); an unrelated edit of a row from before this rule is never refused, also when it comes as the
+--     phone's upsert (insert … on conflict do update: the update's check sees it as the edit it is). The other way
+--     round, an original's amount may not be edited below the live money back linked to it. Money back with no
+--     original (selling something shared, MB-1) has no such limit. A restore from a backup (smsm.restoring) is not
+--     checked: it puts back what was there.
+--   * Money back is only ever for one of the household's own expenses (never another household's, never another
+--     money back), and never for one that was deleted: a refund queued offline for an original the partner deleted
+--     meanwhile is refused (the phone keeps it and says why), so the original can always be restored with its own.
 --   * ACT-3: deleting an original soft-deletes its live linked money back in the same statement (one transaction:
 --     the same deleted_at, the same person, the same moment in the history). Restoring the original restores the
---     rows deleted with it (the same deleted_at), and only those: a refund deleted on its own earlier stays deleted.
---     The partner hears about the original only (one notification, not one per refund).
+--     rows deleted with it (the same deleted_at), and only those, as they were (not checked again): a refund deleted
+--     on its own earlier stays deleted. A row deleted again keeps the moment it was first deleted, so a second delete
+--     never strands what was deleted with it. The partner hears about the original only (one notification).
 --   * MB-3: a money back whose original is deleted never counts: member_net and member_net_on leave it out, however
---     it came about (a row from before this rule, an edit made while one phone was offline).
+--     it came about (a row from before this rule).
 -- Expand only: the deployed app keeps working (it already refuses the same on the phone from S9a on).
 
 -- ───────── MB-2: never more back than the original ─────────
 create function check_refund_limit() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_amount bigint; v_back bigint; v_left bigint;
+declare v_orig expenses; v_back bigint; v_left bigint;
 begin
-  if new.kind <> 'money_back' or new.refund_of is null or new.deleted_at is not null then return new; end if;
   if coalesce(current_setting('smsm.restoring', true), '') = 'on' then return new; end if;
+  -- Restoring an original brings back the money back deleted with it, as it was (follow_original).
+  if coalesce(current_setting('smsm.following', true), '') = 'on' then return new; end if;
+  -- The phone writes by upsert (insert … on conflict do update). A row that is already there is an edit: the update
+  -- that follows is checked as one, with what it was before (so an unrelated edit is never refused).
+  if tg_op = 'INSERT' and exists (select 1 from expenses where id = new.id) then return new; end if;
+  if new.kind = 'expense' then
+    -- An original is never edited below the live money back linked to it.
+    if tg_op = 'UPDATE' and old.kind = 'expense' and new.deleted_at is null and new.amount_pence < old.amount_pence then
+      select coalesce(sum(amount_pence), 0) into v_back from expenses
+       where refund_of = new.id and household_id = new.household_id and kind = 'money_back' and deleted_at is null;
+      if v_back > new.amount_pence then
+        raise exception 'money back on this is £%.%, more than the new amount', v_back / 100, lpad((v_back % 100)::text, 2, '0')
+          using errcode = '23514';
+      end if;
+    end if;
+    return new;
+  end if;
+  if new.kind <> 'money_back' or new.refund_of is null or new.deleted_at is not null then return new; end if;
+  -- One refund at a time per original (two phones at once can't both squeeze in). Only the household's own expense.
+  select * into v_orig from expenses where id = new.refund_of for update;
+  if not found or v_orig.household_id <> new.household_id or v_orig.kind <> 'expense' then
+    raise exception 'money back can only be for an expense of yours' using errcode = '23514';
+  end if;
   -- Only a change that raises what has come back is checked.
   if tg_op = 'UPDATE' and old.kind = 'money_back' and old.deleted_at is null and old.refund_of is not distinct from new.refund_of
      and new.amount_pence <= old.amount_pence then
     return new;
   end if;
-  -- One refund at a time per original (two phones at once can't both squeeze in).
-  select amount_pence into v_amount from expenses where id = new.refund_of for update;
-  if not found then return new; end if;
+  if v_orig.deleted_at is not null then
+    raise exception 'the original was deleted, so this can''t be money back for it' using errcode = '23514';
+  end if;
   select coalesce(sum(amount_pence), 0) into v_back from expenses
-   where refund_of = new.refund_of and kind = 'money_back' and deleted_at is null and id <> new.id;
-  v_left := greatest(v_amount - v_back, 0);
+   where refund_of = new.refund_of and household_id = new.household_id and kind = 'money_back' and deleted_at is null and id <> new.id;
+  v_left := greatest(v_orig.amount_pence - v_back, 0);
   if new.amount_pence > v_left then
     raise exception 'that''s more than the £%.% still to come back', v_left / 100, lpad((v_left % 100)::text, 2, '0')
       using errcode = '23514';
@@ -48,18 +76,29 @@ begin
   if old.deleted_at is null and new.deleted_at is not null then
     perform set_config('smsm.following', 'on', true);
     update expenses set deleted_at = new.deleted_at
-     where refund_of = new.id and kind = 'money_back' and deleted_at is null;
+     where refund_of = new.id and household_id = new.household_id and kind = 'money_back' and deleted_at is null;
     perform set_config('smsm.following', 'off', true);
   elsif old.deleted_at is not null and new.deleted_at is null then
     perform set_config('smsm.following', 'on', true);
     update expenses set deleted_at = null
-     where refund_of = new.id and kind = 'money_back' and deleted_at = old.deleted_at;
+     where refund_of = new.id and household_id = new.household_id and kind = 'money_back' and deleted_at = old.deleted_at;
     perform set_config('smsm.following', 'off', true);
   end if;
   return null;
 end $$;
 revoke all on function follow_original() from public, anon, authenticated, service_role;
 create trigger expenses_follow_original after update of deleted_at on expenses for each row execute function follow_original();
+
+-- A row deleted again (a second phone, a queued delete replayed) keeps the moment it was first deleted: restoring its
+-- original finds the money back deleted with it by that moment.
+create function keep_first_deletion() returns trigger
+language plpgsql as $$
+begin
+  if old.deleted_at is not null and new.deleted_at is not null then new.deleted_at := old.deleted_at; end if;
+  return new;
+end $$;
+revoke all on function keep_first_deletion() from public, anon, authenticated, service_role;
+create trigger expenses_deleted_once before update of deleted_at on expenses for each row execute function keep_first_deletion();
 
 -- The notification for the partner is the original's; the refunds that followed it add none (S8 otherwise unchanged).
 create or replace function notify_expense() returns trigger

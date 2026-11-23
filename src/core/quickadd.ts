@@ -8,7 +8,7 @@
 import type { CategoryRef } from './categorise';
 import { addDays, daysInMonth, isIsoDate, weekday, type IsoDate } from './dates';
 import { foreignToPence } from './fx';
-import { amountProblem, MAX_PENCE, parseAmount, pence, type Pence } from './money';
+import { amountProblem, MAX_PENCE, parseAmount, parseForeignAmount, pence, type Pence } from './money';
 import type { SplitParams, UserId } from './split';
 import { normaliseKey } from './text';
 
@@ -85,12 +85,6 @@ function impossibleDate(word: string): { day: number; month: number } | null {
   return day > daysInMonth(2024, month) ? { day, month } : null;
 }
 
-/** PLC-6: a bare amount in another currency, as the sheet stores it ("1,200" → "1200"); at most two decimals. */
-function foreignAmount(raw: string): string | null {
-  const t = raw.normalize('NFKC');
-  return /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/u.test(t) ? t.replace(/,/g, '') : null;
-}
-
 function ratioWord(word: string): [number, number] | null {
   const m = /^(\d{1,3})\/(\d{1,3})$/.exec(word);
   if (!m?.[1] || !m[2]) return null;
@@ -164,19 +158,30 @@ function parse(text: string, ctx: QuickAddContext): { reading: QuickAddReading |
     const next = normaliseKey(tokens[i + 1] ?? '');
 
     if (amount === null) {
-      // PLC-6: abroad, a bare amount is in the country's currency; one written with "£" is pounds, as at home.
-      const foreign = currency !== null && !raw.normalize('NFKC').trimStart().startsWith('£') ? foreignAmount(raw) : null;
-      if (foreign !== null && currency !== null) {
+      // PLC-6: abroad, an amount written without "£" is in the country's currency, read by the same grammar as pounds
+      // (a decimal comma, "+" sums); one written with "£" is pounds, as at home. It is never read as pounds otherwise.
+      const typed = raw.normalize('NFKC');
+      if (currency !== null && !typed.trimStart().startsWith('£')) {
+        const foreign = parseForeignAmount(raw);
         const rate = ctx.rate ?? null;
-        const p = rate === null ? pence(0) : foreignToPence(foreign, rate);
-        if (p !== null && p <= MAX_PENCE) {
-          amount = p;
-          original = { amount: foreign, currency, rate };
-          // No rate known: never saved as if the number were pounds (Enter opens the sheet).
-          if (rate === null) unsure = true;
+        if (foreign !== null) {
+          const p = rate === null ? pence(0) : foreignToPence(foreign, rate);
+          if (p !== null && p <= MAX_PENCE) {
+            amount = p;
+            original = { amount: foreign, currency, rate };
+            // No rate known: never saved as if the number were pounds (Enter opens the sheet).
+            if (rate === null) unsure = true;
+            continue;
+          }
+          tooLarge = true;
+        } else if (/\d/u.test(typed) && /^[\d.,+]+$/u.test(typed)) {
+          // Shaped like an amount but not one it can read in that currency ("1.200,50"): not a confident reading,
+          // so Enter opens the sheet with it as typed (and never saves it as pounds).
+          amount = pence(0);
+          original = { amount: typed, currency, rate };
+          unsure = true;
           continue;
         }
-        tooLarge ||= p !== null;
       } else {
         const a = parseAmount(raw);
         if (a !== null) { amount = a; continue; }

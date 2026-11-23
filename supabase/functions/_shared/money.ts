@@ -55,6 +55,21 @@ function termsTotal(text: string): number | null {
 }
 
 /**
+ * PLC-6 (S9a review): an amount in another currency, read by the same grammar as parseAmount (a decimal comma, "+"
+ * sums, thousands in groups of three, at most two decimals, full-width digits) but never with "£" and with no pounds
+ * limit (the pounds it comes to are the caller's to hold to MAX_PENCE). The exact amount as plain text, as the sheet
+ * stores it: "12,50" → "12.50", "1000+500" → "1500", "1,200" → "1200"; null when it doesn't read.
+ */
+export function parseForeignAmount(text: string): string | null {
+  if (text.normalize('NFKC').includes('£')) return null;
+  const total = termsTotal(text);
+  if (total === null || total <= 0 || !Number.isSafeInteger(total)) return null;
+  const whole = String(Math.floor(total / 100));
+  const rest = total % 100;
+  return rest === 0 ? whole : `${whole}.${String(rest).padStart(2, '0')}`;
+}
+
+/**
  * S9a (ADD-1, ADD-5): why an amount field's text is not an amount, the same for the sheet and quick add: null when
  * parseAmount reads it; 'empty' for blank; 'tooLarge' for a well-formed amount (or sum) above MAX_PENCE; else 'unreadable'.
  */

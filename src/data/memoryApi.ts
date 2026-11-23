@@ -274,30 +274,47 @@ export function createMemoryApi(
     return next;
   }
 
+  const pounds = (p: number) => `£${String(Math.floor(p / 100))}.${String(p % 100).padStart(2, '0')}`;
+
   /**
-   * What check_refund_limit does (S9a migration): live money back is never more than its original still has to come
-   * back, checked when a write raises it (new, more money, another original, restored).
+   * What check_refund_limit does (S9a migration), on the row as it will be after a write (`before`: as it was). Money
+   * back is for one of the household's own expenses, never one that was deleted, and never more than it still has to
+   * come back; an original is never edited below what has come back on it. Only a write that raises what has come
+   * back is checked (new, more money, another original, restored); an unrelated edit never is.
    */
   function checkRefundLimit(r: ExpenseRow, before: ExpenseRow | undefined) {
-    if (r.kind !== 'money_back' || r.refund_of === null || r.deleted_at !== null) return;
-    if (before && before.kind === 'money_back' && before.deleted_at === null && before.refund_of === r.refund_of && r.amount_pence <= before.amount_pence) return;
-    const original = tables.expenses.find((e) => e.id === r.refund_of);
-    if (!original) return;
-    const back = tables.expenses.filter((e) => e.refund_of === r.refund_of && e.kind === 'money_back' && e.deleted_at === null && e.id !== r.id)
+    const liveBack = (originalId: string, exceptId: string | null) => tables.expenses
+      .filter((e) => e.refund_of === originalId && e.household_id === r.household_id && e.kind === 'money_back' && e.deleted_at === null && e.id !== exceptId)
       .reduce((t, e) => t + e.amount_pence, 0);
-    const left = Math.max(0, original.amount_pence - back);
-    if (r.amount_pence > left) {
-      refuse(`that's more than the £${String(Math.floor(left / 100))}.${String(left % 100).padStart(2, '0')} still to come back`, '23514');
+    if (r.kind === 'expense') {
+      if (before && before.kind === 'expense' && r.deleted_at === null && r.amount_pence < before.amount_pence) {
+        const back = liveBack(r.id, null);
+        if (back > r.amount_pence) refuse(`money back on this is ${pounds(back)}, more than the new amount`, '23514');
+      }
+      return;
     }
+    if (r.refund_of === null || r.deleted_at !== null) return;
+    const original = tables.expenses.find((e) => e.id === r.refund_of);
+    if (!original || original.household_id !== r.household_id || original.kind !== 'expense') {
+      refuse('money back can only be for an expense of yours', '23514');
+      return;
+    }
+    if (before && before.kind === 'money_back' && before.deleted_at === null && before.refund_of === r.refund_of && r.amount_pence <= before.amount_pence) return;
+    if (original.deleted_at !== null) refuse('the original was deleted, so this can’t be money back for it', '23514');
+    const left = Math.max(0, original.amount_pence - liveBack(original.id, r.id));
+    if (r.amount_pence > left) refuse(`that’s more than the ${pounds(left)} still to come back`, '23514');
   }
 
-  /** What follow_original does (S9a migration): an original's live money back is deleted with it, and restored with it. */
+  /**
+   * What follow_original does (S9a migration): an original's live money back is deleted with it, and restored with it
+   * (as it was: not checked again).
+   */
   function followOriginal(before: ExpenseRow, after: ExpenseRow) {
     if (after.kind !== 'expense') return;
     const deleting = before.deleted_at === null && after.deleted_at !== null;
     const restoring = before.deleted_at !== null && after.deleted_at === null;
     if (!deleting && !restoring) return;
-    for (const back of tables.expenses.filter((e) => e.refund_of === after.id && e.kind === 'money_back')) {
+    for (const back of tables.expenses.filter((e) => e.refund_of === after.id && e.household_id === after.household_id && e.kind === 'money_back')) {
       if (deleting && back.deleted_at === null) patchRow(tables.expenses, back.id, { deleted_at: after.deleted_at }, 'expense');
       if (restoring && back.deleted_at === before.deleted_at) patchRow(tables.expenses, back.id, { deleted_at: null }, 'expense');
     }
@@ -600,8 +617,11 @@ export function createMemoryApi(
         })),
     patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => {
       const before = tables.expenses.find((e) => e.id === id && e.household_id === myHousehold());
-      if (before) checkRefundLimit({ ...before, ...patch }, before);
-      const next = patchRow(tables.expenses, id, patch, 'expense');
+      // keep_first_deletion (S9a review): a deleted row "deleted" again keeps the moment it was first deleted, so
+      // restoring its original still finds the money back deleted with it.
+      const kept = before && before.deleted_at !== null && patch.deleted_at !== null ? { ...patch, deleted_at: before.deleted_at } : patch;
+      if (before) checkRefundLimit({ ...before, ...kept }, before);
+      const next = patchRow(tables.expenses, id, kept, 'expense');
       if (before) followOriginal(before, next);
       return next;
     }),
