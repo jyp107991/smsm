@@ -38,3 +38,10 @@ new MutationObserver((changes) => {
     });
   }
 }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-state'] });
+
+/**
+ * S9 (performance audit P2): the sheet's own code (vaul) is fetched after the app's first screen, in idle time
+ * (src/screens/lazy.tsx), long before a person can open a sheet. The screens' tests start from that state, as
+ * the app is by the time anyone taps; a sheet opened before its file arrives waits for it (s9-perf.test.tsx).
+ */
+await (await import('../src/ui/primitives/Sheet')).preloadSheet();

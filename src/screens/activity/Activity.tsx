@@ -3,21 +3,32 @@
  * on ruled lines, with search (description, notes, tags; case, width and normalisation ignored) and
  * filters (who paid, category, dates, type). Works from the phone's copy, offline too. Swipe a row left to
  * delete (with Undo) or right to duplicate.
+ *
+ * S9 (performance audit P1): the list stays quick with eighteen months of entries.
+ * - The rows are drawn a screenful at a time (DESIGN §6 allows windowing): the first ones at once, the next as
+ *   the end of the list comes within a screen or two of view, or from a button for the keyboard and screen
+ *   readers. A new search or filter starts again at the top; new data keeps the rows already drawn.
+ * - Search and filters update the box and the chips at once; the list follows a moment later (useDeferredValue),
+ *   so typing never waits for the list.
+ * - The filter sheets and which one is open live in their own component, so opening one never redraws the list;
+ *   rows are memoised.
+ * - One swipe handler for the whole list (pointer events), not a drag on every row.
+ * - The payer's head is drawn once (an SVG symbol) and used by every row.
  */
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
 import { Check, X } from 'lucide-react';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, startTransition, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
 import {
   addExpense, deleteExpense, newId, restoreExpense, useCategories, useChapters, useDataLayer, useEntries, useSettlements, useSyncStatus,
-  type ExpenseRow, type SettlementRow, useCommentCounts,
+  type CategoryRow, type ChapterRow, type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { holdEnterWhileComposing } from '../../ui/keys';
-import { Button, ICON, Sheet, useToast } from '../../ui/primitives';
+import { Button, ICON, Sheet, useToast, type ToastApi } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
-import { Animal } from '../../ui/rig/Animal';
+import { Animal, HeadSymbols } from '../../ui/rig/Animal';
+import { prefersReducedMotion } from '../../ui/rig/motion';
 import { strings } from '../../ui/strings';
 import { duplicateDraft } from '../entry/form';
 import { usePeople } from '../shared/people';
@@ -26,6 +37,7 @@ import { MonthGrid } from '../shared/MonthGrid';
 import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { payerOf, type Person } from '../shared/words';
 import { datesRange, type DatesChoice, type DayRange } from './dates';
+import { countryName } from '../chapters/model';
 
 type Item =
   | { kind: 'expense'; row: ExpenseRow; entry: FilterEntry }
@@ -33,38 +45,48 @@ type Item =
 
 type TypeChoice = 'any' | 'expense' | 'money_back' | 'settlement' | 'deleted';
 
-import { countryName } from '../chapters/model';
-
 const EVERYDAY = '__everyday';
+
+/** What the list is filtered by. Filters live with the screen: opening Activity again starts afresh. */
+interface Filters {
+  text: string;
+  payer: string | null;
+  category: string | null;
+  /** CHP-2: '' any chapter, EVERYDAY entries in no chapter, or a chapter's id. */
+  chapter: string;
+  /** PLC-7, CHP-6: a country ('' any) and a place ('' any). */
+  country: string;
+  place: string;
+  dates: DatesChoice;
+  /** Q-U10: the days picked under "Pick dates". */
+  range: DayRange | null;
+  type: TypeChoice;
+}
+
+const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', dates: 'any', range: null, type: 'any' };
+
+/** Q-U10: a filter is on (search has its own clear button). */
+const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.dates !== 'any' || f.type !== 'any';
 
 export function Activity() {
   const layer = useDataLayer();
   const entries = useEntries().data;
   const settlements = useSettlements().data;
-  const categories = useCategories().data ?? [];
+  const categories = useCategories().data;
   const people = usePeople();
   const { pendingIds, otherWindow } = useSyncStatus();
   const commentCounts = useCommentCounts();
   const today = layer.today();
-  // Filters live with the screen: opening Activity again starts afresh.
-  const [text, setText] = useState('');
-  const [payer, setPayer] = useState<string | null>(null);
-  const [category, setCategory] = useState<string | null>(null);
-  // CHP-2: '' any chapter, EVERYDAY entries in no chapter, or a chapter's id.
-  const [chapter, setChapter] = useState<string>('');
-  // PLC-7, CHP-6: a country ('' any) and a place ('' any).
-  const [country, setCountry] = useState<string>('');
-  const [place, setPlace] = useState<string>('');
-  const chapters = useChapters().data ?? [];
-  const [dates, setDates] = useState<DatesChoice>('any');
-  // Q-U10: the days picked under "Pick dates".
-  const [range, setRange] = useState<DayRange | null>(null);
+  const chapters = useChapters().data;
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const change = (patch: Partial<Filters>) => { setFilters((f) => ({ ...f, ...patch })); };
+  const clearAll = () => { setFilters(NO_FILTERS); };
+  // The box and the chips follow at once; the list a moment later, without holding up the next key.
+  const shownFilters = useDeferredValue(filters);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [type, setType] = useState<TypeChoice>('any');
-  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'dates' | 'type' | null>(null);
 
   const items = useMemo((): Item[] => {
-    const showDeleted = type === 'deleted';
+    const showDeleted = shownFilters.type === 'deleted';
     const out: Item[] = [];
     for (const row of entries ?? []) {
       if ((row.deleted_at !== null) !== showDeleted) continue;
@@ -88,73 +110,32 @@ export function Activity() {
       });
     }
     return out;
-  }, [entries, settlements, people.list, type]);
+  }, [entries, settlements, people.list, shownFilters.type]);
 
-  const filter: Filter = {
-    ...(text.trim() !== '' ? { text } : {}),
-    ...(payer ? { payer } : {}),
-    ...(category ? { categories: [category] } : {}),
-    ...(chapter !== '' ? { chapters: [chapter === EVERYDAY ? null : chapter] } : {}),
-    ...(country !== '' ? { countries: [country] } : {}),
-    ...(place !== '' ? { places: [place] } : {}),
-    ...datesRange(dates, today, range),
-    ...(type === 'expense' || type === 'money_back' || type === 'settlement' ? { kinds: [type] } : {}),
-  };
   const shown = useMemo(() => {
+    const f = shownFilters;
+    const filter: Filter = {
+      ...(f.text.trim() !== '' ? { text: f.text } : {}),
+      ...(f.payer ? { payer: f.payer } : {}),
+      ...(f.category ? { categories: [f.category] } : {}),
+      ...(f.chapter !== '' ? { chapters: [f.chapter === EVERYDAY ? null : f.chapter] } : {}),
+      ...(f.country !== '' ? { countries: [f.country] } : {}),
+      ...(f.place !== '' ? { places: [f.place] } : {}),
+      ...datesRange(f.dates, today, f.range),
+      ...(f.type === 'expense' || f.type === 'money_back' || f.type === 'settlement' ? { kinds: [f.type] } : {}),
+    };
     const kept = new Set(applyFilter(items.map((i) => i.entry), filter));
     return items
       .filter((i) => kept.has(i.entry))
       .sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : -1));
-    // `filter` is rebuilt each render from these values.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, text, payer, category, chapter, country, place, dates, range, type, today]);
+  }, [items, shownFilters, today]);
 
-  const days = useMemo(() => {
-    const groups: { date: IsoDate; items: Item[] }[] = [];
-    for (const i of shown) {
-      const last = groups[groups.length - 1];
-      if (last?.date === i.row.date) last.items.push(i);
-      else groups.push({ date: i.row.date, items: [i] });
-    }
-    return groups;
-  }, [shown]);
-
-  // Q-U10: a filter is on (search has its own clear button); "Clear all" and "Clear filters" undo everything.
-  const filtering = payer !== null || category !== null || chapter !== '' || country !== '' || place !== '' || dates !== 'any' || type !== 'any';
-  const filtered = text.trim() !== '' || filtering;
-  const clearAll = () => {
-    setText('');
-    setPayer(null);
-    setCategory(null);
-    setChapter('');
-    setCountry('');
-    setPlace('');
-    setDates('any');
-    setRange(null);
-    setType('any');
-  };
   const loading = entries === undefined || settlements === undefined;
-  const live = categories.filter((c) => !c.archived);
   // The countries and places that occur in the household's entries (PLC-7), by name.
   const countries = useMemo(() => [...new Set((entries ?? []).filter((e) => e.deleted_at === null).map((e) => e.country))]
     .sort((a, b) => (countryName(a) ?? a).localeCompare(countryName(b) ?? b)), [entries]);
   const places = useMemo(() => [...new Set((entries ?? []).filter((e) => e.deleted_at === null && e.place).map((e) => e.place ?? ''))]
     .sort((a, b) => a.localeCompare(b)), [entries]);
-  const chapterLabel = chapter === '' ? null : chapter === EVERYDAY ? strings.chapters.everyday : (chapters.find((c) => c.id === chapter)?.name ?? null);
-
-  const payerLabel = payer ? people.name(payer) : null;
-  const categoryLabel = category ? (categories.find((c) => c.id === category)?.name ?? null) : null;
-  const datesLabels: Record<DatesChoice, string> = {
-    any: strings.activity.anyTime, last7: strings.activity.last7, thisMonth: strings.activity.thisMonth, lastMonth: strings.activity.lastMonth,
-    last3: strings.activity.last3, thisYear: strings.activity.thisYear, custom: strings.activity.pickDates,
-  };
-  const rangeLabel = range
-    ? (range.from === range.to ? formatDay(range.from, today) : strings.activity.range(formatDate(range.from, today), formatDate(range.to, today)))
-    : null;
-  const typeLabels: Record<TypeChoice, string> = {
-    any: strings.activity.everything, expense: strings.activity.expenses, money_back: strings.activity.moneyBack,
-    settlement: strings.activity.settleUps, deleted: strings.activity.deleted,
-  };
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
@@ -168,20 +149,20 @@ export function Activity() {
           inputMode="search"
           aria-label={strings.activity.search}
           placeholder={strings.activity.searchPlaceholder}
-          value={text}
-          onChange={(e) => { setText(e.target.value); }}
+          value={filters.text}
+          onChange={(e) => { change({ text: e.target.value }); }}
           onKeyDown={holdEnterWhileComposing}
           enterKeyHint="search"
           autoComplete="off"
           className="text-body text-ink placeholder:text-ink-2 w-full min-w-0 bg-transparent py-2.5 outline-none"
         />
         {/* Q-L13: the app's own clear button (the browser's is hidden), a 44 px target; focus stays in the search. */}
-        {text !== '' ? (
+        {filters.text !== '' ? (
           <button
             type="button"
             aria-label={strings.activity.clearSearch}
             onClick={() => {
-              setText('');
+              change({ text: '' });
               searchRef.current?.focus();
             }}
             className="text-ink-2 press hover:text-ink inline-flex size-11 shrink-0 items-center justify-center rounded-full"
@@ -190,6 +171,345 @@ export function Activity() {
           </button>
         ) : null}
       </div>
+      <FilterBar
+        filters={filters}
+        onChange={change}
+        onClear={clearAll}
+        people={people.list}
+        nameOf={people.name}
+        categories={categories ?? NO_ROWS}
+        chapters={chapters ?? NO_ROWS}
+        countries={countries}
+        places={places}
+        today={today}
+      />
+
+      {loading ? null : shown.length === 0 ? (
+        shownFilters.text.trim() !== '' || filtering(shownFilters) ? (
+          <Empty animal="dog" mood="curious" pose="head" text={strings.activity.noMatch}>
+            <Button variant="plain" onClick={clearAll}>{strings.activity.clearFilters}</Button>
+          </Empty>
+        ) : (
+          <Empty animal="cat" mood="sleepy" pose="curled" text={strings.activity.empty} />
+        )
+      ) : (
+        <ActivityList
+          shown={shown}
+          filters={shownFilters}
+          today={today}
+          categories={categories ?? NO_ROWS}
+          people={people.list}
+          pendingIds={pendingIds}
+          commentCounts={commentCounts}
+          readOnly={otherWindow}
+        />
+      )}
+    </div>
+  );
+}
+
+const NO_ROWS: never[] = [];
+
+/** How many rows are drawn at first (more than a tall phone shows), and how many more each time. */
+const FIRST_ROWS = 16;
+const MORE_ROWS = 24;
+/** How far below the screen the end of the list starts drawing the next rows. */
+const AHEAD = '0px 0px 1200px 0px';
+/** Read as the list draws (not once at load), so a test page can bring its own. */
+const noObserver = () => typeof IntersectionObserver === 'undefined';
+
+/**
+ * The list itself: rows by day, drawn a screenful at a time, and the one swipe handler. Memoised, so the
+ * search box, the chips and the filter sheets never redraw it; only the rows it shows do.
+ */
+const ActivityList = memo(function ActivityList({ shown, filters, today, categories, people, pendingIds, commentCounts, readOnly }: {
+  shown: readonly Item[];
+  /** The filters `shown` was made with: a new search or filter starts again at the top. */
+  filters: Filters;
+  today: IsoDate;
+  categories: readonly CategoryRow[];
+  people: readonly Person[];
+  pendingIds: ReadonlySet<string>;
+  commentCounts: ReadonlyMap<string, number>;
+  readOnly: boolean;
+}) {
+  const [limit, setLimit] = useState({ filters, rows: FIRST_ROWS });
+  // A new search or filter: back to the first screenful of its results. New data (a save, the other phone)
+  // keeps whatever is drawn, so nothing moves under a finger.
+  if (limit.filters !== filters) setLimit({ filters, rows: FIRST_ROWS });
+  // (Without an IntersectionObserver to say when the end nears, every row is drawn.)
+  const rows = noObserver() ? Infinity : limit.filters === filters ? limit.rows : FIRST_ROWS;
+  const more = shown.length > rows;
+  const showMore = () => { startTransition(() => { setLimit((l) => ({ filters: l.filters, rows: l.rows + MORE_ROWS })); }); };
+
+  const days = useMemo(() => {
+    const groups: { date: IsoDate; items: Item[] }[] = [];
+    for (const i of shown.slice(0, rows)) {
+      const last = groups[groups.length - 1];
+      if (last?.date === i.row.date) last.items.push(i);
+      else groups.push({ date: i.row.date, items: [i] });
+    }
+    return groups;
+  }, [shown, rows]);
+
+  // The end of the list coming within a screen or two of view draws the next rows. Watching again after each
+  // step catches a list that is still short of the screen.
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = end.current;
+    if (!more || !el) return;
+    const watch = new IntersectionObserver((seen) => { if (seen.some((e) => e.isIntersecting)) showMore(); }, { rootMargin: AHEAD });
+    watch.observe(el);
+    return () => { watch.disconnect(); };
+  }, [more, rows]);
+
+  const toast = useToast();
+  const swipe = useSwipe({ shown, people, today, toast });
+
+  return (
+    <div
+      className="flex flex-col"
+      onPointerDown={swipe.down}
+      onPointerMove={swipe.move}
+      onPointerUp={swipe.up}
+      onPointerCancel={swipe.cancel}
+      onClickCapture={swipe.click}
+      onDragStart={swipe.nativeDrag}
+    >
+      <HeadSymbols />
+      {days.map((d) => (
+        <div key={d.date} className="[content-visibility:auto] [contain-intrinsic-size:auto_12rem]">
+          <h2 className="text-subtitle text-ink-2 mt-4 mb-0">{formatDay(d.date, today)}</h2>
+          <ul className="m-0 list-none p-0">
+            {d.items.map((i) => (
+              <li key={i.row.id} className="border-line border-b last:border-b-0">
+                {/* A read-only window, or a deleted entry (Restore is on its page), has nothing to swipe. */}
+                {i.kind === 'expense' && (readOnly || i.row.deleted_at !== null) ? (
+                  <EntryRowView row={i.row} categories={categories} people={people} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} shared />
+                ) : i.kind === 'expense' ? (
+                  <SwipeRow id={i.row.id}>
+                    <EntryRowView row={i.row} categories={categories} people={people} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} shared />
+                  </SwipeRow>
+                ) : (
+                  <SettlementRowView row={i.row} people={people} shared />
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {more ? (
+        <div ref={end} className="flex justify-center pt-2">
+          {/* Scrolling brings the rest by itself; the keyboard and screen readers have this (shown when focused). */}
+          <button type="button" onClick={showMore} className="sr-only focus:not-sr-only text-forest press inline-flex min-h-11 items-center rounded-full px-4">
+            {strings.activity.showMore}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+/** A row that can be swiped: the words under it, and the row that moves (driven by the list's one handler). */
+function SwipeRow({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <div className="relative overflow-hidden" data-swipe={id}>
+      <div aria-hidden="true" data-swipe-word="right" className="text-moss pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 font-medium opacity-0">
+        {strings.activity.swipeDuplicate}
+      </div>
+      <div aria-hidden="true" data-swipe-word="left" className="text-berry pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 font-medium opacity-0">
+        {strings.activity.swipeDelete}
+      </div>
+      <div data-swipe-row="" className="relative touch-pan-y">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** How far the finger travels for a swipe to count, in px (the row moves half as far: it pulls against a spring). */
+const SWIPE = 88;
+/** How far a finger moves before the gesture is read as a swipe or a scroll. */
+const SLOP = 8;
+/** The row follows the finger at this fraction: it is held at rest by a spring. */
+const ELASTIC = 0.5;
+
+/**
+ * Swipe a row left to delete (with Undo) or right to duplicate (DESIGN §4.4), with a spring back. One set of
+ * pointer handlers on the list moves whichever row the finger is on, straight on the element (no re-render).
+ * The same actions are buttons on the entry's page, for anyone who doesn't swipe; Undo is the toast's button.
+ */
+function useSwipe({ shown, people, today, toast }: { shown: readonly Item[]; people: readonly Person[]; today: IsoDate; toast: ToastApi }) {
+  const drag = useRef<{ id: string; host: HTMLElement; row: HTMLElement; words: HTMLElement[]; pointer: number; x0: number; y0: number; axis: 'x' | 'y' | null; dx: number } | null>(null);
+  const swiped = useRef(false);
+  const latest = useRef({ shown, people, today, toast });
+  useEffect(() => { latest.current = { shown, people, today, toast }; });
+
+  const act = (id: string, dir: 'left' | 'right') => {
+    const { shown: list, people: who, today: day, toast: t } = latest.current;
+    const item = list.find((i) => i.row.id === id);
+    if (item?.kind !== 'expense') return;
+    const row = item.row;
+    if (dir === 'left') {
+      if (!deleteExpense(row.id)) return;
+      t.show({
+        message: strings.entry.deleted(row.description),
+        action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
+        duration: 5000,
+      });
+    } else {
+      const draft = duplicateDraft(row, who, day);
+      if (!draft) return;
+      // Q-F1: each swipe is its own action, with its own row id made here.
+      const copy = addExpense({ ...draft, id: newId() });
+      tickSaved();
+      // Q-U8: says what happened; a swipe is easy to make by mistake, so its toast offers Undo.
+      t.show({
+        message: strings.entry.copied,
+        action: { label: strings.entry.undo, onAction: () => { if (deleteExpense(copy)) t.show({ message: strings.entry.removed(row.description) }); } },
+        duration: 5000,
+        about: copy,
+      });
+    }
+  };
+
+  const place = (d: NonNullable<typeof drag.current>, x: number) => {
+    d.row.style.transform = x === 0 ? '' : `translateX(${String(x)}px)`;
+    for (const w of d.words) {
+      const side = w.dataset.swipeWord === 'right' ? x : -x;
+      w.style.opacity = String(Math.max(0, Math.min(1, side / SWIPE)));
+    }
+  };
+
+  /** Back to rest with a spring (stiffness 500, damping 40, as before), or at once under reduced motion. */
+  const rest = (d: NonNullable<typeof drag.current>) => {
+    const from = d.row.style.transform;
+    const words = d.words.map((w) => w.style.opacity);
+    place(d, 0);
+    for (const w of d.words) w.style.opacity = '';
+    if (from === '' || prefersReducedMotion() || typeof d.row.animate !== 'function') {
+      d.row.style.backgroundColor = '';
+      return;
+    }
+    const timing = { duration: SPRING_MS, easing: SPRING_EASING };
+    d.row.animate([{ transform: from }, { transform: 'translateX(0)' }], timing).finished
+      .then(() => { d.row.style.backgroundColor = ''; }, () => { d.row.style.backgroundColor = ''; });
+    d.words.forEach((w, i) => { w.animate([{ opacity: words[i] ?? '0' }, { opacity: '0' }], timing); });
+  };
+
+  return {
+    down: (e: ReactPointerEvent) => {
+      if (e.button !== 0 || !e.isPrimary) return;
+      const host = (e.target as Element).closest<HTMLElement>('[data-swipe]');
+      const row = host?.querySelector<HTMLElement>(':scope > [data-swipe-row]');
+      if (!host || !row) return;
+      // A mouse drag on a link would start the browser's own link drag (and select text); a finger's wouldn't.
+      if (e.pointerType === 'mouse') e.preventDefault();
+      drag.current = {
+        id: host.dataset.swipe ?? '', host, row, words: [...host.querySelectorAll<HTMLElement>(':scope > [data-swipe-word]')],
+        pointer: e.pointerId, x0: e.clientX, y0: e.clientY, axis: null, dx: 0,
+      };
+    },
+    move: (e: ReactPointerEvent) => {
+      const d = drag.current;
+      if (d?.pointer !== e.pointerId) return;
+      const dx = e.clientX - d.x0;
+      const dy = e.clientY - d.y0;
+      if (d.axis === null) {
+        if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+        // Mostly up or down is a scroll: the row stays put.
+        d.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        if (d.axis === 'x') {
+          try { d.host.setPointerCapture(e.pointerId); } catch { /* not every browser (or test page) has it */ }
+          // The row covers the words only while it moves; at rest it is the page's own paper (with its grain).
+          d.row.style.backgroundColor = 'var(--paper)';
+        }
+      }
+      if (d.axis !== 'x') return;
+      d.dx = dx;
+      place(d, dx * ELASTIC);
+    },
+    up: (e: ReactPointerEvent) => {
+      const d = drag.current;
+      if (d?.pointer !== e.pointerId) return;
+      drag.current = null;
+      if (d.axis !== 'x') return;
+      // A swipe is not a tap on the row.
+      swiped.current = true;
+      setTimeout(() => { swiped.current = false; }, 0);
+      const dir = d.dx <= -SWIPE ? 'left' : d.dx >= SWIPE ? 'right' : null;
+      rest(d);
+      if (dir) act(d.id, dir);
+    },
+    cancel: (e: ReactPointerEvent) => {
+      const d = drag.current;
+      if (d?.pointer !== e.pointerId) return;
+      drag.current = null;
+      if (d.axis === 'x') rest(d);
+    },
+    click: (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+      if (!swiped.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    nativeDrag: (e: { preventDefault: () => void; target: EventTarget }) => {
+      if ((e.target as Element).closest('[data-swipe]')) e.preventDefault();
+    },
+  };
+}
+
+/** The spring back (stiffness 500, damping 40, mass 1: the swipe's old spring), sampled as a CSS easing. */
+const SPRING_MS = 320;
+const SPRING_EASING = springEasing(500, 40, 1, SPRING_MS / 1000);
+
+function springEasing(stiffness: number, damping: number, mass: number, seconds: number): string {
+  const w0 = Math.sqrt(stiffness / mass);
+  const zeta = damping / (2 * Math.sqrt(stiffness * mass));
+  const wd = w0 * Math.sqrt(Math.max(0, 1 - zeta * zeta));
+  const points: string[] = [];
+  for (let i = 0; i <= 24; i += 1) {
+    const t = (seconds * i) / 24;
+    // Progress from 0 to 1 of an underdamped spring released from rest.
+    const p = 1 - Math.exp(-zeta * w0 * t) * (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t));
+    points.push(String(i === 24 ? 1 : Math.round(p * 10_000) / 10_000));
+  }
+  return `linear(${points.join(', ')})`;
+}
+
+/** The search's chips and their sheets. Which sheet is open lives here, so opening one never redraws the list. */
+function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, today }: {
+  filters: Filters;
+  onChange: (patch: Partial<Filters>) => void;
+  onClear: () => void;
+  people: readonly Person[];
+  nameOf: (id: string) => string;
+  categories: readonly CategoryRow[];
+  chapters: readonly ChapterRow[];
+  countries: readonly string[];
+  places: readonly string[];
+  today: IsoDate;
+}) {
+  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'dates' | 'type' | null>(null);
+  const { payer, category, chapter, country, place, dates, range, type } = filters;
+  const live = categories.filter((c) => !c.archived);
+  const chapterLabel = chapter === '' ? null : chapter === EVERYDAY ? strings.chapters.everyday : (chapters.find((c) => c.id === chapter)?.name ?? null);
+  const payerLabel = payer ? nameOf(payer) : null;
+  const categoryLabel = category ? (categories.find((c) => c.id === category)?.name ?? null) : null;
+  const datesLabels: Record<DatesChoice, string> = {
+    any: strings.activity.anyTime, last7: strings.activity.last7, thisMonth: strings.activity.thisMonth, lastMonth: strings.activity.lastMonth,
+    last3: strings.activity.last3, thisYear: strings.activity.thisYear, custom: strings.activity.pickDates,
+  };
+  const rangeLabel = range
+    ? (range.from === range.to ? formatDay(range.from, today) : strings.activity.range(formatDate(range.from, today), formatDate(range.to, today)))
+    : null;
+  const typeLabels: Record<TypeChoice, string> = {
+    any: strings.activity.everything, expense: strings.activity.expenses, money_back: strings.activity.moneyBack,
+    settlement: strings.activity.settleUps, deleted: strings.activity.deleted,
+  };
+  const close = () => { setPicker(null); };
+
+  return (
+    <>
       <div role="group" aria-label={strings.activity.filters} className="flex flex-wrap gap-2">
         <FilterButton label={strings.activity.whoPaid} value={payerLabel} onClick={() => { setPicker('payer'); }} />
         <FilterButton label={strings.activity.category} value={categoryLabel} onClick={() => { setPicker('category'); }} />
@@ -204,10 +524,10 @@ export function Activity() {
         ) : null}
         <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : (dates === 'custom' ? rangeLabel : datesLabels[dates])} onClick={() => { setPicker('dates'); }} />
         <FilterButton label={strings.activity.type} value={type === 'any' ? null : typeLabels[type]} onClick={() => { setPicker('type'); }} />
-        {filtering ? (
+        {filtering(filters) ? (
           <button
             type="button"
-            onClick={clearAll}
+            onClick={onClear}
             className="text-secondary text-forest press inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] px-3 font-medium whitespace-nowrap"
           >
             <X size={16} strokeWidth={2.25} aria-hidden="true" className="-ml-0.5 shrink-0" />
@@ -216,108 +536,71 @@ export function Activity() {
         ) : null}
       </div>
 
-      {loading ? null : days.length === 0 ? (
-        filtered ? (
-          <Empty animal="dog" mood="curious" pose="head" text={strings.activity.noMatch}>
-            <Button variant="plain" onClick={clearAll}>{strings.activity.clearFilters}</Button>
-          </Empty>
-        ) : (
-          <Empty animal="cat" mood="sleepy" pose="curled" text={strings.activity.empty} />
-        )
-      ) : (
-        <div className="flex flex-col">
-          {days.map((d) => (
-            <div key={d.date} className="[content-visibility:auto] [contain-intrinsic-size:auto_12rem]">
-              <h2 className="text-subtitle text-ink-2 mt-4 mb-0">{formatDay(d.date, today)}</h2>
-              <ul className="m-0 list-none p-0">
-                {d.items.map((i) => (
-                  <li key={i.row.id} className="border-line border-b last:border-b-0">
-                    {/* A read-only window, or a deleted entry (Restore is on its page), has nothing to swipe. */}
-                    {i.kind === 'expense' && (otherWindow || i.row.deleted_at !== null) ? (
-                      <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} />
-                    ) : i.kind === 'expense' ? (
-                      <Swipeable row={i.row} people={people.list} today={today}>
-                        <EntryRowView row={i.row} categories={categories} people={people.list} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} />
-                      </Swipeable>
-                    ) : (
-                      <SettlementRowView row={i.row} people={people.list} />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-
       <Picker
         open={picker === 'payer'}
         title={strings.activity.whoPaid}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={payer ?? ''}
-        options={[{ value: '', label: strings.activity.anyone }, ...people.list.map((p) => ({ value: p.id, label: p.name }))]}
-        onPick={(v) => { setPayer(v === '' ? null : v); }}
+        options={[{ value: '', label: strings.activity.anyone }, ...people.map((p) => ({ value: p.id, label: p.name }))]}
+        onPick={(v) => { onChange({ payer: v === '' ? null : v }); }}
       />
       <Picker
         open={picker === 'category'}
         title={strings.activity.category}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={category ?? ''}
         options={[
           { value: '', label: strings.activity.anyCategory },
           ...live.map((c) => ({ value: c.id, label: c.name, icon: <CategoryMark emoji={c.emoji} colour={c.colour} /> })),
         ]}
-        onPick={(v) => { setCategory(v === '' ? null : v); }}
+        onPick={(v) => { onChange({ category: v === '' ? null : v }); }}
       />
       <Picker
         open={picker === 'chapter'}
         title={strings.chapters.chapter}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={chapter}
         options={[
           { value: '', label: strings.activity.anyChapter },
           { value: EVERYDAY, label: strings.chapters.everyday },
           ...chapters.map((c) => ({ value: c.id, label: c.name, icon: <span aria-hidden="true">{c.emoji}</span> })),
         ]}
-        onPick={setChapter}
+        onPick={(v) => { onChange({ chapter: v }); }}
       />
       <Picker
         open={picker === 'country'}
         title={strings.places.country}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={country}
         options={[{ value: '', label: strings.places.anyCountry }, ...countries.map((c) => ({ value: c, label: countryName(c) ?? c }))]}
-        onPick={setCountry}
+        onPick={(v) => { onChange({ country: v }); }}
       />
       <Picker
         open={picker === 'place'}
         title={strings.places.place}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={place}
         options={[{ value: '', label: strings.places.anyPlace }, ...places.map((p) => ({ value: p, label: p }))]}
-        onPick={setPlace}
+        onPick={(v) => { onChange({ place: v }); }}
       />
       <DatesPicker
         open={picker === 'dates'}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={dates}
         range={range}
         today={today}
         labels={datesLabels}
-        onPick={(choice, picked) => {
-          setDates(choice);
-          setRange(choice === 'custom' ? picked : null);
-        }}
+        onPick={(choice, picked) => { onChange({ dates: choice, range: choice === 'custom' ? picked : null }); }}
       />
       <Picker
         open={picker === 'type'}
         title={strings.activity.type}
-        onClose={() => { setPicker(null); }}
+        onClose={close}
         value={type}
         options={(Object.keys(typeLabels) as TypeChoice[]).map((k) => ({ value: k, label: typeLabels[k] }))}
-        onPick={(v) => { setType(v as TypeChoice); }}
+        onPick={(v) => { onChange({ type: v as TypeChoice }); }}
       />
-    </div>
+    </>
   );
 }
 
@@ -484,78 +767,3 @@ function DatesPicker({ open, onClose, value, range, today, labels, onPick }: {
   );
 }
 
-const SWIPE = 88;
-
-/**
- * Swipe a row left to delete (with Undo) or right to duplicate (DESIGN §4.4), with a spring back. The
- * same actions are buttons on the entry's page, for anyone who doesn't swipe.
- */
-function Swipeable({ row, people, today, children }: { row: ExpenseRow; people: readonly Person[]; today: IsoDate; children: ReactNode }) {
-  const toast = useToast();
-  const reduce = useReducedMotion() ?? false;
-  const x = useMotionValue(0);
-  const dragged = useRef(false);
-  const leftOpacity = useTransform(x, [0, SWIPE], [0, 1]);
-  const rightOpacity = useTransform(x, [-SWIPE, 0], [1, 0]);
-  // The row covers the action words only while it moves; at rest it is the page's own paper (with its grain).
-  const cover = useTransform(x, (v) => (v === 0 ? 'transparent' : 'var(--paper)'));
-
-  const act = (dir: 'left' | 'right') => {
-    if (dir === 'left') {
-      if (!deleteExpense(row.id)) return;
-      toast.show({
-        message: strings.entry.deleted(row.description),
-        action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
-        duration: 5000,
-      });
-    } else {
-      const draft = duplicateDraft(row, people, today);
-      if (!draft) return;
-      // Q-F1: each swipe is its own action, with its own row id made here.
-      const id = addExpense({ ...draft, id: newId() });
-      tickSaved();
-      // Q-U8: says what happened; a swipe is easy to make by mistake, so its toast offers Undo.
-      toast.show({
-        message: strings.entry.copied,
-        action: { label: strings.entry.undo, onAction: () => { if (deleteExpense(id)) toast.show({ message: strings.entry.removed(row.description) }); } },
-        duration: 5000,
-        about: id,
-      });
-    }
-  };
-
-  return (
-    <div className="relative overflow-hidden">
-      <motion.div aria-hidden="true" style={{ opacity: leftOpacity }} className="text-moss absolute inset-y-0 left-0 flex items-center pl-2 font-medium">
-        {strings.activity.swipeDuplicate}
-      </motion.div>
-      <motion.div aria-hidden="true" style={{ opacity: rightOpacity }} className="text-berry absolute inset-y-0 right-0 flex items-center pr-2 font-medium">
-        {strings.activity.swipeDelete}
-      </motion.div>
-      <motion.div
-        drag="x"
-        dragDirectionLock
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.5}
-        style={{ x, touchAction: 'pan-y', backgroundColor: cover }}
-        onDragStart={() => { dragged.current = true; }}
-        onDragEnd={(_, info) => {
-          const dir = info.offset.x <= -SWIPE ? 'left' : info.offset.x >= SWIPE ? 'right' : null;
-          if (dir) act(dir);
-          void animate(x, 0, reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 });
-          setTimeout(() => { dragged.current = false; }, 0);
-        }}
-        onClickCapture={(e) => {
-          // A swipe is not a tap on the row.
-          if (dragged.current) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }}
-        className="relative"
-      >
-        {children}
-      </motion.div>
-    </div>
-  );
-}

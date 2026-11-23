@@ -28,6 +28,35 @@ function versionFile(): Plugin {
   };
 }
 
+/**
+ * S9 (performance audit P2), demo build only: the seeded household's code (src/data/demo.ts) is imported
+ * behind `__APP_DEMO__`, so it is a separate file that the page would only ask for once the main script had
+ * run, one round trip late. This fetches it alongside the main script, as the app's own data layer is.
+ */
+function demoPreload(): Plugin {
+  return {
+    name: 'smsm-demo-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const bundle = ctx.bundle;
+        if (!bundle) return html;
+        const files = new Set<string>();
+        for (const c of Object.values(bundle)) {
+          if (c.type !== 'chunk' || !c.facadeModuleId?.endsWith('/src/data/demo.ts')) continue;
+          files.add(c.fileName);
+          for (const i of c.imports) files.add(i);
+        }
+        const tags = [...files].filter((f) => !html.includes(f)).map((f) => ({
+          tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: `/${f}` }, injectTo: 'head' as const,
+        }));
+        return { html, tags };
+      },
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(build.version),
@@ -38,6 +67,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     tailwindcss(),
     versionFile(),
+    ...(mode === 'demo' ? [demoPreload()] : []),
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,

@@ -69,15 +69,12 @@ function Part({ name, motion, children }: { name: PartName; motion?: string | fa
   );
 }
 
-export function Animal({ kind, mood = 'calm', pose = 'sitting', size = 120, motion = true, title, layer = 'whole' }: AnimalProps) {
-  const reduced = usePrefersReducedMotion();
-  const moving = motion && !reduced;
+/** The head with its ears and face, the unit every pose draws (and the shared head symbol, below). */
+function headOf(kind: AnimalKind, mood: Mood, m: (cls: string) => string | false): ReactNode {
   const a = anatomyOf(kind);
   const face = faceFor(kind, a.face, mood);
-  const m = (cls: string): string | false => moving && cls;
-
   const earLeft = <Part name="ear-left">{pieces(a.earLeft)}</Part>;
-  const headUnit = (
+  return (
     <g className={m('rig-m-tilt') || undefined}>
       {a.earLeftInFront ? null : earLeft}
       <Part name="ear-right" motion={m('rig-m-ear')}>
@@ -93,6 +90,46 @@ export function Animal({ kind, mood = 'calm', pose = 'sitting', size = 120, moti
       <Part name="mouth">{shapes(face.mouth)}</Part>
     </g>
   );
+}
+
+const still = (): false => false;
+
+/** The id of an animal's shared calm head (`HeadSymbols`), for `<use>`. */
+export const headSymbolId = (kind: AnimalKind): string => `smsm-head-${kind}`;
+
+/**
+ * S9 (performance audit P1): both animals' calm heads, drawn once as SVG symbols. A long list (Activity) shows
+ * the payer's head on every row as one `<use>` of these (`SharedHead`) instead of the whole rig per row. Render
+ * it once, beside the list that uses it.
+ */
+export function HeadSymbols() {
+  return (
+    <svg aria-hidden="true" focusable="false" width="0" height="0" className="rig absolute" style={{ overflow: 'hidden' }}>
+      {(['cat', 'dog'] as const).map((kind) => (
+        <symbol key={kind} id={headSymbolId(kind)} viewBox={VIEW_BOX.head} className={`rig-${kind}`}>
+          {headOf(kind, 'calm', still)}
+        </symbol>
+      ))}
+    </svg>
+  );
+}
+
+/** One animal's calm head from the shared symbols (`HeadSymbols` must be on the page): decoration only. */
+export function SharedHead({ kind, size }: { kind: AnimalKind; size: number }) {
+  return (
+    <svg width={size} height={size} aria-hidden="true" focusable="false" className={`rig rig-${kind} rig-pose-head`} data-pose="head" overflow="hidden">
+      <use href={`#${headSymbolId(kind)}`} />
+    </svg>
+  );
+}
+
+export function Animal({ kind, mood = 'calm', pose = 'sitting', size = 120, motion = true, title, layer = 'whole' }: AnimalProps) {
+  const reduced = usePrefersReducedMotion();
+  const moving = motion && !reduced;
+  const a = anatomyOf(kind);
+  const m = (cls: string): string | false => moving && cls;
+
+  const headUnit = headOf(kind, mood, m);
   const tailMotion = m(kind === 'cat' ? 'rig-m-sway' : 'rig-m-wag');
 
   let drawing: ReactNode;

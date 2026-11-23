@@ -3,7 +3,7 @@
  * whose money maps are malformed (not whole pence, negative, not summing to the amount) is refused here,
  * where it enters, instead of producing a wrong balance somewhere else.
  */
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import type { LedgerEntry, LedgerSettlement } from '../core/balance';
 import type { Memory } from '../core/categorise';
 import { pence, type Pence } from '../core/money';
@@ -15,7 +15,7 @@ export type ExpenseRow = Tables['expenses']['Row'];
 export type SettlementRow = Tables['settlements']['Row'];
 export type CategoryMemoryRow = Tables['category_memory']['Row'];
 
-const penceMap = z.record(z.string(), z.number().int().nonnegative());
+const penceMap = z.record(z.string(), z.int().check(z.nonnegative()));
 
 export class BadRowError extends Error {
   constructor(public readonly rowId: string, reason: string) {
@@ -50,7 +50,7 @@ export function settlementToLedger(row: SettlementRow): LedgerSettlement {
   return { from: row.from_user, to: row.to_user, amount: pence(row.amount_pence), deleted: row.deleted_at !== null };
 }
 
-const ratioMap = z.record(z.string(), z.number().int().min(0).max(100));
+const ratioMap = z.record(z.string(), z.int().check(z.gte(0), z.lte(100)));
 
 /** A remembered split as the core reads it; null when the row holds none (or one this app can't read). */
 export function memorySplit(row: Pick<CategoryMemoryRow, 'split_mode' | 'split_params'>): SplitParams | null {

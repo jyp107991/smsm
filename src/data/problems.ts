@@ -4,7 +4,7 @@
  * the same IndexedDB store as the cache, so it survives a restart.
  */
 import type { AsyncStorage } from '@tanstack/react-query-persist-client';
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { strings } from '../ui/strings';
 import { opLabel, opRowId, type MoneyOp, type QueuedRow } from './writes';
 

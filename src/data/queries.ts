@@ -4,7 +4,7 @@
  * themselves are checked where they become money, in rows.ts.
  */
 import { queryOptions, skipToken } from '@tanstack/react-query';
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import {
   ApiError,
   type ActivityRow, type Api, type CategoryMemoryRow, type CategoryRow, type ChapterRow, type CommentRow, type ChangeRequestRow, type ExpenseRow, type HouseholdRow, type MemberRow,
@@ -12,43 +12,43 @@ import {
 } from './api';
 import { keys } from './keys';
 
-const id = z.string().min(1);
+const id = z.string().check(z.minLength(1));
 const stamp = z.string();
-const nullableText = z.string().nullable();
+const nullableText = z.nullable(z.string());
 
 const householdSchema = z.looseObject({ id, join_code: z.string(), home_country: z.string(), default_ratio: z.unknown(), created_at: stamp });
 const memberSchema = z.looseObject({
-  household_id: id, user_id: id, display_name: nullableText, animal: z.enum(['cat', 'dog']).nullable(), locked_at: stamp.nullable(),
+  household_id: id, user_id: id, display_name: nullableText, animal: z.nullable(z.enum(['cat', 'dog'])), locked_at: z.nullable(stamp),
   monzo_me: nullableText, joined_at: stamp,
 });
 const categorySchema = z.looseObject({ id, household_id: id, name: z.string(), emoji: z.string(), colour: z.string(), archived: z.boolean(), sort: z.number() });
 const expenseSchema = z.looseObject({
-  id, household_id: id, kind: z.enum(['expense', 'money_back']), description: z.string(), amount_pence: z.number().int(),
-  date: z.string(), category_id: id.nullable(), paid: z.unknown(), shares: z.unknown(), split_mode: z.string(),
-  tags: z.array(z.string()), created_at: stamp, updated_at: stamp, deleted_at: stamp.nullable(),
+  id, household_id: id, kind: z.enum(['expense', 'money_back']), description: z.string(), amount_pence: z.int(),
+  date: z.string(), category_id: z.nullable(id), paid: z.unknown(), shares: z.unknown(), split_mode: z.string(),
+  tags: z.array(z.string()), created_at: stamp, updated_at: stamp, deleted_at: z.nullable(stamp),
 });
 const settlementSchema = z.looseObject({
-  id, household_id: id, from_user: id, to_user: id, amount_pence: z.number().int(), date: z.string(), method: z.string(),
-  created_at: stamp, updated_at: stamp, deleted_at: stamp.nullable(),
+  id, household_id: id, from_user: id, to_user: id, amount_pence: z.int(), date: z.string(), method: z.string(),
+  created_at: stamp, updated_at: stamp, deleted_at: z.nullable(stamp),
 });
 const changeSchema = z.looseObject({ id, household_id: id, requested_by: id, kind: z.string(), payload: z.unknown(), status: z.string() });
 const memorySchema = z.looseObject({
-  household_id: id, key: z.string(), category_id: id.nullable(), split_mode: z.string().nullable(), split_params: z.unknown(),
+  household_id: id, key: z.string(), category_id: z.nullable(id), split_mode: z.nullable(z.string()), split_params: z.unknown(),
   uses: z.number(), source: z.string(),
 });
 const recurringSchema = z.looseObject({
-  id, household_id: id, description: z.string(), amount_pence: z.number().int(), amount_varies: z.boolean(), category_id: id.nullable(),
+  id, household_id: id, description: z.string(), amount_pence: z.int(), amount_varies: z.boolean(), category_id: z.nullable(id),
   paid: z.unknown(), shares: z.unknown(), split_mode: z.string(), is_subscription: z.boolean(), frequency: z.enum(['weekly', 'monthly', 'yearly']),
-  every: z.number().int(), start_date: z.string(), end_date: z.string().nullable(), posted_count: z.number().int(), active: z.boolean(),
+  every: z.int(), start_date: z.string(), end_date: z.nullable(z.string()), posted_count: z.int(), active: z.boolean(),
 });
 const inboxSchema = z.looseObject({
   id, household_id: id, source: z.string(), status: z.enum(['open', 'kept', 'dismissed']), payload: z.unknown(),
-  recurring_id: id.nullable(), occurrence_date: z.string().nullable(), expense_id: id.nullable(), created_at: stamp,
+  recurring_id: z.nullable(id), occurrence_date: z.nullable(z.string()), expense_id: z.nullable(id), created_at: stamp,
 });
 const activitySchema = z.looseObject({ id: z.number(), entity: z.string(), action: z.string(), at: stamp, summary: z.unknown() });
 
 /** Validated for the fields the app reads; the rest of the row is passed through as the database sent it. */
-function check(schema: z.ZodType, what: string, value: unknown): unknown {
+function check(schema: z.ZodMiniType, what: string, value: unknown): unknown {
   const parsed = schema.safeParse(value);
   if (!parsed.success) throw new ApiError('refused', `unexpected ${what} from the server: ${parsed.error.issues[0]?.message ?? ''}`);
   return value;
@@ -57,7 +57,7 @@ function check(schema: z.ZodType, what: string, value: unknown): unknown {
 export function membershipQuery(api: Api, uid: string | null) {
   return queryOptions({
     queryKey: keys.membership(uid ?? ''),
-    queryFn: uid ? async () => check(memberSchema.nullable(), 'membership', await api.membership(uid)) as MemberRow | null : skipToken,
+    queryFn: uid ? async () => check(z.nullable(memberSchema), 'membership', await api.membership(uid)) as MemberRow | null : skipToken,
   });
 }
 
@@ -66,7 +66,7 @@ type Hid = string | null | undefined;
 export function householdQuery(api: Api, uid: string | null, hid: Hid) {
   return queryOptions({
     queryKey: keys.household(uid ?? ''),
-    queryFn: uid && hid ? async () => check(householdSchema.nullable(), 'household', await api.household(hid)) as HouseholdRow | null : skipToken,
+    queryFn: uid && hid ? async () => check(z.nullable(householdSchema), 'household', await api.household(hid)) as HouseholdRow | null : skipToken,
   });
 }
 
@@ -85,12 +85,12 @@ export function categoriesQuery(api: Api, uid: string | null, hid: Hid) {
 }
 
 const chapterSchema = z.looseObject({
-  id, household_id: id, name: z.string(), emoji: z.string(), kind: z.enum(['trip', 'project']), country: z.string().nullable(),
-  start_date: z.string().nullable(), end_date: z.string().nullable(), closed: z.boolean(),
+  id, household_id: id, name: z.string(), emoji: z.string(), kind: z.enum(['trip', 'project']), country: z.nullable(z.string()),
+  start_date: z.nullable(z.string()), end_date: z.nullable(z.string()), closed: z.boolean(),
 });
 
 const commentSchema = z.looseObject({
-  id, household_id: id, expense_id: id, author: id, body: z.string(), created_at: z.string(), deleted_at: z.string().nullable(),
+  id, household_id: id, expense_id: id, author: id, body: z.string(), created_at: z.string(), deleted_at: z.nullable(z.string()),
 });
 
 /** S5b: the household's comments (ACT-4). */
@@ -103,14 +103,14 @@ export function commentsQuery(api: Api, uid: string | null, hid: Hid) {
 
 const prefsSchema = z.looseObject({
   user_id: id, entries: z.boolean(), settle_ups: z.boolean(), comments: z.boolean(), bills_today: z.boolean(), bills_tomorrow: z.boolean(),
-  recap: z.boolean(), balance: z.boolean(), balance_threshold_pence: z.number().int().positive(),
+  recap: z.boolean(), balance: z.boolean(), balance_threshold_pence: z.int().check(z.positive()),
 });
 
 /** S8 (NOT-1): this person's notification switches (null: none saved yet, the defaults). Theirs on every phone. */
 export function notificationPrefsQuery(api: Api, uid: string | null) {
   return queryOptions({
     queryKey: keys.notificationPrefs(uid ?? ''),
-    queryFn: uid ? async () => check(prefsSchema.nullable(), 'notification settings', await api.notificationPrefs(uid)) as NotificationPrefsRow | null : skipToken,
+    queryFn: uid ? async () => check(z.nullable(prefsSchema), 'notification settings', await api.notificationPrefs(uid)) as NotificationPrefsRow | null : skipToken,
   });
 }
 
@@ -173,9 +173,9 @@ export function inboxQuery(api: Api, uid: string | null, hid: Hid) {
   });
 }
 
-const importIgnoreSchema = z.looseObject({ household_id: id, source: z.enum(['csv', 'monzo']), id_hash: z.string().regex(/^[0-9a-f]{64}$/) });
+const importIgnoreSchema = z.looseObject({ household_id: id, source: z.enum(['csv', 'monzo']), id_hash: z.string().check(z.regex(/^[0-9a-f]{64}$/)) });
 const importRuleSchema = z.looseObject({
-  id, household_id: id, match_text: z.string(), decision: z.enum(['keep', 'skip']), category_id: id.nullable(), split_mode: z.string().nullable(),
+  id, household_id: id, match_text: z.string(), decision: z.enum(['keep', 'skip']), category_id: z.nullable(id), split_mode: z.nullable(z.string()),
   split_params: z.unknown(),
 });
 

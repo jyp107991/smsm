@@ -3,36 +3,38 @@
  * signed in but not in a household, start or join; then name and animal; then the app: Home and Activity
  * and Bills as tabs (Insights waits for S5), the entry page and Settings, and the two sheets.
  */
-import { useEffect, useState } from 'react';
+import { memo, startTransition, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAppBadge, useHousehold, useRefreshPush, useSession, useSyncStatus } from '../data';
 import { scrollToAnchor, useNotificationTaps } from '../ui/anchors';
 import { FEATURES } from '../ui/features';
 import { BottomTabs, Button, MAIN_TABS, TabPanel, ToastProvider, type MainTab } from '../ui/primitives';
-import { go, useRoute, type Route } from '../ui/router';
+import { go, parseRoute, usePath, type Route } from '../ui/router';
 import { strings } from '../ui/strings';
-import { Activity } from './activity/Activity';
-import { Bills } from './bills/Bills';
-import { Insights } from './insights/Insights';
-import { RecapPage } from './insights/RecapPage';
-import { YearPage } from './insights/YearPage';
-import { Inbox } from './bills/Inbox';
-import { Categories } from './settings/Categories';
-import { ChapterPage } from './chapters/ChapterPage';
-import { Chapters } from './chapters/Chapters';
-import { EntryPage } from './entry/EntryPage';
-import { EntrySheet } from './entry/EntrySheet';
+import { rememberNotHome, useBootDone } from '../ui/boot';
 import { Home } from './home/Home';
+// S9 (performance audit P2): every other screen and both sheets load on demand (src/screens/lazy.tsx).
+import {
+  Activity, Bills, Categories, ChapterPage, Chapters, EntryPage, EntrySheet, Inbox, Insights, preloadWhenIdle, RecapPage, SettleSheet, Settings,
+  StatementPage, YearPage,
+} from './lazy';
 import { savePending } from './settle/monzo';
 import { MonzoQuestionProvider } from './settle/question';
-import { SettleSheet } from './settle/SettleSheet';
-import { Settings } from './settings/Settings';
-import { StatementPage } from './statement/Statement';
 import { usePeople } from './shared/people';
 import { FromOutside } from './shell/FromOutside';
 import { SheetsContext, type EntryRequest, type SettleRequest } from './sheets';
 import { SignIn } from './signin/SignIn';
 import { StartOrJoin, WhoAreYou } from './setup/Setup';
 import { useDataLayer } from '../data';
+
+/**
+ * S9: the first real screen is drawn, so the static first paint (index.html) goes in the same frame. A screen
+ * other than Home that starts the app (sign-in, setup) is remembered, so next time the first paint is plain paper.
+ */
+function BootDone({ home = true }: { home?: boolean }) {
+  useBootDone();
+  useEffect(() => { if (!home) rememberNotHome(); }, [home]);
+  return null;
+}
 
 /** The paper while the phone's copy is read (milliseconds); nothing that would jump when it arrives. */
 function Blank() {
@@ -47,7 +49,7 @@ export function Root() {
     if (signedOut) void savePending(null);
   }, [signedOut]);
   if (session.status === 'loading') return <Blank />;
-  if (session.status === 'signed-out') return <SignIn />;
+  if (session.status === 'signed-out') return <><SignIn /><BootDone home={false} /></>;
   return <Household />;
 }
 
@@ -59,6 +61,7 @@ function Household() {
     if (household.status === 'error') {
       return (
         <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-4 px-5">
+          <BootDone />
           <p role="alert" className="text-note m-0">{strings.errors.cantLoad}</p>
           <div>
             <Button variant="plain" onClick={() => void layer.refresh()}>{strings.errors.tryAgain}</Button>
@@ -68,9 +71,9 @@ function Household() {
     }
     return <Blank />;
   }
-  if (household.data === null) return <StartOrJoin />;
+  if (household.data === null) return <><StartOrJoin /><BootDone home={false} /></>;
   if (!people.ready) return <Blank />;
-  if (!people.myRow?.locked_at) return <WhoAreYou />;
+  if (!people.myRow?.locked_at) return <><WhoAreYou /><BootDone home={false} /></>;
   return <MainApp />;
 }
 
@@ -84,7 +87,7 @@ function tabOf(route: Route, last: MainTab): MainTab {
   return 'home';
 }
 
-function Page({ route }: { route: Route }) {
+const Page = memo(function Page({ route }: { route: Route }) {
   switch (route.name) {
     case 'home':
       return <Home />;
@@ -113,7 +116,7 @@ function Page({ route }: { route: Route }) {
     case 'statement':
       return <StatementPage key={route.month} month={route.month} />;
   }
-}
+});
 
 /** smsm open twice on this phone: only the first window saves; this one shows, and says so. */
 function OtherWindowNote() {
@@ -127,7 +130,21 @@ function OtherWindowNote() {
 }
 
 function MainApp() {
-  const route = useRoute();
+  // S9 (performance audit P2): a tap on a tab answers at once (the tab bar and the address change in that
+  // frame); the screen it opens is drawn just after, as a deferred render React can interrupt, with the old
+  // screen still showing meanwhile (and never a blank, even when the new screen's file is still on its way).
+  const where = usePath();
+  const [painted, setPainted] = useState(where);
+  useEffect(() => {
+    if (painted === where) return;
+    // After the frame that shows the tab's answer to the tap: then the new screen, as a deferred render.
+    let timer = 0;
+    const frame = requestAnimationFrame(() => { timer = window.setTimeout(() => { startTransition(() => { setPainted(where); }); }, 0); });
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [where, painted]);
+  const shownWhere = useDeferredValue(painted);
+  const route = useMemo(() => parseRoute(where), [where]);
+  const shown = useMemo(() => parseRoute(shownWhere), [shownWhere]);
   const [lastTab, setLastTab] = useState<MainTab>('home');
   const [entry, setEntry] = useState<EntryRequest | null>(null);
   const [settle, setSettle] = useState<SettleRequest | null>(null);
@@ -136,9 +153,10 @@ function MainApp() {
   if (route.name !== 'entry' && tab !== lastTab) setLastTab(tab);
 
   // A new page starts at its top.
-  const path = route.name === 'entry' ? `entry:${route.id}` : route.name === 'chapter' ? `chapter:${route.id}`
-    : route.name === 'recap' ? `recap:${route.month}` : route.name === 'year' ? `year:${route.year}`
-    : route.name === 'statement' ? `statement:${route.month}` : route.name;
+  // (Of the screen shown, so the old one isn't scrolled while the new one is being drawn.)
+  const path = shown.name === 'entry' ? `entry:${shown.id}` : shown.name === 'chapter' ? `chapter:${shown.id}`
+    : shown.name === 'recap' ? `recap:${shown.month}` : shown.name === 'year' ? `year:${shown.year}`
+    : shown.name === 'statement' ? `statement:${shown.month}` : shown.name;
   useEffect(() => {
     window.scrollTo(0, 0);
     // NOT-2: a notification's path may name a part of the page (#comments, #approvals).
@@ -148,6 +166,8 @@ function MainApp() {
   useAppBadge();
   useRefreshPush();
   useNotificationTaps();
+  // S9: the other screens and the sheets are fetched once Home is up and the phone is idle.
+  useEffect(() => preloadWhenIdle(), []);
 
   return (
     <SheetsContext value={sheets}>
@@ -165,13 +185,22 @@ function MainApp() {
           >
             <TabPanel value={tab}>
               <OtherWindowNote />
-              <Page route={route} />
+              {/* Only a screen asked for before its file arrived waits here, on plain paper (nothing that jumps). */}
+              <Suspense fallback={<Blank />}>
+                <Page route={shown} />
+                {/* Home takes the first paint away itself, once its balance is drawn. */}
+                {shown.name === 'home' ? null : <BootDone />}
+              </Suspense>
             </TabPanel>
           </BottomTabs>
-          <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
+          <Suspense fallback={null}>
+            <EntrySheet request={entry} onClose={() => { setEntry(null); }} />
+          </Suspense>
           {/* S6b (ADD-8): the app-icon shortcuts and the share sheet open their sheet once. */}
           <FromOutside />
-          <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
+          <Suspense fallback={null}>
+            <SettleSheet request={settle} onClose={() => { setSettle(null); }} />
+          </Suspense>
         </ToastProvider>
       </MonzoQuestionProvider>
     </SheetsContext>

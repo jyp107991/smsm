@@ -7,6 +7,7 @@ import { ErrorBoundary } from './ui/ErrorBoundary';
 import { createAppDataLayer, DataProvider, type DataLayer } from './data';
 import { Root } from './screens/AppRoot';
 import { installHistory } from './ui/history';
+import { dismissBoot } from './ui/boot';
 
 // The gallery exists only in the demo build (DESIGN §7); the production bundle never contains it.
 // __APP_DEMO__ is replaced at build time, so the production bundle drops this import entirely.
@@ -36,6 +37,8 @@ function Started() {
 export function App() {
   const onGallery = Gallery !== null && location.pathname.startsWith('/gallery');
   if (!onGallery) installHistory();
+  // S9: the gallery has no first paint of its own to wait for.
+  else dismissBoot();
   return (
     <ErrorBoundary>
       {/* One toast system for the page: the update prompt and the screens' toasts share its one slot (Q-L1). */}

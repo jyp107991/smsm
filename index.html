@@ -7,14 +7,77 @@
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#DCDFCD" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1D221A" />
     <meta name="description" content="A home ledger for two" />
-    <!-- The default typeface's Latin files that the first screen uses (src/styles/type.css), fetched before the CSS asks for them; Gowun Batang 700 joins them when Home shows the balance. Vite rewrites each path to the hashed asset the CSS uses. Korean files are never preloaded. -->
+    <!-- The default typeface's Latin files that the first screen uses (src/styles/type.css), fetched before the CSS asks for them: the interface and sentence faces, and Gowun Batang 700 for the balance amount (S9: the first screen's largest text). Vite rewrites each path to the hashed asset the CSS uses. Korean files are never preloaded. -->
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource/gowun-dodum/files/gowun-dodum-latin-400-normal.woff2" />
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource/gowun-batang/files/gowun-batang-latin-400-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource/gowun-batang/files/gowun-batang-latin-700-normal.woff2" />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/app-c-192.png" />
     <title>smsm</title>
+    <script>
+      // S9 (performance audit P2): before the first paint, this phone's theme (src/ui/theme.ts) and the shape of
+      // its Home as last shown (src/ui/boot.ts), so the static first paint below matches what replaces it.
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem('smsm-theme');
+          if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+          var boot = JSON.parse(localStorage.getItem('smsm-boot') || 'null');
+          if (location.pathname !== '/' || (boot && boot.home === false)) root.dataset.boot = 'plain';
+          else if (boot && boot.home === true) {
+            root.style.setProperty('--boot-above', Math.max(0, Math.min(2000, Number(boot.above) || 0)) + 'px');
+            root.style.setProperty('--boot-balance', Math.max(200, Math.min(800, Number(boot.balance) || 0)) + 'px');
+          }
+        } catch (e) {
+          /* private mode: the plain shape */
+        }
+      })();
+    </script>
+    <style>
+      /*
+       * The static first paint (S9, DESIGN §6: no layout shift, skeletons match the final size): the paper, the
+       * Home column (header, the balance, quick add) and the tab bar, in the tokens of either theme, drawn before
+       * any script. It lies over the page until the app has drawn the same screen (src/ui/boot.ts removes it).
+       * Shapes only, no words. Elsewhere than Home (or signed out) it is the plain paper.
+       */
+      #boot { position: fixed; inset: 0; z-index: 95; overflow: hidden; pointer-events: none; background: var(--paper-grain) var(--paper); }
+      #boot .b-col { box-sizing: border-box; max-width: 32rem; margin: 0 auto; padding: max(1rem, env(safe-area-inset-top)) 1.25rem 0; display: flex; flex-direction: column; gap: 1.5rem; }
+      #boot .b-head { display: flex; align-items: center; gap: 0.625rem; min-height: 3rem; }
+      #boot .b-word { width: 4.5rem; height: 1.25rem; border-radius: 0.5rem; background: var(--sunk); }
+      #boot .b-gear { margin-left: auto; width: 1.375rem; height: 1.375rem; border-radius: 999px; border: 2px solid var(--sunk); box-sizing: border-box; }
+      #boot .b-bal { margin-top: max(0px, calc(var(--boot-above, 1.5rem) - 1.5rem)); height: var(--boot-balance, 21.4375rem); display: flex; flex-direction: column; align-items: center; }
+      #boot .b-plank { position: relative; width: 100%; height: 11rem; }
+      #boot .b-beam { position: absolute; left: 7%; right: 7%; top: 6.6rem; height: 0.875rem; border-radius: 6px; background: var(--sunk); }
+      #boot .b-pivot { position: absolute; left: 50%; top: 8rem; width: 3.5rem; height: 2.5rem; transform: translateX(-50%); background: var(--sunk); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+      #boot .b-ground { position: absolute; left: 25%; right: 25%; top: 10.25rem; height: 0.75rem; border-radius: 50%; background: var(--sunk); }
+      #boot .b-line { margin-top: 2.25rem; width: 74%; max-width: 18.5rem; height: 2.25rem; border-radius: 0.5rem; background: var(--sunk); }
+      #boot .b-small { margin-top: 0.75rem; width: 9rem; height: 1rem; border-radius: 0.5rem; background: var(--sunk); }
+      #boot .b-field { height: 3rem; border-radius: 12px; background: var(--sunk); margin-top: 1.75rem; }
+      #boot .b-tabs { position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; min-height: calc(4rem + 3px + env(safe-area-inset-bottom)); padding: 0.5rem 0.5rem env(safe-area-inset-bottom); border-top: 3px solid var(--walnut); display: flex; justify-content: center; }
+      #boot .b-tab { flex: 1 1 0; max-width: 7rem; display: flex; justify-content: center; }
+      #boot .b-tab::before { content: ''; width: 3.5rem; height: 2rem; border-radius: 999px; background: var(--sunk); opacity: 0.6; }
+      #boot .b-tab:first-child::before { opacity: 1; }
+      [data-boot='plain'] #boot > * { display: none; }
+      @media (forced-colors: active) { #boot { background: Canvas; } }
+    </style>
   </head>
   <body>
+    <div id="boot" aria-hidden="true">
+      <div class="b-col">
+        <div class="b-head">
+          <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="var(--forest)" /><g transform="matrix(0.74 0 0 0.74 13 11.5)" fill="none" stroke="var(--on-forest)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M50 14C49 30 41 41 28 47M50 14C51 30 59 41 72 47" /><path d="M35 58H65V84H35Z" /></g></svg>
+          <div class="b-word"></div>
+          <div class="b-gear"></div>
+        </div>
+        <div class="b-bal" data-boot="balance">
+          <div class="b-plank"><div class="b-ground"></div><div class="b-pivot"></div><div class="b-beam"></div></div>
+          <div class="b-line"></div>
+          <div class="b-small"></div>
+        </div>
+        <div class="b-field"></div>
+      </div>
+      <div class="b-tabs"><div class="b-tab"></div><div class="b-tab"></div><div class="b-tab"></div><div class="b-tab"></div></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

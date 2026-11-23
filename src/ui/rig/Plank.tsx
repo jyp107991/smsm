@@ -8,7 +8,8 @@
  * stands on a quiet ground; the beam is inset to 86 % of the width, so the animals sit inside the column.
  * Its parts are named like the animals' (`data-part`): `fulcrum`, `ground`.
  */
-import { motion as m } from 'motion/react';
+import { lazy, Suspense } from 'react';
+import { whenFirstScreen } from '../boot';
 import { Animal, type AnimalKind, type Mood } from './Animal';
 import { plankTilt } from '../plank';
 import { usePrefersReducedMotion } from './motion';
@@ -37,8 +38,11 @@ export interface PlankProps {
 
 /** Each animal's size on the plank, in px. Fixed, so the plank never changes height. */
 const SEAT = 88;
-// Settles in about a quarter of a second with almost no overshoot (DESIGN §3.4: quiet, 180–260 ms).
-const SPRING = { type: 'spring', stiffness: 300, damping: 34, mass: 1 } as const;
+/**
+ * S9 (performance audit P2): the beam's spring comes with the animation library (PlankBeam.tsx), fetched once the
+ * first screen has painted. Until then the beam stands still at its tilt, exactly as the spring holds it at rest.
+ */
+const SpringBeam = lazy(() => whenFirstScreen().then(() => import('./PlankBeam')).then((mod) => ({ default: mod.PlankBeam })));
 
 function Beam() {
   return (
@@ -88,16 +92,11 @@ export function Plank({ left, right, leftNetPence, motion = true, together = fal
         </g>
       </svg>
       {motion && !reduced ? (
-        <m.div
-          className="rig-plank-beam"
-          data-tilt={tilt}
-          initial={false}
-          animate={{ rotate: tilt }}
-          transition={SPRING}
-          onAnimationComplete={() => { onRest?.(tilt); }}
-        >
-          {seats}
-        </m.div>
+        <Suspense fallback={<div className="rig-plank-beam" data-tilt={tilt} style={{ transform: `rotate(${String(tilt)}deg)` }}>{seats}</div>}>
+          <SpringBeam tilt={tilt} {...(onRest ? { onRest } : {})}>
+            {seats}
+          </SpringBeam>
+        </Suspense>
       ) : (
         <div className="rig-plank-beam" data-tilt={tilt} style={{ transform: `rotate(${tilt}deg)` }}>
           {seats}

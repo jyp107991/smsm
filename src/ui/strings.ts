@@ -356,6 +356,8 @@ export const strings = {
     settled: (from: string, to: string, amount: string) => `${from} paid ${to} ${amount}`,
     swipeDelete: 'Delete',
     swipeDuplicate: 'Duplicate',
+    /** S9: the rest of a long list, for the keyboard and screen readers (scrolling brings it by itself). */
+    showMore: 'Show older entries',
   },
   settle: {
     title: 'Settle up',
