@@ -64,6 +64,17 @@ export function pastOccurrences(t: { schedule: Schedule; amount: Pence }, today:
   return { count, totalPence: pence(count * t.amount), nextDate };
 }
 
+/**
+ * Whether the schedule started afresh on its occurrence `d` gives the same dates from then on (REC-2's anchor). Weekly
+ * always does. Monthly and yearly do when `d` is on the start's own day of the month; an occurrence cut short
+ * by a shorter month (30 Nov from the 31st) or a common year (28 Feb from 29 Feb) does not: started there, it would
+ * repeat on the shorter day.
+ */
+export function keepsAnchor(s: Schedule, d: IsoDate): boolean {
+  // A yearly occurrence is always in the start's month, so for both it is the day of the month that tells.
+  return s.frequency === 'weekly' || d.slice(8) === s.startDate.slice(8);
+}
+
 // ───────── S3: what regular payments cost, what is coming up, and "looks monthly" ─────────
 
 export type Frequency = Schedule['frequency'];

@@ -472,11 +472,17 @@ export const strings = {
     pastBills: (n: number) => (n === 1 ? 'This puts 1 past bill in the Inbox to fill in.' : `This puts ${String(n)} past bills in the Inbox to fill in.`),
     addPast: (n: number) => (n === 1 ? 'Add it' : 'Add them'),
     pastAdded: (n: number) => (n === 1 ? 'It’s added when you save.' : 'They’re added when you save.'),
-    startFrom: (day: string) => `Start from ${day} instead`,
+    /** The start moves to `day`; when that day is shorter than the start's own (30 Nov from the 31st), it says so. */
+    startFrom: (day: string, then: string | null) => `Start from ${day} instead${then === null ? '' : `, ${then}`}`,
+    thenMonthly: (day: number) => `then on the ${String(day)}${day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th'} each month`,
+    thenYearly: (day: string) => `then on ${day} each year`,
+    /** Online, "Start from" chosen keeping the start's own day: nothing past is added. */
+    pastSkipped: (n: number, bills: boolean, day: string) =>
+      `It starts on ${day}, without the ${n === 1 ? '' : `${String(n)} `}past ${bills ? 'bill' : 'payment'}${n === 1 ? '' : 's'}.`,
     pastFirst: 'First choose: add the past payments, or start from the next one.',
     lockedRhythm: (often: string, n: number, unit: string, start: string) =>
       n === 1 ? `${often}, from ${start}` : `Every ${String(n)} ${unit}, from ${start}`,
-    lockedHint: 'It has posted already, so its days stay as they are. To repeat on other days, end it and add a new one.',
+    lockedHint: 'It has started, so its days stay as they are. To repeat on other days, end it and add a new one.',
     ends: 'Ends',
     never: 'Never',
     pickStart: 'When it starts',

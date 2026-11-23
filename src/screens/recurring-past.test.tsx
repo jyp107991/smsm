@@ -9,7 +9,7 @@
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { couple, JAE_ID, SAM_ID, type InboxItemRow, type RecurringRow } from '../../tests/fixtures/couple';
+import { couple, JAE_ID, SAM_ID, storedRecurring, type InboxItemRow, type RecurringRow } from '../../tests/fixtures/couple';
 import { DataProvider, type DataLayer } from '../data';
 import type { MemoryTables } from '../data/memoryApi';
 import { resetHistoryForTests } from '../ui/history';
@@ -101,7 +101,7 @@ describe('a regular payment started long ago (S9, REC-1, REC-2)', () => {
     // The line stays, and says when they are added; the other choice is still there until Save.
     expect(text(startsGroup(sheet))).toContain('This adds 10 past payments, £14,500.00 in all.');
     expect(text(startsGroup(sheet))).toContain('They’re added when you save.');
-    expect(within(startsGroup(sheet)).queryByRole('button', { name: 'Add them' })).toBeNull();
+    expect(within(startsGroup(sheet)).getByRole('button', { name: 'Add them' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(startsGroup(sheet)).getByRole('button', { name: 'Start from Tue 24 Nov instead' })).toBeTruthy();
     expect(within(sheet).queryByText('First choose: add the past payments, or start from the next one.')).toBeNull();
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -134,18 +134,149 @@ describe('a regular payment started long ago (S9, REC-1, REC-2)', () => {
     expect(rentExpenses(c)).toEqual([]);
   });
 
-  it('REC-2: "Start from" keeps the start as the anchor: from 31 Jan it offers Mon 30 Nov (REC-2\'s date), not the 14th or the 28th', async () => {
+  it('REC-2 review 1: online, "Start from Mon 30 Nov instead" for rent on the 31st keeps the 31st: saved paused from 31 Jan, then resumed', async () => {
     const c = couple();
     show(c.layer);
     await goBills();
     const sheet = await newRegularPayment('20', 'Cleaner');
     await pickStart(sheet, 10, 'Sat 31 Jan');
     expect(await within(startsGroup(sheet)).findByText('This adds 10 past payments, £200.00 in all.')).toBeTruthy();
-    fireEvent.click(within(startsGroup(sheet)).getByRole('button', { name: 'Start from Mon 30 Nov instead' }));
+    const move = within(startsGroup(sheet)).getByRole('button', { name: 'Start from Mon 30 Nov instead' });
+    move.focus();
+    fireEvent.click(move);
+    // A choice, like "Add them": it stays, pressed, with focus; the start the person picked stays; the line says what happens.
+    expect(move.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(move);
+    expect(within(startsGroup(sheet)).getByRole('button', { name: 'Add them' }).getAttribute('aria-pressed')).toBe('false');
+    expect(within(startsGroup(sheet)).getByRole('button', { name: 'Sat 31 Jan' })).toBeTruthy();
+    expect(text(startsGroup(sheet))).toContain('It starts on Mon 30 Nov, without the 10 past payments.');
+    expect(text(startsGroup(sheet))).not.toContain('This adds');
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     await closed();
     await settle(c.layer);
-    expect(tablesOf(c).recurring[0]).toMatchObject({ start_date: '2026-11-30', posted_count: 0 });
+    await settle(c.layer);
+    const t = tablesOf(c).recurring[0];
+    expect(t).toMatchObject({ start_date: '2026-01-31', active: true, posted_count: 10 });
+    expect(c.controls.tables.expenses.filter((e) => e.description === 'Cleaner')).toEqual([]);
+    expect(c.controls.calls.filter((x) => x.name === 'upsertRecurring').map((x) => (x.arg as { active: boolean }).active)).toEqual([false, true]);
+    // Reopened, its days are fixed (as for any that has started), and the sheet doesn't claim it has posted.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const main = screen.getByRole('main');
+    const seg = within(main).queryAllByRole('radio', { name: 'Next 30 days' }).concat(within(main).queryAllByRole('tab', { name: 'Next 30 days' }));
+    if (seg[0]) fireEvent.click(seg[0]);
+    const list = await screen.findByRole('list', { name: 'Next 30 days' });
+    expect(within(list).getAllByRole('button', { name: /^Cleaner\b/ })).toHaveLength(1);
+    fireEvent.click(within(list).getAllByRole('button', { name: /^Cleaner\b/ })[0] as HTMLElement);
+    const edit = await screen.findByRole('dialog', { name: 'Edit regular payment' });
+    expect(text(edit)).toContain('It has started, so its days stay as they are.');
+    expect(text(edit)).not.toContain('posted already');
+  });
+
+  it('REC-2 review 1: yearly on 29 Feb, online, keeps 29 Feb (from 28 Feb 2027 it comes back on 29 Feb 2028)', async () => {
+    const c = couple();
+    show(c.layer);
+    await goBills();
+    const sheet = await newRegularPayment('95', 'Leap fee');
+    fireEvent.click(within(sheet).getByRole('radio', { name: 'Yearly' }));
+    await pickStart(sheet, 33, '29 Feb 2024');
+    expect(await within(startsGroup(sheet)).findByText('This adds 3 past payments, £285.00 in all.')).toBeTruthy();
+    fireEvent.click(within(startsGroup(sheet)).getByRole('button', { name: 'Start from 28 Feb 2027 instead' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await closed();
+    await settle(c.layer);
+    await settle(c.layer);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ start_date: '2024-02-29', frequency: 'yearly', active: true, posted_count: 3 });
+    expect(c.controls.tables.expenses.filter((e) => e.description === 'Leap fee')).toEqual([]);
+  });
+
+  it('REC-2 review 1: offline, the start moves, and the button says the new day it then repeats on', async () => {
+    const c = couple();
+    show(c.layer);
+    await goBills();
+    act(() => { c.network.set(false); });
+    const sheet = await newRegularPayment('20', 'Cleaner');
+    await pickStart(sheet, 10, 'Sat 31 Jan');
+    const move = within(startsGroup(sheet)).getByRole('button', { name: 'Start from Mon 30 Nov instead, then on the 30th each month' });
+    fireEvent.click(move);
+    // The start chip is the new day, and takes focus (the choice it came from is gone).
+    const chip = await within(startsGroup(sheet)).findByRole('button', { name: 'Mon 30 Nov' });
+    await waitFor(() => { expect(document.activeElement).toBe(chip); });
+    expect(within(sheet).queryByText(/past payment/)).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await closed();
+    act(() => { c.network.set(true); });
+    await settle(c.layer);
+    await settle(c.layer);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ start_date: '2026-11-30', posted_count: 0, active: true });
+  });
+
+  it('REC-2 review 1: a choice made online asks again if the connection drops before Save', async () => {
+    const c = couple();
+    show(c.layer);
+    await goBills();
+    const sheet = await newRegularPayment('20', 'Cleaner');
+    await pickStart(sheet, 10, 'Sat 31 Jan');
+    fireEvent.click(within(startsGroup(sheet)).getByRole('button', { name: 'Start from Mon 30 Nov instead' }));
+    act(() => { c.network.set(false); });
+    expect(await within(startsGroup(sheet)).findByRole('button', { name: 'Start from Mon 30 Nov instead, then on the 30th each month' })).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(await within(sheet).findByText('First choose: add the past payments, or start from the next one.')).toBeTruthy();
+    await settle(c.layer);
+    expect(tablesOf(c).recurring).toHaveLength(0);
+  });
+
+  it('review 2: turning "Amount varies" off after "Add them" (bills only) asks again before posting money', async () => {
+    const c = couple();
+    show(c.layer);
+    await goBills();
+    const sheet = await newRegularPayment('1450', 'Rent');
+    fireEvent.click(within(sheet).getByRole('switch', { name: 'Amount varies' }));
+    await pickStart(sheet, 10, 'Sat 24 Jan');
+    fireEvent.click(within(startsGroup(sheet)).getByRole('button', { name: 'Add them' }));
+    fireEvent.click(within(sheet).getByRole('switch', { name: 'Amount varies' }));
+    expect(await within(startsGroup(sheet)).findByText('This adds 10 past payments, £14,500.00 in all.')).toBeTruthy();
+    expect(within(startsGroup(sheet)).getByRole('button', { name: 'Add them' }).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(await within(sheet).findByText('First choose: add the past payments, or start from the next one.')).toBeTruthy();
+    await settle(c.layer);
+    expect(tablesOf(c).recurring).toHaveLength(0);
+    expect(rentExpenses(c)).toEqual([]);
+  });
+
+  it('review 2: a choice made before the amount was typed (or with another amount) asks again', async () => {
+    const c = couple();
+    show(c.layer);
+    await goBills();
+    const sheet = await newRegularPayment('', 'Rent');
+    await pickStart(sheet, 10, 'Sat 24 Jan');
+    expect(await within(startsGroup(sheet)).findByText('This adds 10 past payments.')).toBeTruthy();
+    fireEvent.click(within(startsGroup(sheet)).getByRole('button', { name: 'Add them' }));
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '1450' } });
+    expect(await within(startsGroup(sheet)).findByText('This adds 10 past payments, £14,500.00 in all.')).toBeTruthy();
+    expect(within(startsGroup(sheet)).getByRole('button', { name: 'Add them' }).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(await within(sheet).findByText('First choose: add the past payments, or start from the next one.')).toBeTruthy();
+    await settle(c.layer);
+    expect(tablesOf(c).recurring).toHaveLength(0);
+  });
+
+  it('review 3: "Add them" stays, pressed, with focus; the line is in a live region that is never display:none', async () => {
+    const c = couple();
+    show(c.layer);
+    await goBills();
+    const sheet = await newRegularPayment('1450', 'Rent');
+    const live = startsGroup(sheet).querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live?.className ?? '').not.toMatch(/(^|\s)(empty:)?hidden(\s|$)/);
+    await pickStart(sheet, 10, 'Sat 24 Jan');
+    const add = within(startsGroup(sheet)).getByRole('button', { name: 'Add them' });
+    expect(add.getAttribute('aria-pressed')).toBe('false');
+    add.focus();
+    fireEvent.click(add);
+    const after = within(startsGroup(sheet)).getByRole('button', { name: 'Add them' });
+    expect(after).toBe(add);
+    expect(after.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(add);
   });
 
   it('a choice is for the schedule it was made on: picking another start asks again', async () => {
@@ -208,5 +339,34 @@ describe('a regular payment started long ago (S9, REC-1, REC-2)', () => {
     expect(byName('Gym')).toMatchObject({ start_date: '2026-09-14', posted_count: 3 });
     expect(rentExpenses(c)).toEqual([]);
     expect(c.controls.tables.expenses.filter((e) => e.description === 'Gym').map((e) => e.date).sort()).toEqual(['2026-09-14', '2026-10-14', '2026-11-14']);
+  });
+});
+
+describe('editing a regular payment whose phone copy is stale (review 4)', () => {
+  it('a live template the phone still thinks has posted nothing: an edit that keeps the schedule saves without asking; a new start asks', async () => {
+    const rentRow = storedRecurring({ start_date: '2026-01-24', posted_count: 0 });
+    const c = couple({ recurring: [rentRow] });
+    // The server's posting never answers, so the phone's copy keeps posted_count 0 (as when it was offline when the server posted).
+    c.controls.refuse = (name) => (name === 'postDueRecurring' ? 'busy' : null);
+    show(c.layer);
+    await goBills();
+    const main = screen.getByRole('main');
+    const seg = within(main).queryAllByRole('radio', { name: 'Next 30 days' }).concat(within(main).queryAllByRole('tab', { name: 'Next 30 days' }));
+    if (seg[0]) fireEvent.click(seg[0]);
+    const list = await screen.findByRole('list', { name: 'Next 30 days' });
+    fireEvent.click(within(list).getAllByRole('button', { name: /^Rent\b/ })[0] as HTMLElement);
+    let sheet = await screen.findByRole('dialog', { name: 'Edit regular payment' });
+    expect(within(sheet).queryByText(/past payment/)).toBeNull();
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Description' }), { target: { value: 'Rent (flat)' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Edit regular payment' })).toBeNull(); });
+    await settle(c.layer);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ description: 'Rent (flat)', start_date: '2026-01-24' });
+
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    fireEvent.click(within(await screen.findByRole('list', { name: 'Next 30 days' })).getAllByRole('button', { name: /^Rent \(flat\)/ })[0] as HTMLElement);
+    sheet = await screen.findByRole('dialog', { name: 'Edit regular payment' });
+    await pickStart(sheet, 0, 'Sun 25 Jan');
+    expect(await within(startsGroup(sheet)).findByText('This adds 10 past payments, £14,500.00 in all.')).toBeTruthy();
   });
 });

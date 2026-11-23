@@ -2,6 +2,10 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-23 ~21:00 UTC: S9 review fixes for "a regular payment started long ago"
+- A fresh review found 4 things; each now has a failing-first test and a fix. (1) Rent on the 31st with "Start from Mon 30 Nov instead" would have moved to the 30th for good; online it now keeps the 31st (saved paused from the day picked, then resumed: the database skips the past ones; checked against PostgreSQL and the demo's Api). Offline the button says the day it then repeats on. (2) Changing the amount or "Amount varies" after choosing now asks again. (3) "Add them" stays pressed and keeps focus; the line is always announced. (4) Editing a payment without changing its days never asks. Details in DECISIONS.
+- Tests: SQL 515/515 (12 new checks), 130/130 refusals; new data tests (5) and core tests (3); screen tests 7 → 14; browser `recurring.spec.ts` and `bills.spec.ts` 26 of 26 (2 new or extended at 390 in both themes).
+
 ## 2026-11-23 ~20:15 UTC: S9 engineering items: Actions pinned, a second keep-alive, a regular payment started long ago
 - **Actions pinned.** Every action in the workflows is now a fixed commit (SHA) with its version beside it, each at its current version on Node 24: checkout 7.0.1, setup-node 7.1.0, upload-artifact 7.0.2 and download-artifact 8.0.2 (the last two were on Node 20, which GitHub warns about). Release notes read; nothing these workflows use changed. A test fails if any action is ever unpinned.
 - **A second keep-alive.** The app's own Worker now wakes once a day (05:37 UTC, a Cloudflare Cron Trigger) and calls the database's health check with the public key it already has, so the free Supabase project stays awake even if GitHub stops its scheduled jobs. No new secret, and the existing Cloudflare token already has the permission. It never fails loudly and logs only "ok" or an HTTP status. The deploy checks the schedule was set. Runs show in Cloudflare → Workers & Pages → smsm → Settings → Trigger Events.

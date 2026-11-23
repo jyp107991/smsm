@@ -9,7 +9,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { pence } from './money';
-import { dueOccurrences, occurrence, pastOccurrences, type Schedule } from './recurring';
+import { dueOccurrences, keepsAnchor, occurrence, pastOccurrences, type Schedule } from './recurring';
 
 const monthly = (startDate: string, endDate: string | null = null, every = 1): Schedule => ({ frequency: 'monthly', every, startDate, endDate });
 
@@ -103,5 +103,39 @@ describe('pastOccurrences', () => {
         }
       },
     ), { numRuns: 400, seed: 20261123 });
+  });
+});
+
+describe('keepsAnchor: whether starting afresh on an occurrence keeps every later date (REC-2)', () => {
+  it('monthly from the 31st: a 31st keeps it, a shorter month-end does not', () => {
+    expect(keepsAnchor(monthly('2026-01-31'), '2026-12-31')).toBe(true);
+    expect(keepsAnchor(monthly('2026-01-31'), '2026-11-30')).toBe(false);
+    expect(keepsAnchor(monthly('2026-01-31'), '2026-02-28')).toBe(false);
+    expect(keepsAnchor(monthly('2026-01-24'), '2026-11-24')).toBe(true);
+    expect(keepsAnchor(monthly('2026-01-30', null, 3), '2026-04-30')).toBe(true);
+  });
+
+  it('yearly from 29 Feb: 28 Feb in a common year does not; weekly always does', () => {
+    expect(keepsAnchor({ frequency: 'yearly', every: 1, startDate: '2024-02-29', endDate: null }, '2027-02-28')).toBe(false);
+    expect(keepsAnchor({ frequency: 'yearly', every: 1, startDate: '2024-02-29', endDate: null }, '2028-02-29')).toBe(true);
+    expect(keepsAnchor({ frequency: 'yearly', every: 1, startDate: '2024-03-31', endDate: null }, '2026-03-31')).toBe(true);
+    expect(keepsAnchor({ frequency: 'weekly', every: 2, startDate: '2026-01-31', endDate: null }, '2026-11-28')).toBe(true);
+  });
+
+  it('property: it is true exactly when the schedule restarted there gives the same next 24 dates', () => {
+    const day = fc.integer({ min: Date.UTC(2015, 0, 1) / 86_400_000, max: Date.UTC(2035, 11, 31) / 86_400_000 }).map((n) => new Date(n * 86_400_000).toISOString().slice(0, 10));
+    fc.assert(fc.property(
+      fc.constantFrom<Schedule['frequency']>('weekly', 'monthly', 'yearly'), fc.integer({ min: 1, max: 4 }),
+      fc.oneof(day, fc.tuple(fc.integer({ min: 2015, max: 2035 }), fc.constantFrom('01-29', '01-30', '01-31', '03-31')).map(([y, md]) => `${String(y)}-${md}`), fc.integer({ min: 504, max: 508 }).map((q) => `${String(4 * q)}-02-29`)),
+      fc.integer({ min: 0, max: 40 }),
+      (frequency, every, startDate, k) => {
+        const s: Schedule = { frequency, every, startDate, endDate: null };
+        const d = occurrence(s, k);
+        const restarted: Schedule = { ...s, startDate: d };
+        let same = true;
+        for (let j = 0; j < 24; j += 1) if (occurrence(restarted, j) !== occurrence(s, k + j)) same = false;
+        expect(keepsAnchor(s, d)).toBe(same);
+      },
+    ), { numRuns: 400, seed: 20261124 });
   });
 });
