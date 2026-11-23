@@ -6,7 +6,7 @@
  *
  * Format 2 (S7) adds chapters, regular payments, comments and the household's import rules (keep rules only).
  */
-import type { ImportRuleRow } from './api';
+import type { CategoryRow, ImportRuleRow } from './api';
 import { activeDataLayer } from './context';
 import { keys } from './keys';
 import type { DataLayer } from './queryClient';
@@ -17,7 +17,7 @@ export const BACKUP_FORMAT = 'smsm-backup-2';
 export function backupJson(opts: { appVersion: string }, layer: DataLayer = activeDataLayer()): string {
   const uid = layer.me() ?? '';
   const read = (key: readonly unknown[]): unknown => layer.client.getQueryData(key) ?? null;
-  const rows = <R extends { id: string }>(key: readonly unknown[], table: 'chapters' | 'recurring' | 'comments'): R[] =>
+  const rows = <R extends { id: string }>(key: readonly unknown[], table: 'categories' | 'chapters' | 'recurring' | 'comments'): R[] =>
     overlay(layer.client.getQueryData<R[]>(key) ?? [], layer.waiting(), table);
   return JSON.stringify(
     {
@@ -26,7 +26,8 @@ export function backupJson(opts: { appVersion: string }, layer: DataLayer = acti
       exported_at: layer.now().toISOString(),
       household: layer.household(),
       members: layer.members(),
-      categories: read(keys.categories(uid)) ?? [],
+      // A category made or changed on this phone and still waiting to sync is in the file too (S9 data-safety pass).
+      categories: rows<CategoryRow>(keys.categories(uid), 'categories'),
       expenses: layer.entries(),
       settlements: layer.settlements(),
       category_memory: layer.memory(),
