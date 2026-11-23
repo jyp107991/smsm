@@ -132,13 +132,18 @@ export interface ActivityLike {
 
 const TIME = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
+/** A day inside a sentence: "today", "yesterday", or the date ("Mon 10 Nov"). */
+export function dayInSentence(d: IsoDate, today: IsoDate): string {
+  const day = formatDay(d, today);
+  return day === 'Today' || day === 'Yesterday' ? day.toLowerCase() : day;
+}
+
 /** "today 18:02", "yesterday 18:02", "Mon 10 Nov 18:02": when, on this phone's calendar (DAT-1). */
 export function whenWords(at: string, today: IsoDate, timeZone?: string): string {
   const moment = new Date(at);
   if (Number.isNaN(moment.getTime())) return '';
   const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const day = formatDay(todayIn(moment, zone), today);
-  const lowered = day === 'Today' || day === 'Yesterday' ? day.toLowerCase() : day;
+  const lowered = dayInSentence(todayIn(moment, zone), today);
   const time = timeZone ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(moment) : TIME.format(moment);
   return strings.history.when(lowered, time);
 }
@@ -183,7 +188,20 @@ function editWords(summary: unknown, people: readonly Person[]): string {
   if (splitChanged) parts.push(strings.history.split);
   if (field(summary, 'notes') ?? field(summary, 'note')) parts.push(strings.history.notes);
   if (field(summary, 'tags')) parts.push(strings.history.tags);
+  // A regular payment's schedule (REC-1, REC-6).
+  if (field(summary, 'frequency') ?? field(summary, 'every')) parts.push(strings.history.often);
+  if (field(summary, 'start_date')) parts.push(strings.history.start);
+  if (field(summary, 'end_date')) parts.push(strings.history.endDate);
   return parts.length > 0 ? listWords(parts) : strings.history.details;
+}
+
+/** REC-1: a regular payment paused or resumed and nothing else changed: "Jae paused it". */
+function pausedOrResumed(summary: unknown, who: string): string | null {
+  const active = field(summary, 'active');
+  if (!active || typeof active.after !== 'boolean') return null;
+  const others = Object.keys(summary as Record<string, unknown>).filter((k) => k !== 'active' && k !== 'posted_count');
+  if (others.length > 0) return null;
+  return active.after ? strings.history.resumed(who) : strings.history.paused(who);
 }
 
 /** One line of an entry's history (ACT-2): "Sam changed £42.50 to £45.20, yesterday 18:02". */
@@ -194,7 +212,7 @@ export function historyLine(a: ActivityLike, people: readonly Person[], today: I
   else if (a.action === 'created') line = strings.history.added(who);
   else if (a.action === 'deleted') line = strings.history.deleted(who);
   else if (a.action === 'restored') line = strings.history.restored(who);
-  else line = strings.history.changed(who, editWords(a.summary, people));
+  else line = pausedOrResumed(a.summary, who) ?? strings.history.changed(who, editWords(a.summary, people));
   const when = whenWords(a.at, today, timeZone);
   return when ? strings.history.at(line, when) : line;
 }

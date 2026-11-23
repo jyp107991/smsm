@@ -332,6 +332,12 @@ export const strings = {
     tags: 'the tags',
     people: 'who paid whom',
     details: 'the details',
+    /** A regular payment's history (REC-1): its pause and resume, its end, its rhythm. */
+    paused: (who: string) => `${who} paused it`,
+    resumed: (who: string) => `${who} resumed it`,
+    endDate: 'the end date',
+    often: 'how often',
+    start: 'the start',
     and: ' and ',
     comma: ', ',
     someone: 'Someone',

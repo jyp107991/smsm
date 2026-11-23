@@ -313,6 +313,89 @@ describe('pause and end (REC-1: nothing is hard-deleted)', () => {
   });
 });
 
+// ───────── OFF-2 OFF-5: editing, pausing and ending offline (the owner's check of regular payments) ─────────
+
+describe('changing a regular payment offline (OFF-2, OFF-5, REC-1, REC-6)', () => {
+  const ID = storedRecurring().id;
+  /** What reached the "server" for this template, in order: the columns each write changed. */
+  const logged = (c: ReturnType<typeof household>) => c.controls.tables.activity
+    .filter((a) => a.entity === 'recurring' && a.entity_id === ID && a.action === 'edited')
+    .map((a) => Object.keys(a.summary as object).sort());
+
+  it('OFF-2: a new amount, a pause and an end made offline show at once, wait in order, and reach the server in that order', async () => {
+    const c = household({ recurring: [storedRecurring()] });
+    await c.layer.ready;
+    await settle(c.layer);
+    c.network.set(false);
+    const view = watch(c.layer);
+    act(() => {
+      m.saveRecurring({ ...rent({ amount: pence(150000), startDate: '2026-01-01' }), id: ID }, c.layer);
+      expect(m.pauseRecurring(ID, c.layer)).toBe(true);
+      expect(m.endRecurring(ID, '2026-12-31', c.layer)).toBe(true);
+    });
+    await waitFor(() => { expect(view.result.current.recurring.data?.[0]).toMatchObject({ amount_pence: 150000, active: false, end_date: '2026-12-31' }); });
+    expect(view.result.current.sync.waiting).toBe(3);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ amount_pence: 145000, active: true, end_date: null });
+
+    c.network.set(true);
+    await settle(c.layer);
+    await waitFor(() => { expect(view.result.current.sync.waiting).toBe(0); });
+    expect(tablesOf(c).recurring).toHaveLength(1);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ amount_pence: 150000, shares: { [JAE_ID]: 75000, [SAM_ID]: 75000 }, active: false, end_date: '2026-12-31', posted_count: 11 });
+    expect(logged(c)).toEqual([['amount_pence', 'paid', 'shares'], ['active'], ['end_date']]);
+    expect(c.controls.calls.filter((call) => call.name === 'upsertRecurring')).toHaveLength(3);
+    view.unmount();
+  });
+
+  it('OFF-5: the same three, waiting when the app is closed, are sent once and in order on the next open; resume after a reload too', async () => {
+    const storage = memoryStorage();
+    const first = household({ recurring: [storedRecurring()], storage });
+    await first.layer.ready;
+    await settle(first.layer);
+    first.network.set(false);
+    m.saveRecurring({ ...rent({ amount: pence(150000), startDate: '2026-01-01', description: 'Rent (flat)' }), id: ID }, first.layer);
+    m.pauseRecurring(ID, first.layer);
+    m.endRecurring(ID, '2026-12-31', first.layer);
+    await first.layer.flush();
+    await first.layer.dispose();
+    open.splice(open.indexOf(first.layer), 1);
+    expect(tablesOf(first).recurring[0]).toMatchObject({ amount_pence: 145000, active: true, end_date: null });
+
+    // The phone restarts over the same storage, still offline: the three are still waiting, and still shown.
+    const second = household({ recurring: tablesOf(first).recurring, storage, online: false });
+    await second.layer.ready;
+    const view = watch(second.layer);
+    await waitFor(() => { expect(view.result.current.sync.waiting).toBe(3); });
+    expect(view.result.current.recurring.data?.[0]).toMatchObject({ description: 'Rent (flat)', amount_pence: 150000, active: false, end_date: '2026-12-31' });
+    // Resumed while still offline: a fourth, after the three.
+    act(() => { expect(m.resumeRecurring(ID, second.layer)).toBe(true); });
+    await waitFor(() => { expect(view.result.current.sync.waiting).toBe(4); });
+
+    second.network.set(true);
+    await settle(second.layer);
+    await waitFor(() => { expect(view.result.current.sync.waiting).toBe(0); });
+    expect(tablesOf(second).recurring).toHaveLength(1);
+    expect(tablesOf(second).recurring[0]).toMatchObject({ description: 'Rent (flat)', amount_pence: 150000, active: true, end_date: '2026-12-31' });
+    expect(logged(second)).toEqual([['amount_pence', 'description', 'paid', 'shares'], ['active'], ['end_date'], ['active']]);
+    view.unmount();
+  });
+
+  it('REC-1: End on a payment that hasn’t started yet is stored (its end before its start, as the database allows), and it can still be edited', async () => {
+    const later = storedRecurring({ start_date: '2026-12-20', posted_count: 0 });
+    const c = household({ recurring: [later] });
+    await c.layer.ready;
+    expect(m.endRecurring(ID, undefined, c.layer)).toBe(true);
+    await settle(c.layer);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ end_date: TODAY, start_date: '2026-12-20' });
+    expect(c.layer.problems.list()).toEqual([]);
+    m.saveRecurring({ ...rent({ description: 'Rent (old flat)', startDate: '2026-12-20', endDate: TODAY }), id: ID }, c.layer);
+    await settle(c.layer);
+    expect(tablesOf(c).recurring[0]).toMatchObject({ description: 'Rent (old flat)', end_date: TODAY });
+    // A new end picked before the start is still refused on the phone.
+    expect(() => m.saveRecurring({ ...rent({ startDate: '2026-12-20', endDate: '2026-12-01' }), id: ID }, c.layer)).toThrow(EntryInvalidError);
+  });
+});
+
 // ─────────────────────────────── REC-2: posting ───────────────────────────────
 
 describe('posting (REC-2, REC-4, OFF-4)', () => {

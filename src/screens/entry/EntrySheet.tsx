@@ -38,7 +38,7 @@ import { DateSheet } from '../shared/MonthGrid';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
-import type { Person } from '../shared/words';
+import { dayInSentence, type Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
 import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
 import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
@@ -499,7 +499,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       setErrors([strings.recurring.everyNeeded]);
       return;
     }
-    if (r.endDate !== null && r.endDate < r.startDate) {
+    // An end before the start is refused when picked; one already stored (End tapped before it started) stays as it is.
+    const keptEnd = template !== undefined && r.endDate === template.end_date && r.startDate === template.start_date;
+    if (r.endDate !== null && r.endDate < r.startDate && !keptEnd) {
       setErrors([strings.recurring.endBeforeStart]);
       return;
     }
@@ -832,7 +834,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         <div className="flex flex-col gap-4">
           {!template.active ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.pausedNote}</p> : null}
           {template.end_date !== null && template.end_date <= today ? (
-            <p className="text-secondary text-ink-2 m-0">{strings.recurring.endedNote(formatDay(template.end_date, today))}</p>
+            <p className="text-secondary text-ink-2 m-0">{strings.recurring.endedNote(dayInSentence(template.end_date, today))}</p>
           ) : null}
           <div className="flex flex-wrap gap-3">
             {template.active
@@ -858,7 +860,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       <DateSheet
         open={picking !== null}
         onClose={() => { setPicking(null); }}
-        value={picking === 'end' ? (rec.endDate ?? rec.startDate) : rec.startDate}
+        // An end not picked yet starts from today (or the start, if that is later), not from a start long past.
+        value={picking === 'end' ? (rec.endDate ?? (rec.startDate > today ? rec.startDate : today)) : rec.startDate}
         today={today}
         max={null}
         title={picking === 'end' ? strings.recurring.pickEnd : strings.recurring.pickStart}

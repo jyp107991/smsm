@@ -2,6 +2,13 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-23 ~17:45 UTC: regular payments checked end to end (add, change, pause, resume, end)
+- Owner asked for a double check of adding, removing and changing regular payments. "Remove" is Pause and End: nothing is ever deleted (the database grants no delete on `recurring`, and the tests try one).
+- Works: adding monthly, weekly every 2, yearly subscriptions and "Amount varies" (it waits in the Inbox and isn't money until answered); one due today posts once and moves the balance by exactly its share; "What home costs", the calendar, the next 30 days and Subscriptions follow each change; a new amount changes only what comes next and the history says "Window box £33.33 → £40.00 from December"; payer, split, category and description are kept; the rhythm and start can change until one has posted, then lock with the hint; pause, resume and end, also offline (sent in order, even after the app restarts) and by the partner.
+- Fixed: End on a payment that hadn't started yet failed in the demo; editing such a payment afterwards was refused; the ended note said "Ended Today."; "When it ends" opened on the payment's first month; the history said "changed the details" for a pause, resume or end. Details in DECISIONS.
+- Tests: new browser walk `tests/e2e/recurring.spec.ts` (16 tests: 390 × 844 and 1280 × 800, light and dark, no overflow, axe clean on each sheet); new SQL file with 52 checks and 5 refusals using the app's exact writes; 3 data-layer offline tests; 4 screen tests; 2 wording tests. `npm run verify`: 2,546 unit tests, SQL 503/503 and 130/130 refusals.
+- Next: nothing outstanding for regular payments.
+
 ## 2026-11-18 ~01:30 UTC: S6a LIVE; S6b built and reviewed
 - S6a is live (PR #13, e107a77): receipt scan and itemise, Sort it later, loose wording, AI category guesses, on Cloudflare Workers AI through the app's Worker (no key). The live route refuses calls without sign-in (401) and from other sites (403).
 - Eval receipts found online (owner: "find receipts online"): 20 real photos from CORD v2 (CC BY 4.0) plus 20 generated UK receipts; 40 loose-wording phrases and 30 questions; `npm run eval:ai` and a manual "eval-ai" workflow. Choosing them found that bills abroad add tax on top: the scan now reads tax like service.

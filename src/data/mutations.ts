@@ -529,18 +529,20 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
 export function saveRecurring(input: RecurringDraft & { id?: string }, layer = activeDataLayer()): string {
   const { id, ...draft } = input;
   const ctx = context(layer);
+  const existing = id === undefined ? undefined : shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  // An end before the start is refused when it is picked; one already stored (End tapped before the first day) is kept.
+  const keptEnd = existing !== undefined && draft.endDate === existing.end_date && draft.startDate === existing.start_date;
   const reasons: InvalidReason[] = [];
   if (draft.description.trim() === '') reasons.push('description');
   if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('amount');
   if (!Number.isInteger(draft.every) || draft.every < 1 || draft.every > 52 || !isIsoDate(draft.startDate)
-    || (draft.endDate !== null && (!isIsoDate(draft.endDate) || draft.endDate < draft.startDate))) reasons.push('schedule');
+    || (draft.endDate !== null && (!isIsoDate(draft.endDate) || (draft.endDate < draft.startDate && !keptEnd)))) reasons.push('schedule');
   if (reasons.length > 0) throw new EntryInvalidError(reasons);
   if (!ctx.pair) throw new PartnerNotJoinedError();
   // The money, worked out as for an entry of that amount (check_money holds for templates too).
   const money = expenseRowFor(ctx, {
     description: draft.description, amount: draft.amount, date: layer.today(), categoryId: draft.categoryId, payer: draft.payer, split: draft.split,
   }).row;
-  const existing = id === undefined ? undefined : shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
   const stamp = layer.now().toISOString();
   const row: RecurringRow = {
     id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,

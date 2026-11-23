@@ -235,7 +235,7 @@ export function createMemoryApi(
     const o = before as Record<string, Json>;
     const n = after as Record<string, Json>;
     for (const k of Object.keys(n)) {
-      if (k === 'updated_at' || k === 'updated_by') continue;
+      if (k === 'updated_at' || k === 'updated_by' || k === 'posted_count') continue;
       if (JSON.stringify(o[k] ?? null) !== JSON.stringify(n[k] ?? null)) out[k] = { before: o[k] ?? null, after: n[k] ?? null };
     }
     return out;
@@ -727,9 +727,10 @@ export function createMemoryApi(
           ? { ...existing, ...sent, updated_at: stamp }
           : { posted_count: 0, created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
         if (existing) next = guardRecurring(existing, next);
-        if (next.amount_pence <= 0 || next.every < 1 || (next.end_date !== null && next.end_date < next.start_date)) {
-          refuse('new row violates check constraint "recurring_check"', '23514');
-        }
+        // The table's checks (amount > 0, every 1–52). An end before the start is not one of them: End on a payment
+        // that hasn't started yet stores today as its end (the phone refuses one picked before the start).
+        if (next.amount_pence <= 0) refuse('new row violates check constraint "recurring_amount_pence_check"', '23514');
+        if (next.every < 1 || next.every > 52) refuse('new row violates check constraint "recurring_every_check"', '23514');
         checkMoney(next as unknown as ExpenseRow);
         if (existing) tables.recurring[i] = next;
         else tables.recurring.push(next);
