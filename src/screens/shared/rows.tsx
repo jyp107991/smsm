@@ -13,7 +13,8 @@ import { memo, type MouseEvent, type ReactNode } from 'react';
 import { formatPence, pence } from '../../core/money';
 import type { CategoryRow, ExpenseRow, SettlementRow } from '../../data';
 import { cx } from '../../ui/primitives/util';
-import { go, pathOf } from '../../ui/router';
+import { currentPath } from '../../ui/history';
+import { go, parseRoute, pathOf } from '../../ui/router';
 import { SharedHead } from '../../ui/rig/Animal';
 import { strings } from '../../ui/strings';
 import { CategoryMark, isPlaceholderEmoji } from './CategoryMark';
@@ -23,7 +24,10 @@ import { payerOf, penceOf, type Person } from './words';
 function open(e: MouseEvent<HTMLAnchorElement>, id: string) {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
-  go({ name: 'entry', id });
+  // S9b review: beside an open entry (Activity's two panes), another pick takes its place in history rather than
+  // stacking up, so Back closes the pane instead of walking back through every entry looked at.
+  const replace = e.currentTarget.closest('[data-panes-list]') !== null && parseRoute(currentPath()).name === 'entry';
+  go({ name: 'entry', id }, { replace });
 }
 
 /** The grid every row shares (Q-L15): mark, description, head, amount. */

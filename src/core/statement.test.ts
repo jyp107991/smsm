@@ -103,12 +103,13 @@ describe('statement for a month (EXP-1)', () => {
     expect(s.closing).toEqual(upToEnd);
   });
 
-  it('EXP-1: every live entry and settle-up of the month, in date order; deleted ones and other months are not rows', () => {
+  it('EXP-1: every live entry and settle-up of the month, newest first; deleted ones and other months are not rows', () => {
     const s = core().statement(ENTRIES, SETTLEMENTS, MEMBERS, '2026-10');
     const ids = (d: string) => ENTRIES.find((e) => e.description === d)?.id;
     expect(s.rows.map((r) => r.id).sort()).toEqual([ids('Rent'), ids('Weekly shop'), ids('Dishoom'), ids('Refund'), SETTLEMENTS[0]?.id].sort());
+    // S9a (fix 24, ACT-1): the one order, as Home and Activity: newest first (was oldest first).
     const dates = s.rows.map((r) => r.date);
-    expect(dates).toEqual([...dates].sort());
+    expect(dates).toEqual([...dates].sort().reverse());
     expect(s.rows.find((r) => r.id === SETTLEMENTS[0]?.id)).toMatchObject({ kind: 'settlement', amount: 10000, date: '2026-10-20' });
     expect(s.rows.find((r) => r.id === ids('Refund'))).toMatchObject({ kind: 'money_back', amount: 2000, description: 'Refund' });
     expect(s.rows.find((r) => r.id === ids('Rent'))).toMatchObject({ kind: 'expense', amount: 100000, description: 'Rent', paid: { [JAE]: 100000 }, shares: { [JAE]: 50000, [SAM]: 50000 } });

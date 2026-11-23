@@ -48,8 +48,8 @@ export function Chip({
       className={cx(
         'relative inline-flex h-9 max-w-full min-w-11 items-center justify-center gap-1.5 rounded-[12px] border-2 border-transparent px-3',
         'text-secondary press select-none active:scale-[0.97]',
-        // The hit area: 4 px above and below the visible chip.
-        'before:absolute before:inset-x-0 before:-inset-y-1 before:content-[""]',
+        // The hit area: 44 px tall, from the border edge (the pseudo-element sits inside the 2 px border, so 6 px).
+        'before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[""]',
         'font-medium',
         selected ? 'bg-forest-tint text-forest' : 'bg-sunk text-ink',
         className,

@@ -56,7 +56,8 @@ describe('the form', () => {
 
   it('MB-1 MB-2: Refund this is money back for the original, same split, received by whoever paid, dated today', () => {
     const f = refundForm(row(), people, TODAY);
-    expect(f).toMatchObject({ kind: 'money_back', refundOf: 'e1', amountText: '', payer: 'j', splitMode: 'ratio', ratio: { j: 50, s: 50 }, date: TODAY });
+    // S9a (MB-2): the amount starts as what is still to come back: all of it, with nothing back yet (was '').
+    expect(f).toMatchObject({ kind: 'money_back', refundOf: 'e1', amountText: '42.50', payer: 'j', splitMode: 'ratio', ratio: { j: 50, s: 50 }, date: TODAY });
     expect(summaryWords({ ...f, amountText: '10' }, people)).toBe('Jae got £10.00 back · Jae £5.00, Sam £5.00');
   });
 

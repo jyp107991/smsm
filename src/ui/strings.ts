@@ -101,6 +101,7 @@ export const strings = {
     comment: 'Write a comment of up to 500 characters.',
     notYours: 'Only whoever wrote a comment can change it.',
     settleDay: 'Pick a day from the 1st to the 28th.',
+    originalDeleted: 'The original was deleted, so this can’t be money back for it.',
   },
 
   // ───────────── S2: the daily loop ─────────────
@@ -147,6 +148,8 @@ export const strings = {
     done: 'Done',
   },
   home: {
+    /** S9b: the demo's one note, at the foot of Home. */
+    demoNote: 'This is a demo: what you add here goes when you reload.',
     settings: 'Settings',
     balance: 'Balance',
     square: 'All square',
@@ -162,6 +165,9 @@ export const strings = {
     quickAddHint: 'An amount, then anything: 12 lunch yesterday',
     /** S2 polish Q-U3: Enter in quick add with no amount it can read. */
     quickAddNeedsAmount: 'Start with an amount, like 12.50.',
+    /** S9a (fix 21): "31/02" in quick add. */
+    noSuchDate: (day: number, month: number) =>
+      `There’s no ${String(day)} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month - 1] ?? ''}.`,
     readingWords: 'Reading that…',
     checkReading: 'Some of that isn’t clear. Tap the line to check it.',
     addExpense: 'Add expense',
@@ -195,6 +201,8 @@ export const strings = {
     /** Why the server said no to a waiting change (src/data/problems.ts RefusalReason). */
     reasons: {
       money: 'The amounts didn’t add up, so it wasn’t saved. Open it to fix it.',
+      /** S9a review: the money back and its original don't fit (the specific line is the problem's own message). */
+      'money-back': 'It doesn’t fit with the entry it’s money back for, so it wasn’t saved. Open it to fix it.',
       'not-member': 'It names someone who isn’t in your household, so it wasn’t saved.',
       'not-allowed': 'This phone wasn’t allowed to save it. Sign in again and try once more.',
       missing: 'It was no longer there to change.',
@@ -241,6 +249,10 @@ export const strings = {
     pickDate: 'Pick a date',
     moreDetails: 'More details',
     notes: 'Notes',
+    /** S9b (ADD-4): tags, as chips, typed one at a time. */
+    tags: 'Tags',
+    addTag: 'Add a tag',
+    removeTag: (tag: string) => `Remove ${tag}`,
     save: 'Save',
     saved: 'Saved',
     /** S2 polish Q-U8: toasts say what happened. */
@@ -253,6 +265,14 @@ export const strings = {
     deleted: (label: string) => `Deleted ${label}`,
     restored: (label: string) => `Restored ${label}`,
     amountNeeded: 'Write an amount, like 12.50.',
+    /** S9a (fix 21): the same line in quick add and the sheet, naming the app's maximum (core MAX_PENCE). */
+    tooLarge: (max: string) => `That’s more than ${max}, the most one entry can be.`,
+    /** S9a (fix 8): after a change of payer, an entry that is all the payer's own. */
+    noBalanceChange: (name: string) => `${name} paid for ${name}, so this won’t change the balance.`,
+    /** S9a (MB-2): money back over what its original still has to come back. */
+    moreThanLeft: (left: string) => `That’s more than the ${left} still to come back.`,
+    /** S9a review (MB-2): an original edited below the money back already linked to it. */
+    backMoreThanAmount: (back: string) => `Money back on this is ${back}, more than the new amount.`,
     /** S2 polish Q-F2: the form refuses a date after the phone's today, as quick add does. */
     dateAfterToday: 'That date is after today.',
     summaryShares: (payer: string, amount: string, shares: string) => `${payer} paid ${amount} · ${shares}`,
@@ -312,6 +332,12 @@ export const strings = {
     tags: 'the tags',
     people: 'who paid whom',
     details: 'the details',
+    /** A regular payment's history (REC-1): its pause and resume, its end, its rhythm. */
+    paused: (who: string) => `${who} paused it`,
+    resumed: (who: string) => `${who} resumed it`,
+    endDate: 'the end date',
+    often: 'how often',
+    start: 'the start',
     and: ' and ',
     comma: ', ',
     someone: 'Someone',
@@ -321,8 +347,13 @@ export const strings = {
   },
   activity: {
     title: 'Activity',
+    /** S9a (PLC-7): above a filtered list, of every match. */
+    totalLine: (count: number, total: string) => `${String(count)} ${count === 1 ? 'entry' : 'entries'} · ${total}`,
     search: 'Search',
     searchPlaceholder: 'Descriptions, notes, tags',
+    /** S9b (DESIGN §4.11): the right-hand pane on a larger screen, and what it says before an entry is picked. */
+    details: 'Details',
+    pickOne: 'Tap an entry to see it here.',
     filters: 'Filters',
     whoPaid: 'Who paid',
     category: 'Category',
@@ -331,6 +362,9 @@ export const strings = {
     chosen: (filter: string, value: string) => `${filter}: ${value}`,
     anyone: 'Either of you',
     anyCategory: 'Any category',
+    /** S9b (ACT-1): the Tag filter. */
+    tag: 'Tag',
+    anyTag: 'Any tag',
     anyChapter: 'Any chapter',
     anyTime: 'Any time',
     thisMonth: 'This month',
@@ -371,12 +405,13 @@ export const strings = {
     amount: 'Amount',
     note: 'Note',
     payWithMonzo: 'Pay with Monzo',
-    recordIt: 'Record it',
     save: 'Save',
     noMonzo: (name: string) => `If ${name} saves a monzo.me name in Settings, you can pay from Monzo with the amount filled in.`,
     asked: 'Did it go through?',
     askedLine: (from: string, to: string, amount: string) => `Once ${from}’s ${amount} to ${to} has gone through in Monzo, tap Yes to record it.`,
-    moreThanOwed: (from: string, to: string, owed: string) => `That’s more than the ${owed} ${from} owes ${to}.`,
+    /** SET-1 (S9a): refused, naming what is owed, with "Use £…". */
+    moreThanOwed: (from: string, owed: string) => `That’s more than ${from} owes (${owed}).`,
+    useOwed: (owed: string) => `Use ${owed}`,
     nothingOwed: (from: string, to: string) => `${from} doesn’t owe ${to} anything right now.`,
     yes: 'Yes',
     notYet: 'Not yet',
@@ -402,6 +437,10 @@ export const strings = {
     dayDue: (names: string) => `${names} due`,
     dayBoth: (posted: string, due: string) => `${posted} posted, ${due} due`,
     dayLabel: (day: string, what: string) => `${day}: ${what}`,
+    /** S9b (REC-7): a tapped day of the calendar. */
+    dayNothing: 'Nothing regular on this day.',
+    postedTag: 'Posted',
+    dueTag: 'Due',
     about: (amount: string) => `about ${amount}`,
     nothingSoon: 'Nothing due in the next 30 days.',
     noSubscriptions: 'No subscriptions yet. Tick “Subscription” on a regular payment to see it here.',
@@ -455,6 +494,8 @@ export const strings = {
     counter: (i: number, n: number) => `${String(i)} of ${String(n)}`,
     due: (description: string) => `${description} is due: how much was it?`,
     usual: (amount: string, day: string) => `Usually ${amount} · ${day}`,
+    /** S9a (REC-3): the one-tap answer for a bill that varies. */
+    usually: (amount: string) => `Usually ${amount}`,
     keep: 'Keep',
     notOurs: 'Not ours',
     nothing: 'Nothing waiting. Bills that vary land here on their day.',
@@ -526,6 +567,9 @@ export const strings = {
     soFar: (total: string) => `${total} so far`,
     inAll: (total: string) => `${total} in all`,
     byCategory: 'By category',
+    /** S9b (CHP-3): the places as a line of names, and the receipt photos as a strip. */
+    places: 'Places',
+    photos: 'Photos',
     whoPaid: 'Who paid',
     entries: 'Entries',
     noEntries: 'Nothing in this chapter yet. While it’s the one you’re adding to, new entries go here.',
@@ -585,13 +629,14 @@ export const strings = {
     chapter: 'Chapter',
     noChapter: 'No chapter (the periods above)',
     includeChapters: 'Include chapters',
-    includeChaptersHint: 'Off: everyday spending only, without trips and projects.',
+    /** S9b (INS-4): the switch's line says what it does as it is now. */
+    includeChaptersOn: 'Trips and projects are counted in the figures.',
+    includeChaptersOff: 'Everyday spending only, without trips and projects.',
     total: 'Total',
     totalIn: (amount: string) => `${amount} in all`,
     comparison: (amount: string, diff: string, more: boolean, before: string) => `${amount}, ${diff} ${more ? 'more' : 'less'} than ${before}`,
     same: (amount: string, before: string) => `${amount}, the same as ${before}`,
     withChapters: (total: string, everyday: string) => `${total} in all · everyday ${everyday}`,
-    beforeMonth: 'the same days last month',
     before3: 'the same stretch 3 months earlier',
     before12: 'the same stretch a year earlier',
     beforeYear: 'the same days last year',
@@ -609,14 +654,14 @@ export const strings = {
     uncategorised: 'No category',
     whatsThis: 'What’s this?',
     define: {
-      total: 'Shared spending: what the two of you spent together (split, exact or a treat), less money back. Paying for the other person and settling up don’t count.',
+      total: 'Shared spending: what the two of you spent together (split, exact or a treat), less money back. Paying for the other person and settling up don’t count. It is compared with the same stretch just before, everyday spending only, once your entries go back that far. This month is compared with your usual pace, as on Home: what usually lands by this day of the month.',
       whereItWent: 'Shared spending by category, largest first. Money back counts against its own category.',
       trend: 'Shared spending in each of the last 12 months.',
       whoPaid: 'What each of you handed over for shared spending in this period, less money back each received.',
       fairness: 'Each person’s share of what was paid, beside the split you agreed. Over 3 and 12 months.',
       byCountry: 'Shared spending by the country each entry was in.',
       notes: 'Each note says its rule: a category at least 30% and £20 above its usual; an entry at least 3× its category’s usual size; a subscription’s new price; a new regular payment.',
-      thisMonth: 'Everyday spending so far this month (not chapters), against your usual: the middle of your previous 3 to 6 months.',
+      thisMonth: 'Everyday spending so far this month (not chapters), against what usually lands by this day: the average, over your previous 3 to 6 months, of everyday spending up to the same day of the month. A bill that usually comes on the 25th isn’t counted before the 25th.',
     },
     soFar: (amount: string) => `${amount} so far`,
     under: (amount: string) => ` · about ${amount} under your usual pace`,
@@ -698,10 +743,18 @@ export const strings = {
     noNotes: 'Nothing stood out.',
     betweenYou: 'Between you',
     paidLine: (name: string, amount: string) => `${name} paid ${amount}`,
+    /** S9a (INS-2): "Between you" is the balance when the month ended (or today, for the month so far). */
+    balanceAtEnd: (month: string) => `Balance at the end of ${month}`,
+    balanceToday: 'Balance today',
+    /** S9a (fix 6): the headline is everyday spending; a month's chapters are their own line. */
+    chaptersLine: (amount: string) => `Plus ${amount} in chapters (trips and projects).`,
     moment: 'One moment',
     momentLine: (description: string, amount: string, day: string) => `${description}, ${amount}, ${day}`,
     back: 'Insights',
     recaps: 'Recaps',
+    /** S9b (INS-4): a month card's one line. */
+    cardMostly: (category: string) => `Most on ${category}`,
+    cardNothing: 'Nothing spent together',
     years: 'Years',
     ready: (month: string) => `The recap for ${month} is ready`,
     settleDay: (month: string) => `It’s settle day: the recap for ${month} so far`,
@@ -884,6 +937,18 @@ export const strings = {
   },
   settings: {
     title: 'Settings',
+    /** S9b (SPEC §6.4): the household's home country (pounds), the regular payments, and Report a problem. */
+    homeCountry: 'Home country',
+    homeCountryLine: 'Everything is kept in pounds. Entries made abroad keep their own currency too.',
+    regular: 'Regular payments',
+    regularLine: 'Rent, bills and subscriptions: they live on the Bills tab.',
+    report: 'Report a problem',
+    reportLine: 'Say what happened. The app’s version and the page you were on go with it.',
+    reportWhat: 'What happened?',
+    reportSend: 'Send',
+    reportEmpty: 'Write a few words about what happened.',
+    reportSent: 'Sent. Thank you.',
+    reportQueued: 'Kept on this phone; it goes when there’s a connection.',
     back: 'Home',
     us: 'The two of you',
     animalOf: (animal: 'cat' | 'dog') => `the ${animal}`,

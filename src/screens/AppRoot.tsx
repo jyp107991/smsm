@@ -3,7 +3,7 @@
  * signed in but not in a household, start or join; then name and animal; then the app: Home and Activity
  * and Bills as tabs (Insights waits for S5), the entry page and Settings, and the two sheets.
  */
-import { memo, startTransition, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { memo, startTransition, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAppBadge, useHousehold, useRefreshPush, useSession, useSyncStatus } from '../data';
 import { scrollToAnchor, useNotificationTaps } from '../ui/anchors';
 import { FEATURES } from '../ui/features';
@@ -11,6 +11,7 @@ import { BottomTabs, Button, MAIN_TABS, TabPanel, ToastProvider, type MainTab } 
 import { go, parseRoute, usePath, type Route } from '../ui/router';
 import { strings } from '../ui/strings';
 import { rememberNotHome, useBootDone } from '../ui/boot';
+import { useWide } from '../ui/wide';
 import { Home } from './home/Home';
 // S9 (performance audit P2): every other screen and both sheets load on demand (src/screens/lazy.tsx).
 import {
@@ -87,7 +88,62 @@ function tabOf(route: Route, last: MainTab): MainTab {
   return 'home';
 }
 
-const Page = memo(function Page({ route }: { route: Route }) {
+/**
+ * S9b (DESIGN §4.11, L2): from 900 px wide, Activity is two panes: the list on the left and, on the right (region
+ * "Details"), the entry picked from it. The list stays as it was (its search, filters and scroll) while entries
+ * change beside it. The same two screens as on a phone; only their arrangement differs.
+ */
+function Panes({ list, detail, detailKey }: { list: ReactNode; detail: ReactNode; detailKey: string | null }) {
+  const pane = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const shown = useRef(detailKey);
+  // Another entry starts at its own top.
+  useEffect(() => { pane.current?.scrollTo(0, 0); }, [detailKey]);
+  // S9b review: focus follows the pick. An entry opened from the list takes focus at its heading (so the keyboard and
+  // a screen reader go on from there, not from the top of the list); closing the pane gives focus back to its row.
+  useEffect(() => {
+    const was = shown.current;
+    shown.current = detailKey;
+    if (was === detailKey) return;
+    let frame = 0;
+    let tries = 0;
+    if (detailKey !== null) {
+      const toHeading = () => {
+        const heading = pane.current?.querySelector<HTMLElement>('h1');
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+        } else if (tries++ < 60) frame = requestAnimationFrame(toHeading);
+      };
+      toHeading();
+    } else if (was !== null) {
+      const row = listRef.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(was)}"]`);
+      row?.focus();
+    }
+    return () => { cancelAnimationFrame(frame); };
+  }, [detailKey]);
+  return (
+    <div className="mx-auto grid max-w-[76rem] grid-cols-[minmax(20rem,28rem)_minmax(0,40rem)] justify-center gap-x-10">
+      {/* data-panes-list: a pick here replaces the entry the pane shows (rows.tsx), so Back closes the pane. */}
+      <div ref={listRef} data-panes-list="" className="min-w-0">{list}</div>
+      <section
+        ref={pane}
+        aria-label={strings.activity.details}
+        className="sticky top-0 h-dvh min-w-0 self-start overflow-y-auto overscroll-contain"
+      >
+        {detail ?? (
+          <p className="text-secondary text-ink-2 m-0 flex min-h-[calc(max(1rem,env(safe-area-inset-top))+3rem)] items-end px-5">{strings.activity.pickOne}</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+const Page = memo(function Page({ route, tab, wide }: { route: Route; tab: MainTab; wide: boolean }) {
+  if (wide && tab === 'activity' && (route.name === 'activity' || route.name === 'entry')) {
+    const id = route.name === 'entry' ? route.id : null;
+    return <Panes list={<Activity />} detail={id === null ? null : <EntryPage key={id} id={id} />} detailKey={id} />;
+  }
   switch (route.name) {
     case 'home':
       return <Home />;
@@ -151,10 +207,14 @@ function MainApp() {
   const [sheets] = useState(() => ({ openEntry: setEntry, openSettle: setSettle }));
   const tab = tabOf(route, lastTab);
   if (route.name !== 'entry' && tab !== lastTab) setLastTab(tab);
+  const wide = useWide();
+  const shownTab = tabOf(shown, lastTab);
+  // S9b: an entry opened beside the Activity list (two panes) is not a new page; the list keeps its place.
+  const paned = wide && shownTab === 'activity' && (shown.name === 'activity' || shown.name === 'entry');
 
   // A new page starts at its top.
   // (Of the screen shown, so the old one isn't scrolled while the new one is being drawn.)
-  const path = shown.name === 'entry' ? `entry:${shown.id}` : shown.name === 'chapter' ? `chapter:${shown.id}`
+  const path = paned ? 'activity' : shown.name === 'entry' ? `entry:${shown.id}` : shown.name === 'chapter' ? `chapter:${shown.id}`
     : shown.name === 'recap' ? `recap:${shown.month}` : shown.name === 'year' ? `year:${shown.year}`
     : shown.name === 'statement' ? `statement:${shown.month}` : shown.name;
   useEffect(() => {
@@ -187,7 +247,7 @@ function MainApp() {
               <OtherWindowNote />
               {/* Only a screen asked for before its file arrived waits here, on plain paper (nothing that jumps). */}
               <Suspense fallback={<Blank />}>
-                <Page route={shown} />
+                <Page route={shown} tab={shownTab} wide={wide} />
                 {/* Home takes the first paint away itself, once its balance is drawn. */}
                 {shown.name === 'home' ? null : <BootDone />}
               </Suspense>

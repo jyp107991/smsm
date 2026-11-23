@@ -36,9 +36,14 @@ export function endOfMonth(d: IsoDate): IsoDate {
   return addDays(next, -1);
 }
 
+/** S9b (REC-7): one bill on a day of the calendar: posted (an entry) or still due (at its usual amount if it varies). */
+export interface DayBill {
+  /** Its regular payment. */
+  id: string; description: string; amount: Pence; posted: boolean; varies: boolean }
+
 export interface MonthView {
-  /** Per day of the month: the descriptions posted and due. */
-  days: Map<IsoDate, { posted: string[]; due: string[] }>;
+  /** Per day of the month: the descriptions posted and due, and each bill with its amount (posted first). */
+  days: Map<IsoDate, { posted: string[]; due: string[]; bills: DayBill[] }>;
   /** Posted this month plus what is still to come in it (a varying bill at its usual amount). */
   total: Pence;
 }
@@ -47,11 +52,11 @@ export interface MonthView {
 export function monthView(templates: readonly RecurringRow[], entries: readonly ExpenseRow[], today: IsoDate): MonthView {
   const from = startOfMonth(today);
   const to = endOfMonth(today);
-  const days = new Map<IsoDate, { posted: string[]; due: string[] }>();
+  const days = new Map<IsoDate, { posted: string[]; due: string[]; bills: DayBill[] }>();
   const at = (d: IsoDate) => {
     let v = days.get(d);
     if (!v) {
-      v = { posted: [], due: [] };
+      v = { posted: [], due: [], bills: [] };
       days.set(d, v);
     }
     return v;
@@ -59,11 +64,15 @@ export function monthView(templates: readonly RecurringRow[], entries: readonly 
   const amounts: Pence[] = [];
   for (const e of entries) {
     if (e.recurring_id === null || e.deleted_at !== null || e.kind !== 'expense' || e.date < from || e.date > to) continue;
-    at(e.date).posted.push(e.description);
+    const day = at(e.date);
+    day.posted.push(e.description);
+    day.bills.push({ id: e.recurring_id, description: e.description, amount: pence(e.amount_pence), posted: true, varies: false });
     amounts.push(pence(e.amount_pence));
   }
   for (const b of upcoming(templates.map((t) => toUpcoming(t, today)), { from, to })) {
-    at(b.date).due.push(b.description);
+    const day = at(b.date);
+    day.due.push(b.description);
+    day.bills.push({ id: b.id, description: b.description, amount: b.amount, posted: false, varies: b.amountVaries });
     amounts.push(b.amount);
   }
   return { days, total: sumPence(amounts) };

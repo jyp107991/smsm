@@ -4,9 +4,10 @@
  * Amounts are parsed by core/money; the split maths and the "must add up" check are the data layer's
  * (buildExpense), so the form refuses exactly what the database would.
  */
+import { affectsBalance, cameBack, unrefunded } from '../../core/balance';
 import { addDays, type IsoDate } from '../../core/dates';
 import { foreignToPence } from '../../core/fx';
-import { formatPence, formatPlainPounds, parseAmount, pence, type Pence } from '../../core/money';
+import { amountProblem, formatPence, formatPlainPounds, MAX_PENCE, parseAmount, parseForeignAmount, pence, type Pence } from '../../core/money';
 import { computeEntry, exactRemainder, ratioShares, type SplitParams, type UserId } from '../../core/split';
 import type { ExpenseDraft, ExpenseRow } from '../../data';
 import { strings } from '../../ui/strings';
@@ -139,16 +140,34 @@ export function formFromRow(row: ExpenseRow, people: readonly Person[], input?: 
 
 /**
  * MB-2: "Refund this": a money-back entry linked to the original, dated today (the money comes back now,
- * not on the day of the purchase); MB-1 default: the same split, received by whoever paid.
+ * not on the day of the purchase); MB-1 default: the same split, received by whoever paid. S9a: the amount
+ * starts as what is still to come back (the original less its live money back; empty once it has all come back).
  */
-export function refundForm(original: ExpenseRow, people: readonly Person[], today: IsoDate): FormState {
+export function refundForm(original: ExpenseRow, people: readonly Person[], today: IsoDate, entries: readonly ExpenseRow[] = []): FormState {
   const f = formFromRow(original, people);
-  const back: FormState = { ...f, kind: 'money_back', amountText: '', refundOf: original.id, notes: '', date: today, categoryTouched: true };
+  const left = stillToComeBack(original, entries);
+  const back: FormState = {
+    ...f, kind: 'money_back', amountText: left > 0 ? formatPlainPounds(left) : '', refundOf: original.id, notes: '', date: today, categoryTouched: true,
+  };
   if (back.splitMode !== 'exact' || people.length !== 2) return back;
   // Q-F5: an exact split comes back in the same proportion, worked out as the amount is typed.
   const follows: Record<UserId, number> = {};
   for (const p of people) follows[p.id] = penceOf(original.shares, p.id);
   return followExact({ ...back, exactText: {}, exactFollows: follows });
+}
+
+const refundRows = (entries: readonly ExpenseRow[]) => entries.map((e) => ({
+  id: e.id, kind: e.kind === 'money_back' ? 'money_back' as const : 'expense' as const, amount: pence(e.amount_pence), refundOf: e.refund_of, deleted: e.deleted_at !== null,
+}));
+
+/** MB-2 (S9a): what an original still has to come back (core/balance unrefunded); `exceptId`: the refund being edited. */
+export function stillToComeBack(original: ExpenseRow, entries: readonly ExpenseRow[], exceptId?: string): Pence {
+  return unrefunded({ id: original.id, amount: pence(original.amount_pence) }, refundRows(entries), exceptId);
+}
+
+/** MB-2 (S9a review): what has already come back on an original (core/balance cameBack): its amount may not go below it. */
+export function backSoFar(original: ExpenseRow, entries: readonly ExpenseRow[]): Pence {
+  return cameBack(original.id, refundRows(entries));
 }
 
 /**
@@ -195,8 +214,27 @@ export function duplicateDraft(original: ExpenseRow, people: readonly Person[], 
 
 /** The amount in pounds: as typed, or (paid in another currency, PLC-6) the foreign amount at the rate, exactly. */
 export function parsedAmount(s: FormState): Pence | null {
-  if (s.foreign) return foreignToPence(s.amountText, s.foreign.rateText);
+  if (s.foreign) {
+    // The pounds are held to the app's maximum, as a pounds amount is (S9a). The foreign amount reads as quick add
+    // reads it (a decimal comma, "+" sums: core/money parseForeignAmount), so the two agree for the same input.
+    const p = foreignPence(s.amountText, s.foreign.rateText);
+    return p !== null && p <= MAX_PENCE ? p : null;
+  }
   return parseAmount(s.amountText);
+}
+
+/** A foreign amount as typed at a rate, in pence (no limit), or null. */
+function foreignPence(amountText: string, rateText: string): Pence | null {
+  const exact = parseForeignAmount(amountText);
+  return exact === null ? null : foreignToPence(exact, rateText);
+}
+
+/** Why the amount isn't one, in words (S9a fix 21: too large names the maximum, as quick add does). */
+function amountWords(s: FormState): string {
+  const tooLarge = s.foreign
+    ? (foreignPence(s.amountText, s.foreign.rateText) ?? 0) > MAX_PENCE
+    : amountProblem(s.amountText) === 'tooLarge';
+  return tooLarge ? strings.entry.tooLarge(formatPence(MAX_PENCE)) : strings.entry.amountNeeded;
 }
 
 /** ADD-5: "= £34.50" under the amount when it was typed as a sum. */
@@ -247,7 +285,7 @@ function splitOf(s: FormState, people: readonly Person[]): SplitParams | null {
 export function draftOf(s: FormState, people: readonly Person[]): { draft: ExpenseDraft } | { errors: string[] } {
   const amount = parsedAmount(s);
   const errors: string[] = [];
-  if (amount === null) errors.push(strings.entry.amountNeeded);
+  if (amount === null) errors.push(amountWords(s));
   const split = splitOf(s, people);
   if (split === null) errors.push(strings.entry.amountNeeded);
   if (amount === null || split === null) return { errors };
@@ -268,7 +306,7 @@ export function draftOf(s: FormState, people: readonly Person[]): { draft: Expen
       ...(s.place !== undefined ? { place: s.place } : {}),
       ...(s.lat !== undefined ? { lat: s.lat } : {}),
       ...(s.lng !== undefined ? { lng: s.lng } : {}),
-      ...(s.foreign ? { original: { amount: s.amountText.trim().replace(/,/g, ''), currency: s.foreign.currency, rate: s.foreign.rateText.trim() } } : {}),
+      ...(s.foreign ? { original: { amount: parseForeignAmount(s.amountText) ?? s.amountText.trim(), currency: s.foreign.currency, rate: s.foreign.rateText.trim() } } : {}),
       ...(s.receiptPath !== undefined ? { receiptPath: s.receiptPath } : {}),
       ...(s.items !== undefined ? { items: s.items } : {}),
       ...(s.billTotal !== undefined ? { billTotal: s.billTotal } : {}),
@@ -296,6 +334,22 @@ export function summaryWords(s: FormState, people: readonly Person[]): string | 
   if (split.mode === 'treat') return strings.entry.summaryTreat(payer.name, money);
   if (split.mode === 'for_other') return strings.entry.summaryFor(payer.name, money, other.name);
   return strings.entry.summaryShares(payer.name, money, shareWords(shares, people));
+}
+
+/**
+ * S9a (fix 8): whether the entry as it stands moves the balance (core/balance affectsBalance over core/split's shares);
+ * null when it can't be worked out yet (no amount, an exact share unreadable).
+ */
+export function movesBalance(s: FormState, people: readonly Person[]): boolean | null {
+  const [a, b] = people;
+  const amount = parsedAmount(s);
+  const split = splitOf(s, people);
+  if (!a || !b || amount === null || split === null) return null;
+  try {
+    return affectsBalance(computeEntry({ amount, payer: s.payer, members: [a.id, b.id], split }));
+  } catch {
+    return null;
+  }
 }
 
 /** Presets for the ratio (SPL-1), as the first person's share: 50/50, 60/40, 70/30 and their reverses. */

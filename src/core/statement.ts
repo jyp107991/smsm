@@ -4,13 +4,14 @@
  * end figure is the app's own balance for that date. Deleted entries and settle-ups are left out, as they are
  * from the balance.
  */
-import { netPositions } from './balance';
+import { netPositions, withoutOrphans } from './balance';
 import { daysInMonth, type IsoDate } from './dates';
+import { newestFirst } from './filters';
 import type { InsightEntry, InsightSettlement } from './insights';
 import { pence, type Pence } from './money';
 import type { PenceMap, UserId } from './split';
 
-export type StatementSettlement = InsightSettlement & { id: string };
+export type StatementSettlement = InsightSettlement & { id: string; createdAt?: string };
 
 /**
  * One line of the statement. For a settle-up, `paid` is what the payer handed over and `shares` what the other
@@ -27,6 +28,8 @@ export interface StatementRow {
   /** Settle-ups only: who paid whom. */
   from?: UserId;
   to?: UserId;
+  /** When it was added (S9a: the one order, newest first). */
+  createdAt?: string;
 }
 
 export interface Statement {
@@ -57,7 +60,8 @@ export function statement(
   month: string,
 ): Statement {
   const { from, to } = monthRange(month);
-  const live = entries.filter((e) => !e.deleted);
+  // MB-3: money back whose original is deleted is as good as deleted (wherever the original is dated).
+  const live = withoutOrphans(entries).filter((e) => !e.deleted);
   const liveS = settlements.filter((s) => !s.deleted);
   const opening = netPositions(members, live.filter((e) => e.date < from), liveS.filter((s) => s.date < from));
   const closing = netPositions(members, live.filter((e) => e.date <= to), liveS.filter((s) => s.date <= to));
@@ -66,12 +70,15 @@ export function statement(
   const rows: StatementRow[] = [
     ...monthEntries.map((e): StatementRow => ({
       id: e.id, kind: e.kind, date: e.date, description: e.description, amount: e.amount, paid: e.paid, shares: e.shares,
+      ...(e.createdAt !== undefined ? { createdAt: e.createdAt } : {}),
     })),
     ...monthSettlements.map((s): StatementRow => ({
       id: s.id, kind: 'settlement', date: s.date, description: '', amount: s.amount,
       paid: { [s.from]: s.amount }, shares: { [s.to]: s.amount }, from: s.from, to: s.to,
+      ...(s.createdAt !== undefined ? { createdAt: s.createdAt } : {}),
     })),
-  ].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+    // S9a (ACT-1): the one order, as Home and Activity: newest first, then the one added last, then by id.
+  ].sort((x, y) => newestFirst({ date: x.date, createdAt: x.createdAt ?? '', id: x.id }, { date: y.date, createdAt: y.createdAt ?? '', id: y.id }));
   const paid: Record<UserId, number> = {};
   const shared: Record<UserId, number> = {};
   for (const p of members) { paid[p] = 0; shared[p] = 0; }

@@ -6,8 +6,9 @@
  * Never throws.
  */
 import type { CategoryRef } from './categorise';
-import { addDays, isIsoDate, weekday, type IsoDate } from './dates';
-import { parseAmount, type Pence } from './money';
+import { addDays, daysInMonth, isIsoDate, weekday, type IsoDate } from './dates';
+import { foreignToPence } from './fx';
+import { amountProblem, MAX_PENCE, parseAmount, parseForeignAmount, pence, type Pence } from './money';
 import type { SplitParams, UserId } from './split';
 import { normaliseKey } from './text';
 
@@ -18,10 +19,17 @@ export interface QuickAddContext {
   names: Readonly<Record<UserId, string>>;
   animals: Readonly<Record<UserId, 'cat' | 'dog'>>;
   categories: readonly CategoryRef[];
+  /** PLC-6 (S9a): the currency a bare amount is in (core/fx bareAmountCurrency); null or absent: pounds. */
+  currency?: string | null;
+  /** Pounds per unit of `currency`, as exact text: the day's, or the last one the phone has; null: none known. */
+  rate?: string | null;
 }
 
 export interface QuickAddReading {
+  /** The pounds (abroad: the foreign amount at the rate, exactly as the sheet works it out; 0 while no rate is known). */
   amount: Pence;
+  /** PLC-6: the amount as typed in the country's currency (as the sheet stores it), with the rate; null at home. */
+  original?: { amount: string; currency: string; rate: string | null } | null;
   description: string;
   categoryId: string | null;
   payer: UserId;
@@ -64,6 +72,19 @@ function parseDateWord(word: string, today: IsoDate): IsoDate | null {
   return isIsoDate(lastYear) ? lastYear : null;
 }
 
+/**
+ * S9a (fix 21): a word shaped like a day and month that no month has ("31/02", "31/04", "32/1"): the day and month,
+ * else null. Only for a real month (1–12) and a day past its longest (February: 29).
+ */
+function impossibleDate(word: string): { day: number; month: number } | null {
+  const m = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(word);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  return day > daysInMonth(2024, month) ? { day, month } : null;
+}
+
 function ratioWord(word: string): [number, number] | null {
   const m = /^(\d{1,3})\/(\d{1,3})$/.exec(word);
   if (!m?.[1] || !m[2]) return null;
@@ -84,13 +105,25 @@ function categoryFor(word: string, categories: readonly CategoryRef[]): string |
 
 export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddReading | null {
   try {
-    return parse(text, ctx);
+    return parse(text, ctx).reading;
   } catch {
     return null;
   }
 }
 
-function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
+/** S9a (fix 21): why Enter can't save what was typed, for the line under the box. */
+export type QuickAddProblem = { kind: 'amount' } | { kind: 'tooLarge'; max: Pence } | { kind: 'noSuchDate'; day: number; month: number };
+
+/** No amount it can read, an amount over the maximum, or a day no month has; null when it reads. */
+export function quickAddProblem(text: string, ctx: QuickAddContext): QuickAddProblem | null {
+  try {
+    return parse(text, ctx).problem;
+  } catch {
+    return { kind: 'amount' };
+  }
+}
+
+function parse(text: string, ctx: QuickAddContext): { reading: QuickAddReading | null; problem: QuickAddProblem | null } {
   const tokens = text.normalize('NFC').split(/\s+/u).filter((t) => t !== '');
   const people = [ctx.me, ctx.partner] as const;
   const personFor = (word: string): UserId | null => {
@@ -104,6 +137,10 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
   };
 
   let amount: Pence | null = null;
+  let original: QuickAddReading['original'] = null;
+  let tooLarge = false;
+  let noDate: { day: number; month: number } | null = null;
+  const currency = ctx.currency ?? null;
   let categoryId: string | null = null;
   let payer: UserId | null = null;
   let ratio: [number, number] | null = null;
@@ -121,13 +158,43 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
     const next = normaliseKey(tokens[i + 1] ?? '');
 
     if (amount === null) {
-      const a = parseAmount(raw);
-      if (a !== null) { amount = a; continue; }
+      // PLC-6: abroad, an amount written without "£" is in the country's currency, read by the same grammar as pounds
+      // (a decimal comma, "+" sums); one written with "£" is pounds, as at home. It is never read as pounds otherwise.
+      const typed = raw.normalize('NFKC');
+      if (currency !== null && !typed.trimStart().startsWith('£')) {
+        const foreign = parseForeignAmount(raw);
+        const rate = ctx.rate ?? null;
+        if (foreign !== null) {
+          const p = rate === null ? pence(0) : foreignToPence(foreign, rate);
+          if (p !== null && p <= MAX_PENCE) {
+            amount = p;
+            original = { amount: foreign, currency, rate };
+            // No rate known: never saved as if the number were pounds (Enter opens the sheet).
+            if (rate === null) unsure = true;
+            continue;
+          }
+          tooLarge = true;
+        } else if (/\d/u.test(typed) && /^[\d.,+]+$/u.test(typed)) {
+          // Shaped like an amount but not one it can read in that currency ("1.200,50"): not a confident reading,
+          // so Enter opens the sheet with it as typed (and never saves it as pounds).
+          amount = pence(0);
+          original = { amount: typed, currency, rate };
+          unsure = true;
+          continue;
+        }
+      } else {
+        const a = parseAmount(raw);
+        if (a !== null) { amount = a; continue; }
+        tooLarge ||= amountProblem(raw) === 'tooLarge';
+      }
     }
     if (raw.startsWith('#') && raw.length > 1) { tags.push(raw.slice(1)); continue; }
     if (date === null) {
       const d = parseDateWord(word, ctx.today);
       if (d !== null) { date = d; continue; }
+      // "31/02": no such day; never a word of the description (the line under the box says so).
+      const bad = impossibleDate(word);
+      if (bad !== null) { noDate ??= bad; unsure = true; continue; }
     }
     if (mode !== null && (word === 'treat' || ratioWord(word) !== null)) {
       // A second split word ("for sam treat"): kept as words, and the form opens for the person to choose.
@@ -186,7 +253,7 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
     words.push(raw);
   }
 
-  if (amount === null) return null;
+  if (amount === null) return { reading: null, problem: tooLarge ? { kind: 'tooLarge', max: MAX_PENCE } : { kind: 'amount' } };
 
   if (mode === 'for_other' && forThem) {
     beneficiary = (payer ?? ctx.me) === ctx.me ? ctx.partner : ctx.me;
@@ -208,5 +275,6 @@ function parse(text: string, ctx: QuickAddContext): QuickAddReading | null {
   // Leftover numbers or slashes look like something the grammar didn't understand.
   if (words.some((w) => /^[\d.,+/£]+$/u.test(w))) unsure = true;
 
-  return { amount, description, categoryId, payer: who, split, date: date ?? ctx.today, tags, confident: !unsure };
+  const reading: QuickAddReading = { amount, original, description, categoryId, payer: who, split, date: date ?? ctx.today, tags, confident: !unsure };
+  return { reading, problem: noDate === null ? null : { kind: 'noSuchDate', ...noDate } };
 }

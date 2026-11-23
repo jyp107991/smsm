@@ -9,10 +9,12 @@ export interface ClientError {
   route: string;
   app_version: string;
   context: Record<string, unknown> | null;
+  /** S9b review 6: a person's own report ("Report a problem"): never trimmed from the queue. Not stored in the database. */
+  keep?: boolean;
 }
 
 /** Sends rows (without their local ids) to client_errors; true when stored. */
-export type ErrorSink = (rows: Omit<ClientError, 'id'>[]) => Promise<boolean>;
+export type ErrorSink = (rows: Omit<ClientError, 'id' | 'keep'>[]) => Promise<boolean>;
 
 const KEY = 'smsm.pendingErrors';
 const MAX_QUEUED = 20;
@@ -36,7 +38,20 @@ function writeQueue(storage: Storage, rows: ClientError[]): void {
   }
 }
 
-function withoutId(r: ClientError): Omit<ClientError, 'id'> {
+/**
+ * The queue at most MAX_QUEUED long: the oldest crash reports go first; a person's own report goes only when the
+ * queue holds nothing else (S9b review 6).
+ */
+function trimmed(rows: ClientError[]): ClientError[] {
+  const out = [...rows];
+  while (out.length > MAX_QUEUED) {
+    const at = out.findIndex((r) => r.keep !== true);
+    out.splice(at === -1 ? 0 : at, 1);
+  }
+  return out;
+}
+
+function withoutId(r: ClientError): Omit<ClientError, 'id' | 'keep'> {
   return { message: r.message, stack: r.stack, route: r.route, app_version: r.app_version, context: r.context };
 }
 
@@ -91,28 +106,44 @@ export function toClientError(err: unknown, route: string, context: Record<strin
  * crashes before sign-in or while offline are not lost.
  */
 export function createErrorReporter(storage: Storage, getSink: () => ErrorSink | null) {
-  let flushing = false;
-  async function flush(): Promise<void> {
-    if (flushing) return;
+  /** The send under way, if any. */
+  let inflight: Promise<void> | null = null;
+  function flush(): Promise<void> {
+    if (inflight) return Promise.resolve();
     const sink = getSink();
     const queued = readQueue(storage);
-    if (!sink || queued.length === 0) return;
-    flushing = true;
-    try {
-      const sent = new Set(queued.map((r) => r.id));
-      if (await sink(queued.map(withoutId))) {
-        writeQueue(storage, readQueue(storage).filter((r) => !sent.has(r.id)));
+    if (!sink || queued.length === 0) return Promise.resolve();
+    const run = (async () => {
+      try {
+        const sent = new Set(queued.map((r) => r.id));
+        if (await sink(queued.map(withoutId))) {
+          writeQueue(storage, readQueue(storage).filter((r) => !sent.has(r.id)));
+        }
+      } catch {
+        /* keep the queue for next time */
       }
-    } catch {
-      /* keep the queue for next time */
-    } finally {
-      flushing = false;
-    }
+    })();
+    // (Cleared once this send is over, even when the sink threw before the first await.)
+    inflight = run.then(() => { if (inflight === done) inflight = null; });
+    const done = inflight;
+    return done;
   }
   function report(err: unknown, route: string, context: Record<string, unknown> | null = null): Promise<void> {
     // The cap applies only when adding, so a flush in progress never loses reports added meanwhile.
-    writeQueue(storage, [...readQueue(storage), toClientError(err, route, context)].slice(-MAX_QUEUED));
+    writeQueue(storage, trimmed([...readQueue(storage), toClientError(err, route, context)]));
     return flush();
   }
-  return { report, flush, pending: () => readQueue(storage).length };
+  /**
+   * S9b review 6: a person's own report ("Report a problem"). It is kept until sent (never trimmed); after any send
+   * already under way it is sent at once if it can be; and the answer is this report's own: 'sent' once the server has
+   * it, else 'queued' (offline, signed out, refused), when it goes later with the rest.
+   */
+  async function send(err: unknown, route: string, context: Record<string, unknown> | null = null): Promise<'sent' | 'queued'> {
+    const row = { ...toClientError(err, route, context), keep: true };
+    writeQueue(storage, trimmed([...readQueue(storage), row]));
+    while (inflight) await inflight;
+    await flush();
+    return readQueue(storage).some((r) => r.id === row.id) ? 'queued' : 'sent';
+  }
+  return { report, send, flush, pending: () => readQueue(storage).length };
 }

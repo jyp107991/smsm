@@ -16,7 +16,8 @@
  *   October: £1,365.00; usual (May–Sep) £1,365.00 → "October cost £1,365.00 together, about the same as usual."
  *     Where it went: Rent & bills £1,000.00, Groceries £240.00, Eating out £125.00. Jae paid £1,000.00, Sam £365.00.
  *     The moment (no comments): "Rent, £1,000.00, 10 Oct".
- *   Today's balance: Oct end £155.00 to Jae, then Nov +£360.00 +£120.00 −£105.00 → "Sam owes Jae £530.00".
+ *   October's recap shows the balance at October's end (S9a fix 1): "Sam owes Jae £155.00". (Today's: Oct end
+ *     £155.00 to Jae, then Nov +£360.00 +£120.00 −£105.00 → "Sam owes Jae £530.00".)
  *   November so far (settle day 14): "November so far cost £1,170.00 together."
  *   2026: £100.00 + 6 × £1,365.00 + £1,170.00 = £9,460.00; Japan £720.00.
  */
@@ -184,7 +185,7 @@ describe('the recap page (INS-2)', () => {
     expect(within(notes).queryAllByRole('listitem').length).toBeLessThanOrEqual(3);
   });
 
-  it('INS-2: Between you: what each paid in October, today\'s balance, Settle up', async () => {
+  it('INS-2: Between you: what each paid in October, the balance at October\'s end (S9a fix 1), Settle up', async () => {
     const { layer } = recapHousehold();
     show(layer);
     await home();
@@ -192,7 +193,8 @@ describe('the recap page (INS-2)', () => {
     await waitFor(() => { expect(text(region('Between you'))).toMatch(/Jae\D*£1,000\.00/); });
     const between = region('Between you');
     expect(text(between)).toMatch(/Sam\D*£365\.00/);
-    expect(shows(between, 'Sam owes Jae £530.00')).toBe(true);
+    // S9a (fix 1): the balance when October ended (was today's, "Sam owes Jae £530.00").
+    expect(shows(between, 'Sam owes Jae £155.00')).toBe(true);
     expect(within(between).getByRole('button', { name: 'Settle up' })).toBeTruthy();
   });
 

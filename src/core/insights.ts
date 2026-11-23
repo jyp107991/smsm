@@ -6,7 +6,7 @@
  * dated in the period (a chapter period: that chapter's entries, whatever their dates). Settle-ups never count.
  * Everyday: in no chapter. Usual, pace and notes use everyday only.
  */
-import { netPositions } from './balance';
+import { netPositions, withoutOrphans } from './balance';
 import { addMonths, daysInMonth, startOfMonth, type IsoDate } from './dates';
 import { formatPence, pence, type Pence } from './money';
 import { monthlyCost } from './recurring';
@@ -18,6 +18,10 @@ export interface InsightEntry {
   id: string; kind: 'expense' | 'money_back'; description: string; amount: Pence; paid: PenceMap; shares: PenceMap;
   splitMode: SplitMode; date: IsoDate; categoryId: string | null; chapterId: string | null; country: string | null;
   recurringId: string | null; deleted: boolean;
+  /** MB-3 (S9a): for money back, the entry it refunds; money back whose original is deleted never counts. */
+  refundOf?: string | null;
+  /** When it was added (S9a: the one order). */
+  createdAt?: string;
 }
 export interface InsightSettlement { from: UserId; to: UserId; amount: Pence; date: IsoDate; deleted: boolean }
 export type PeriodChoice = 'month' | '3months' | '12months' | 'year' | 'chapter';
@@ -51,7 +55,8 @@ function inPeriod(e: InsightEntry, p: Period): boolean {
 }
 
 function selected(entries: readonly InsightEntry[], p: Period, opts: SpendOptions = {}): InsightEntry[] {
-  return entries.filter((e) => counts(e) && inPeriod(e, p) && (!opts.everydayOnly || p.kind === 'chapter' || e.chapterId === null));
+  // MB-3: money back whose original is deleted never counts.
+  return withoutOrphans(entries).filter((e) => counts(e) && inPeriod(e, p) && (!opts.everydayOnly || p.kind === 'chapter' || e.chapterId === null));
 }
 
 function sum(entries: readonly InsightEntry[]): number {
@@ -76,6 +81,25 @@ export function previousPeriod(p: Period): Period | null {
   if (p.kind === 'chapter' || p.from === null || p.to === null) return null;
   const k = p.kind === 'month' ? 1 : p.kind === '3months' ? 3 : 12;
   return { ...p, from: addMonths(p.from, -k), to: addMonths(p.to, -k) };
+}
+
+/** The first day with a live entry, or null with none (the household's history starts there). */
+function firstDay(entries: readonly InsightEntry[]): IsoDate | null {
+  let first: IsoDate | null = null;
+  for (const e of entries) if (!e.deleted && (first === null || e.date < first)) first = e.date;
+  return first;
+}
+
+/**
+ * INS-4 (S9a): the period Insights compares with: the one just before (previousPeriod), unless it starts before the
+ * household's first live entry (a comparison with months before it existed is no comparison); null for a chapter or
+ * with no entries.
+ */
+export function comparisonPeriod(entries: readonly InsightEntry[], period: Period): Period | null {
+  const before = previousPeriod(period);
+  const first = firstDay(entries);
+  if (before === null || first === null || before.from === null || before.from < first) return null;
+  return before;
 }
 
 export function sharedSpend(entries: readonly InsightEntry[], period: Period, opts: SpendOptions = {}): Pence {
@@ -132,23 +156,55 @@ function fullMonths(entries: readonly InsightEntry[], m: Month): Month[] {
 export function usual(entries: readonly InsightEntry[], m: Month, opts: { categoryId?: string | null } = {}): Pence | null {
   const months = fullMonths(entries, m);
   if (months.length < 3) return null;
-  const everyday = entries.filter((e) => e.chapterId === null && (opts.categoryId === undefined || e.categoryId === opts.categoryId));
+  const everyday = withoutOrphans(entries).filter((e) => e.chapterId === null && (opts.categoryId === undefined || e.categoryId === opts.categoryId));
   return pence(median(months.map((x) => sharedSpend(everyday, monthPeriod(x)))));
 }
 
-/** INS-1: everyday spending so far this month against the usual pace; |difference| to the nearest £10, halves up. */
+/**
+ * INS-1 (S9a review): the day of a comparison month that matches `day` of this month (`length` days long). Up to the
+ * 28th, the same day, unless it is the last. On this month's last day, and after the 28th, the same distance from its
+ * end, so a bill on the last day lands on the last day of every month: on this month's last day every month counts
+ * in full; on 30 October (one day before the end) a 30-day September counts to the 29th. Never before the 1st.
+ */
+export function sameDayIn(day: number, length: number, otherLength: number): number {
+  if (day < 28 || (day === 28 && length > 28)) return day;
+  return Math.max(1, otherLength - (length - day));
+}
+
+/**
+ * INS-1 (S9a): what usually lands by this day of the month: over the usual's months (the previous 3–6 full months),
+ * the mean of each month's everyday spending dated on or before this day of the month (sameDayIn: after the 28th,
+ * counted from the month's end, so a bill on the 31st is on the 30th in a 30-day month). A bill that usually lands on the 25th isn't counted before the 25th, so it is never "money saved". As a
+ * fraction `total / months` (exact); null with fewer than 3 months.
+ */
+export function usualByDay(entries: readonly InsightEntry[], today: IsoDate): { total: number; months: number } | null {
+  const months = fullMonths(entries, month(today));
+  if (months.length < 3) return null;
+  const day = Number(today.slice(8, 10));
+  const length = daysInMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
+  let total = 0;
+  for (const m of months) {
+    const last = sameDayIn(day, length, daysInMonth(Number(m.slice(0, 4)), Number(m.slice(5, 7))));
+    total += sharedSpend(entries, { kind: 'month', from: firstOf(m), to: `${m}-${String(last).padStart(2, '0')}`, chapterId: null }, { everydayOnly: true });
+  }
+  return { total, months: months.length };
+}
+
+/**
+ * INS-1: everyday spending so far this month against what usually lands by today (usualByDay); within £10 is "on",
+ * otherwise the difference to the nearest £10, halves up. `usual` is the month's usual (median), for reference.
+ */
 export function pace(entries: readonly InsightEntry[], today: IsoDate): Pace {
   const soFar = sharedSpend(entries, periodOf('month', today), { everydayOnly: true });
   const u = usual(entries, month(today));
-  if (u === null) return { soFar, usual: null, direction: null, amount: null, ratio: null };
-  const elapsed = Number(today.slice(8, 10));
-  const days = daysInMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
-  const scaled = soFar * days - u * elapsed; // (soFar − expected) × days, exact
+  const by = usualByDay(entries, today);
+  if (u === null || by === null) return { soFar, usual: null, direction: null, amount: null, ratio: null };
+  const n = by.months;
+  const scaled = soFar * n - by.total; // (soFar − expected) × months, exact
   const abs = Math.abs(scaled);
-  const direction = abs <= 1000 * days ? 'on' : scaled < 0 ? 'under' : 'over';
-  const amount = Math.floor((abs + 500 * days) / (1000 * days)) * 1000;
-  const expected = (u * elapsed) / days;
-  return { soFar, usual: u, direction, amount: pence(amount), ratio: expected > 0 ? soFar / expected - 1 : null };
+  const direction = abs <= 1000 * n ? 'on' : scaled < 0 ? 'under' : 'over';
+  const amount = Math.floor((abs + 500 * n) / (1000 * n)) * 1000;
+  return { soFar, usual: u, direction, amount: pence(amount), ratio: by.total > 0 ? (soFar * n) / by.total - 1 : null };
 }
 
 const wholePounds = (p: number): string => `£${Math.round(p / 100).toLocaleString('en-GB')}`;
@@ -163,7 +219,7 @@ export function notes(
   const { entries, templates, categories } = input;
   const m = month(today);
   const thisMonth = periodOf('month', today);
-  const everyday = entries.filter((e) => e.chapterId === null);
+  const everyday = withoutOrphans(entries).filter((e) => e.chapterId === null);
   const nameOf = (id: string | null) => categories.find((c) => c.id === id)?.name ?? '';
   const out: Note[] = [];
   // A category at least 30% and £20 above its usual (both inclusive, exact).
@@ -243,21 +299,31 @@ export function fairness(entries: readonly InsightEntry[], people: readonly [Use
 
 /**
  * INS-6: the net balance at the end of each of the 3 full months before today's month; the same person owing at all
- * three with a mean of at least £50 → the standing order (the mean rounded down to £10).
+ * three with a mean of at least £50 → the standing order (the mean rounded down to £10). S9a (fix 23): none when the
+ * couple's settle rhythm already covers it: they have a settle day (SET-4), or they settled in each of those months.
  */
-export function standingOrder(entries: readonly InsightEntry[], settlements: readonly InsightSettlement[], people: readonly [UserId, UserId], today: IsoDate): { debtor: UserId; creditor: UserId; amount: Pence } | null {
+export function standingOrder(
+  entries: readonly InsightEntry[], settlements: readonly InsightSettlement[], people: readonly [UserId, UserId], today: IsoDate,
+  opts: { settleDay?: number | null } = {},
+): { debtor: UserId; creditor: UserId; amount: Pence } | null {
+  if (opts.settleDay != null) return null;
   const [a, b] = people;
+  const ledger = withoutOrphans(entries);
   const ends: number[] = [];
+  let settledEach = true;
   for (let k = 1; k <= 3; k += 1) {
-    const end = lastOf(shiftMonth(month(today), -k));
+    const m = shiftMonth(month(today), -k);
+    const end = lastOf(m);
+    if (!settlements.some((s) => !s.deleted && month(s.date) === m)) settledEach = false;
     // The one balance function (balance.ts), over the rows up to that month's end; positive = a is owed.
     const nets = netPositions(
       people,
-      entries.filter((e) => e.date <= end).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
+      ledger.filter((e) => e.date <= end).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
       settlements.filter((s) => s.date <= end).map((s) => ({ from: s.from, to: s.to, amount: s.amount, deleted: s.deleted })),
     );
     ends.push(nets[a] ?? 0);
   }
+  if (settledEach) return null;
   const owedToA = ends.every((n) => n > 0);
   const owedToB = ends.every((n) => n < 0);
   if (!owedToA && !owedToB) return null;

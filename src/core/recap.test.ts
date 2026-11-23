@@ -165,9 +165,9 @@ const settle = (from: UserId, to: UserId, amount: number, date: IsoDate): Insigh
  *     Everything else £75.00 (Groceries £40.00 + Transport £20.00 + Going out £15.00) = £1,596.00.
  *   Notes as of 31 Oct: Eating out £176 against its usual £125 (≥ 1.3× and ≥ £20 over) → one note, weight £51.00.
  *   Who paid: Jae £1,365.00 (Rent, Lamp, Taxi, Hotel), Sam £231.00 (Weekly shop, Dishoom, Birthday dinner, Cinema).
- *   Today's balance: Jae is owed: Lisbon +200.00; May–Sep 5 × (+317.50) − 5 × 300.00 = +87.50; Sofa +600.00;
- *     October +1,365.00 − 798.00 + 50.00 (Sam's book, Jae paid for Sam) = +617.00; November −150.00
- *     → Sam owes Jae £1,354.50.
+ *   The balance at the end of October (S9a, fix 1; the statement's closing): Jae is owed: Lisbon +200.00; May–Sep
+ *     5 × (+317.50) − 5 × 300.00 = +87.50; Sofa +600.00; October +1,365.00 − 798.00 + 50.00 (Sam's book, Jae paid for
+ *     Sam) = +617.00 → Sam owes Jae £1,504.50. (Today, after November's −150.00, it is £1,354.50: not the recap's.)
  *   The moment: no comments → Rent £1,000.00, 10 Oct.
  */
 const OCT = {
@@ -219,7 +219,7 @@ const headlineFor = (entries: PlacedEntry[], month: Month = '2026-10', today: Is
 // ─────────────────────────────── INS-2: the headline ───────────────────────────────
 
 describe('recapOf: the headline (INS-2, template wording)', () => {
-  it('INS-2: October cost £1,596.00 together, about £70 less than usual (usual = everyday, chapters left out: CHP-5)', () => {
+  it('INS-2: everyday October was £1,296.00, about £70 less than usual (S9a fix 6: the headline names what it compares, CHP-5)', () => {
     const r = october();
     expect(r.month).toBe('2026-10');
     expect(r.soFar).toBe(false);
@@ -227,7 +227,9 @@ describe('recapOf: the headline (INS-2, template wording)', () => {
     expect(r.everyday).toBe(129600);
     expect(r.usual).toBe(136500);
     expect(r.comparison).toEqual({ direction: 'less', amount: 7000 });
-    expect(r.headline).toBe('October cost £1,596.00 together, about £70 less than usual.');
+    // S9a (fix 6): one basis: the comparison is of everyday spending, so the headline names everyday (the chapter's
+    // £300.00 is a separate line on the screen). Was "October cost £1,596.00 together, about £70 less than usual."
+    expect(r.headline).toBe('Everyday spending in October was £1,296.00, about £70 less than usual.');
   });
 
   it('INS-2: the difference goes to the nearest £10, halves up ("about £120 less")', () => {
@@ -333,11 +335,11 @@ describe('recapOf: up to three notes, as of the month\'s last day (INS-2, INS-3)
 // ─────────────────────────────── INS-2: between you ───────────────────────────────
 
 describe('recapOf: between you (INS-2, MB-1)', () => {
-  it('INS-2: what each paid in October (chapters included) and today\'s balance', () => {
+  it('INS-2: what each paid in October (chapters included) and the balance at October\'s end (S9a fix 1: not today\'s)', () => {
     const r = october();
     expect(r.paid).toEqual({ [JAE]: 136500, [SAM]: 23100 });
     expect((r.paid[JAE] ?? 0) + (r.paid[SAM] ?? 0)).toBe(r.total);
-    expect(r.balance).toEqual({ debtor: SAM, creditor: JAE, amount: 135450 });
+    expect(r.balance).toEqual({ debtor: SAM, creditor: JAE, amount: 150450 });
   });
 
   it('INS-2: square → no balance (nothing to settle)', () => {

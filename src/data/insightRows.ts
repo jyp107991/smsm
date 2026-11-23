@@ -11,6 +11,7 @@ export function toInsight(e: ExpenseRow): InsightEntry {
     id: e.id, kind: e.kind === 'money_back' ? 'money_back' : 'expense', description: e.description, amount: pence(e.amount_pence),
     paid: map(e.paid) as InsightEntry['paid'], shares: map(e.shares) as InsightEntry['shares'], splitMode: e.split_mode as SplitMode, date: e.date,
     categoryId: e.category_id, chapterId: e.chapter_id, country: e.country, recurringId: e.recurring_id, deleted: e.deleted_at !== null,
+    refundOf: e.refund_of, createdAt: e.created_at,
   };
 }
 

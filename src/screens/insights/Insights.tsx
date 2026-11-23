@@ -6,7 +6,7 @@
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
 import { addMonths, startOfMonth, type IsoDate } from '../../core/dates';
 import {
-  byCategory, byCountry, fairness, monthlyTotals, notes, periodOf, previousPeriod, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
+  byCategory, byCountry, comparisonPeriod, fairness, monthlyTotals, notes, pace, periodOf, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
   type PeriodChoice,
 } from '../../core/insights';
 import { formatPence, pence, type Pence } from '../../core/money';
@@ -24,7 +24,7 @@ import { usePeople } from '../shared/people';
 import { ratioWords, type Person } from '../shared/words';
 import { Bars, Columns } from './Charts';
 import { RecapLists } from './RecapLinks';
-import { toInsight, toSettle, toTemplate } from './model';
+import { paceTail, toInsight, toSettle, toTemplate } from './model';
 
 type Choice = Exclude<PeriodChoice, 'chapter'> | `chapter:${string}`;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -58,15 +58,19 @@ export function Insights() {
   // S9 (performance audit P4): the totals are worked out once per period and data, not on every render.
   const periodKey = `${period.kind}:${String(period.from)}:${String(period.to)}:${String(period.chapterId)}`;
   const pairKey = pair ? `${pair[0]}:${pair[1]}` : '';
-  const { total, everydayNow, before, cats, countries, paid, trend } = useMemo(() => {
+  const { total, everydayNow, before, monthPace, cats, countries, paid, trend } = useMemo(() => {
     const opts = { everydayOnly: !withChapters };
     // CHP-5: a comparison is always of everyday spending, so a trip or a wedding never makes a month look alarming.
-    const prev = previousPeriod(period);
+    // S9a (INS-4): and only with days the household was keeping its spending (never months before its first entry).
+    // S9a review (INS-1): this month so far is compared as Home compares it: the one pace (core/insights pace).
+    const month = period.kind === 'month';
+    const prev = month ? null : comparisonPeriod(entries, period);
     const two = pairKey === '' ? null : (pairKey.split(':') as [string, string]);
     return {
       total: sharedSpend(entries, period, opts),
       everydayNow: sharedSpend(entries, period, { everydayOnly: true }),
       before: prev ? sharedSpend(entries, prev, { everydayOnly: true }) : null,
+      monthPace: month ? pace(entries, today) : null,
       cats: byCategory(entries, period, opts),
       countries: byCountry(entries, period, opts),
       paid: two ? whoPaid(entries, period, two, opts) : {},
@@ -78,9 +82,11 @@ export function Insights() {
 
   const fairnessEntries = useMemo(() => (withChapters ? entries : entries.filter((e) => e.chapterId === null)), [entries, withChapters]);
 
-  const beforeWords = choice === 'month' ? strings.insights.beforeMonth : choice === '3months' ? strings.insights.before3
+  const beforeWords = choice === '3months' ? strings.insights.before3
     : choice === '12months' ? strings.insights.before12 : strings.insights.beforeYear;
-  const compared = before === null ? null
+  const paceWords = monthPace ? paceTail(monthPace) : '';
+  const compared = monthPace ? (paceWords === '' ? null : `${formatPence(monthPace.soFar)}${paceWords}`)
+    : before === null ? null
     : before === everydayNow ? strings.insights.same(formatPence(everydayNow), beforeWords)
     : strings.insights.comparison(formatPence(everydayNow), formatPence(pence(Math.abs(everydayNow - before))), everydayNow > before, beforeWords);
   const sentence = compared === null ? strings.insights.totalIn(formatPence(total))
@@ -101,8 +107,14 @@ export function Insights() {
       <h1 className="text-title m-0 flex min-h-12 items-center">{strings.insights.title}</h1>
       {/* S6b (INS-9): only with smart features on and a connection. */}
       <AskSmsm />
+      <Choices label={strings.insights.period} options={options} value={chapter ? ('' as Choice) : choice} onValueChange={setChoice} />
+
+      {/* S9b (finding 16): the first figure straight after the period, so a small phone shows it without scrolling. */}
+      <Figure title={strings.insights.total} define={strings.insights.define.total} hideTitle>
+        <p className="text-sentence nums-list m-0">{sentence}</p>
+      </Figure>
+
       <div className="flex flex-col gap-3">
-        <Choices label={strings.insights.period} options={options} value={chapter ? ('' as Choice) : choice} onValueChange={setChoice} />
         {chapters.length > 0 ? (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="insights-chapter" className="text-secondary text-ink-2 font-medium">{strings.insights.chapter}</label>
@@ -117,12 +129,8 @@ export function Insights() {
             </select>
           </div>
         ) : null}
-        <Toggle label={strings.insights.includeChapters} hint={strings.insights.includeChaptersHint} on={withChapters} onChange={setWithChapters} />
+        <Toggle label={strings.insights.includeChapters} hint={withChapters ? strings.insights.includeChaptersOn : strings.insights.includeChaptersOff} on={withChapters} onChange={setWithChapters} />
       </div>
-
-      <Figure title={strings.insights.total} define={strings.insights.define.total} hideTitle>
-        <p className="text-sentence nums-list m-0">{sentence}</p>
-      </Figure>
 
       <Figure title={strings.insights.whereItWent} define={strings.insights.define.whereItWent}>
         {cats.length === 0 ? <Empty /> : (
@@ -157,7 +165,7 @@ export function Insights() {
 
       <RecapLists />
 
-      <NotesSection entries={entries} settlements={settlements} templates={templates} categories={categories} people={people.list} today={today} />
+      <NotesSection entries={entries} settlements={settlements} templates={templates} categories={categories} people={people.list} today={today} settleDay={household?.settle_day ?? null} />
     </div>
   );
 }
@@ -225,9 +233,10 @@ const Fairness = memo(function Fairness({ entries, people, today, split }: { ent
   );
 });
 
-function NotesSection({ entries, settlements, templates, categories, people, today }: {
+function NotesSection({ entries, settlements, templates, categories, people, today, settleDay }: {
   entries: readonly InsightEntry[]; settlements: readonly SettlementRow[] | undefined;
   templates: readonly RecurringRow[] | undefined; categories: readonly CategoryRow[]; people: readonly Person[]; today: IsoDate;
+  settleDay: number | null;
 }) {
   const list = useMemo(
     () => notes({ entries, templates: (templates ?? []).map(toTemplate), categories: categories.map((c) => ({ id: c.id, name: c.name })) }, today),
@@ -235,8 +244,9 @@ function NotesSection({ entries, settlements, templates, categories, people, tod
   );
   const [a, b] = people;
   const hint = useMemo(
-    () => (a && b && settlements ? standingOrder(entries, settlements.map(toSettle), [a.id, b.id], today) : null),
-    [a, b, settlements, entries, today],
+    // S9a (fix 23): none when the settle rhythm already covers it (a settle day, or a settle-up each month).
+    () => (a && b && settlements ? standingOrder(entries, settlements.map(toSettle), [a.id, b.id], today, { settleDay }) : null),
+    [a, b, settlements, entries, today, settleDay],
   );
   const name = (id: string) => people.find((p) => p.id === id)?.name ?? '';
   return (

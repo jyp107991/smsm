@@ -9,7 +9,7 @@ import { useCategories, useDataLayer, useEntries, useRecurring } from '../../dat
 import { strings } from '../../ui/strings';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { Figure } from './Insights';
-import { toInsight, toTemplate } from './model';
+import { paceTail, toInsight, toTemplate } from './model';
 
 export function ThisMonth() {
   const layer = useDataLayer();
@@ -24,10 +24,7 @@ export function ThisMonth() {
     [entries, templates, categories, today],
   );
   if (rows.length === 0) return null;
-  const whole = (x: number) => `£${Math.floor(x / 100).toLocaleString('en-GB')}`;
-  const tail = p.direction === 'under' && p.amount !== null ? strings.insights.under(whole(p.amount))
-    : p.direction === 'over' && p.amount !== null ? strings.insights.over(whole(p.amount))
-    : p.direction === 'on' ? strings.insights.onPace : '';
+  const tail = paceTail(p);
   return (
     <Figure title={strings.insights.thisMonthRegion} define={strings.insights.define.thisMonth} compact>
       <p className="text-body nums-list m-0">{`${strings.insights.soFar(formatPence(p.soFar))}${tail}`}</p>

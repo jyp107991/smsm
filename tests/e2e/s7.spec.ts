@@ -68,13 +68,17 @@ async function settings(page: Page): Promise<void> {
 
 /** Home → the Inbox, inside the app (the demo's data lives in memory). */
 async function inbox(page: Page): Promise<void> {
-  if (!(await page.getByRole('heading', { level: 1, name: 'Inbox' }).isVisible())) {
-    const back = page.getByRole('button', { name: 'Back' });
+  const inboxHeading = page.getByRole('heading', { level: 1, name: 'Inbox' });
+  const back = page.getByRole('button', { name: 'Back' });
+  const balance = page.getByRole('region', { name: 'Balance' });
+  // Wait for whichever screen is settling (a lazy screen may still be arriving) before choosing.
+  await expect(inboxHeading.or(back).or(balance).first()).toBeVisible();
+  if (!(await inboxHeading.isVisible())) {
     if (await back.isVisible()) await back.click();
-    await expect(page.getByRole('region', { name: 'Balance' })).toBeVisible();
+    await expect(balance).toBeVisible();
     await page.getByRole('button', { name: /^Inbox\W+\d+/ }).click();
   }
-  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+  await expect(inboxHeading).toBeVisible();
 }
 
 /** The demo's bills come first under the same counter: clear them to reach the import cards. */

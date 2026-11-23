@@ -38,8 +38,8 @@ async function editAmount(page: Page, id: string, amount: string): Promise<void>
 async function recordSettleUp(page: Page, amount: string): Promise<void> {
   const dialog = await openSettleUp(page);
   await dialog.getByRole('textbox', { name: 'Amount' }).fill(amount);
-  // Q-U11: the person owed reads "Record Sam’s payment"; the one who owes, "Record it".
-  await dialog.getByRole('button', { name: /^Record (it|\S+’s payment)$/ }).click();
+  // S9a: the button names the payer on either phone ("Record Sam’s payment").
+  await dialog.getByRole('button', { name: /^Record \S+’s payment$/ }).click();
   await expect(dialog).toBeHidden();
 }
 

@@ -18,7 +18,8 @@
 import { Check, X } from 'lucide-react';
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, startTransition, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, type IsoDate } from '../../core/dates';
-import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
+import { applyFilter, filteredTotal, newestFirst, type Filter, type FilterEntry } from '../../core/filters';
+import { formatPence, pence } from '../../core/money';
 import {
   addExpense, deleteExpense, newId, restoreExpense, useCategories, useChapters, useDataLayer, useEntries, useSettlements, useSyncStatus,
   type CategoryRow, type ChapterRow, type ExpenseRow, type SettlementRow, useCommentCounts,
@@ -30,6 +31,7 @@ import { cx } from '../../ui/primitives/util';
 import { Animal, HeadSymbols } from '../../ui/rig/Animal';
 import { prefersReducedMotion } from '../../ui/rig/motion';
 import { strings } from '../../ui/strings';
+import { plainError } from '../shared/plain';
 import { duplicateDraft } from '../entry/form';
 import { usePeople } from '../shared/people';
 import { CategoryMark } from '../shared/CategoryMark';
@@ -57,16 +59,18 @@ interface Filters {
   /** PLC-7, CHP-6: a country ('' any) and a place ('' any). */
   country: string;
   place: string;
+  /** S9b (ACT-1): a tag ('' any). */
+  tag: string;
   dates: DatesChoice;
   /** Q-U10: the days picked under "Pick dates". */
   range: DayRange | null;
   type: TypeChoice;
 }
 
-const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', dates: 'any', range: null, type: 'any' };
+const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', tag: '', dates: 'any', range: null, type: 'any' };
 
 /** Q-U10: a filter is on (search has its own clear button). */
-const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.dates !== 'any' || f.type !== 'any';
+const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.tag !== '' || f.dates !== 'any' || f.type !== 'any';
 
 export function Activity() {
   const layer = useDataLayer();
@@ -121,14 +125,27 @@ export function Activity() {
       ...(f.chapter !== '' ? { chapters: [f.chapter === EVERYDAY ? null : f.chapter] } : {}),
       ...(f.country !== '' ? { countries: [f.country] } : {}),
       ...(f.place !== '' ? { places: [f.place] } : {}),
+      ...(f.tag !== '' ? { tags: [f.tag] } : {}),
       ...datesRange(f.dates, today, f.range),
       ...(f.type === 'expense' || f.type === 'money_back' || f.type === 'settlement' ? { kinds: [f.type] } : {}),
     };
     const kept = new Set(applyFilter(items.map((i) => i.entry), filter));
+    // S9a (ACT-1): the one order, as Home and the statement: newest first, then the one added last, then by id.
     return items
       .filter((i) => kept.has(i.entry))
-      .sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : -1));
+      .sort((a, b) => newestFirst({ date: a.row.date, createdAt: a.row.created_at, id: a.row.id }, { date: b.row.date, createdAt: b.row.created_at, id: b.row.id }));
   }, [items, shownFilters, today]);
+
+  // S9a (PLC-7, CHP-6): with a search or a filter on, "12 entries · £340.20" over every match (not only the rows drawn),
+  // by the core: money back subtracts, settle-ups are left out, and so is money back whose original is deleted (MB-3).
+  const total = useMemo(() => {
+    if (shownFilters.type === 'deleted' || (shownFilters.text.trim() === '' && !filtering(shownFilters))) return null;
+    const gone = new Set((entries ?? []).filter((e) => e.deleted_at !== null).map((e) => e.id));
+    return filteredTotal(shown.map((i) => ({
+      ...i.entry, amount: pence(i.row.amount_pence),
+      deleted: i.row.deleted_at !== null || (i.kind === 'expense' && i.row.kind === 'money_back' && i.row.refund_of !== null && gone.has(i.row.refund_of)),
+    })));
+  }, [shown, shownFilters, entries]);
 
   const loading = entries === undefined || settlements === undefined;
   // The countries and places that occur in the household's entries (PLC-7), by name.
@@ -136,6 +153,18 @@ export function Activity() {
     .sort((a, b) => (countryName(a) ?? a).localeCompare(countryName(b) ?? b)), [entries]);
   const places = useMemo(() => [...new Set((entries ?? []).filter((e) => e.deleted_at === null && e.place).map((e) => e.place ?? ''))]
     .sort((a, b) => a.localeCompare(b)), [entries]);
+  // S9b (ACT-1): the tags in use, once each (in any case), by name.
+  const tags = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const e of entries ?? []) {
+      if (e.deleted_at !== null) continue;
+      for (const t of e.tags) {
+        const key = t.normalize('NFKC').toLowerCase();
+        if (!seen.has(key)) seen.set(key, t);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
@@ -181,6 +210,7 @@ export function Activity() {
         chapters={chapters ?? NO_ROWS}
         countries={countries}
         places={places}
+        tags={tags}
         today={today}
       />
 
@@ -193,6 +223,8 @@ export function Activity() {
           <Empty animal="cat" mood="sleepy" pose="curled" text={strings.activity.empty} />
         )
       ) : (
+        <>
+        {total !== null ? <p className="text-secondary text-ink-2 nums-list m-0">{strings.activity.totalLine(total.count, formatPence(total.total))}</p> : null}
         <ActivityList
           shown={shown}
           filters={shownFilters}
@@ -203,6 +235,7 @@ export function Activity() {
           commentCounts={commentCounts}
           readOnly={otherWindow}
         />
+        </>
       )}
     </div>
   );
@@ -354,14 +387,21 @@ function useSwipe({ shown, people, today, toast }: { shown: readonly Item[]; peo
       if (!deleteExpense(row.id)) return;
       t.show({
         message: strings.entry.deleted(row.description),
-        action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
+        action: { label: strings.entry.undo, onAction: () => { try { restoreExpense(row.id); } catch (err) { t.show({ message: plainError(err) }); } } },
         duration: 5000,
       });
     } else {
       const draft = duplicateDraft(row, who, day);
       if (!draft) return;
       // Q-F1: each swipe is its own action, with its own row id made here.
-      const copy = addExpense({ ...draft, id: newId() });
+      let copy: string;
+      try {
+        copy = addExpense({ ...draft, id: newId() });
+      } catch (err) {
+        // MB-3 (S9a review): e.g. a copy of money back whose original was deleted.
+        t.show({ message: plainError(err) });
+        return;
+      }
       tickSaved();
       // Q-U8: says what happened; a swipe is easy to make by mistake, so its toast offers Undo.
       t.show({
@@ -477,7 +517,7 @@ function springEasing(stiffness: number, damping: number, mass: number, seconds:
 }
 
 /** The search's chips and their sheets. Which sheet is open lives here, so opening one never redraws the list. */
-function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, today }: {
+function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, tags, today }: {
   filters: Filters;
   onChange: (patch: Partial<Filters>) => void;
   onClear: () => void;
@@ -487,10 +527,11 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
   chapters: readonly ChapterRow[];
   countries: readonly string[];
   places: readonly string[];
+  tags: readonly string[];
   today: IsoDate;
 }) {
-  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'dates' | 'type' | null>(null);
-  const { payer, category, chapter, country, place, dates, range, type } = filters;
+  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'tag' | 'dates' | 'type' | null>(null);
+  const { payer, category, chapter, country, place, tag, dates, range, type } = filters;
   const live = categories.filter((c) => !c.archived);
   const chapterLabel = chapter === '' ? null : chapter === EVERYDAY ? strings.chapters.everyday : (chapters.find((c) => c.id === chapter)?.name ?? null);
   const payerLabel = payer ? nameOf(payer) : null;
@@ -521,6 +562,9 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
         ) : null}
         {places.length > 0 ? (
           <FilterButton label={strings.places.place} value={place === '' ? null : place} onClick={() => { setPicker('place'); }} />
+        ) : null}
+        {tags.length > 0 || tag !== '' ? (
+          <FilterButton label={strings.activity.tag} value={tag === '' ? null : tag} onClick={() => { setPicker('tag'); }} />
         ) : null}
         <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : (dates === 'custom' ? rangeLabel : datesLabels[dates])} onClick={() => { setPicker('dates'); }} />
         <FilterButton label={strings.activity.type} value={type === 'any' ? null : typeLabels[type]} onClick={() => { setPicker('type'); }} />
@@ -582,6 +626,14 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
         value={place}
         options={[{ value: '', label: strings.places.anyPlace }, ...places.map((p) => ({ value: p, label: p }))]}
         onPick={(v) => { onChange({ place: v }); }}
+      />
+      <Picker
+        open={picker === 'tag'}
+        title={strings.activity.tag}
+        onClose={close}
+        value={tag}
+        options={[{ value: '', label: strings.activity.anyTag }, ...tags.map((t) => ({ value: t, label: t }))]}
+        onPick={(v) => { onChange({ tag: v }); }}
       />
       <DatesPicker
         open={picker === 'dates'}

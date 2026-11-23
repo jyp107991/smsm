@@ -8,6 +8,7 @@
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { Settings as Gear } from 'lucide-react';
 import { formatDay } from '../../core/dates';
+import { newestFirst } from '../../core/filters';
 import {
   dismissProblem, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus, type ExpenseDraft, type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
@@ -24,19 +25,35 @@ import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
 import { InboxButton, SuggestRecurring } from './BillsBanners';
-import { CurrentChapterChip } from './CurrentChapter';
+import { CurrentChips } from './CurrentChapter';
 import { TripBanner } from '../places/TripBanner';
 import { ThisMonth } from '../insights/ThisMonth';
 import { RecapBanners } from '../insights/RecapLinks';
 import { QuickAdd } from './QuickAdd';
+import { DemoNote } from './DemoNote';
+import { useShortTier } from '../../ui/short';
 
 export function Home() {
   // S9: Home is drawn, so the static first paint (index.html) goes in this frame; and its shape is kept for the next one.
   useBootDone();
   const column = useRef<HTMLDivElement>(null);
   useEffect(() => rememberHome(column.current?.querySelector('header') ?? null, column.current?.querySelector<HTMLElement>(`:scope > section[aria-label="${strings.home.balance}"]`) ?? null), []);
+  // S9b (finding 16, review 3): on a very short screen the banners come after Quick add (in the page's order too, so
+  // reading and Tab follow what is seen), keeping the balance, Settle up and Quick add above the tab bar.
+  const tiny = useShortTier() === 2;
+  const banners = (
+    <>
+      <ApprovalBanners />
+      <MonzoBanner />
+      <Problems />
+      <InboxButton />
+      <TripBanner />
+      <RecapBanners />
+    </>
+  );
   return (
-    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10">
+    // S9b (finding 16): closer together on a short screen (src/ui/short.ts), so Quick add and Settle up are in view.
+    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10 [[data-short]_&]:gap-2">
       <header className="flex min-h-12 items-center gap-2.5">
         <Logo size={30} />
         <h1 className="text-wordmark m-0 flex-1 text-[1.75rem] leading-none">{strings.app.name}</h1>
@@ -49,18 +66,15 @@ export function Home() {
           <Gear size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
         </button>
       </header>
-      <ApprovalBanners />
-      <MonzoBanner />
-      <Problems />
-      <InboxButton />
-      <TripBanner />
-      <RecapBanners />
+      {tiny ? null : banners}
       <BalanceRegion />
-      <CurrentChapterChip />
+      <CurrentChips />
       <QuickAdd />
+      {tiny ? banners : null}
       <ThisMonth />
       <SuggestRecurring />
       <RecentRows />
+      <DemoNote />
     </div>
   );
 }
@@ -74,7 +88,8 @@ function Problems() {
     <div role="alert" className="bg-surface border-berry flex flex-col gap-3 rounded-[16px] border-2 px-4 py-3">
       {problems.map((p) => (
         <div key={p.id} className="flex flex-col gap-2">
-          <p className="m-0 break-words">{strings.sync.problem(p.label, (strings.sync.reasons as Partial<Record<string, string>>)[p.reason] ?? strings.sync.reasons.other)}</p>
+          {/* S9a review (MB-2, MB-3): a money-back refusal says exactly what doesn't fit (its own line, with the figure). */}
+          <p className="m-0 break-words">{strings.sync.problem(p.label, p.reason === 'money-back' ? p.message : (strings.sync.reasons as Partial<Record<string, string>>)[p.reason] ?? strings.sync.reasons.other)}</p>
           <div className="flex flex-wrap gap-3">
             {p.table === 'expenses' && p.row ? (
               <Button
@@ -101,7 +116,7 @@ type Recent = { kind: 'expense'; row: ExpenseRow } | { kind: 'settlement'; row: 
 
 /**
  * Q-U7: Home shows the ledger. "Recent" is the last few entries and settle-ups (newest first, by their date,
- * then when they were added), under day headings ("Today", "Yesterday", "Tue 10 Nov"); each day's rows are a
+ * then when they were added, then by id: the one order), under day headings ("Today", "Yesterday", "Tue 10 Nov"); each day's rows are a
  * list named by its heading. Never a blank "nothing today" while there is history.
  */
 function RecentRows() {
@@ -119,7 +134,8 @@ function RecentRows() {
       ...(entries ?? []).filter((e) => e.deleted_at === null).map((row) => ({ kind: 'expense' as const, row })),
       ...(settlements ?? []).filter((s) => s.deleted_at === null).map((row) => ({ kind: 'settlement' as const, row })),
     ];
-    all.sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0));
+    // S9a (ACT-1): the one order, as Activity and the statement (core/filters newestFirst).
+    all.sort((a, b) => newestFirst({ date: a.row.date, createdAt: a.row.created_at, id: a.row.id }, { date: b.row.date, createdAt: b.row.created_at, id: b.row.id }));
     const groups: { date: string; items: Recent[] }[] = [];
     for (const item of all.slice(0, RECENT)) {
       const last = groups[groups.length - 1];

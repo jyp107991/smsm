@@ -12,10 +12,12 @@
  * the description is read and saved tidy ("tesco" → "Tesco", the merchant list's "IKEA").
  */
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
+import { bareAmountCurrency } from '../../core/fx';
 import { formatPence, formatPlainPounds } from '../../core/money';
+import type { QuickAddProblem } from '../../core/quickadd';
 import {
-  addExpense, deleteExpense, guessCategory, newId, parseLoose, rememberChoice, useCategories, useCategoryMemory, useDataLayer, useEntries, useHousehold,
-  useOnline, useSmartFeatures, useSyncStatus, locate, type Located } from '../../data';
+  addExpense, deleteExpense, guessCategory, newId, parseLoose, rateFor, rememberChoice, useCategories, useCategoryMemory, useCurrentCountry, useDataLayer,
+  useEntries, useHousehold, useOnline, useSmartFeatures, useSyncStatus, locate, type Located } from '../../data';
 import { tickSaved } from '../../ui/haptics';
 import { useKeyboardOpen } from '../../ui/keyboard';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -26,7 +28,7 @@ import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { blankForm, withSplit, type FormState } from '../entry/form';
 import { Head } from '../shared/Head';
 import { usePeople } from '../shared/people';
-import { defaultSplit, readingWords, readQuickAdd, type Reading } from '../shared/suggest';
+import { defaultSplit, quickAddTrouble, readingAmount, readingWords, readQuickAdd, type Reading } from '../shared/suggest';
 import { useSheets } from '../sheets';
 import { AddButton } from './AddButton';
 
@@ -43,8 +45,8 @@ export function QuickAdd() {
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const [text, setText] = useState('');
-  // Q-U3: Enter with nothing it can read as an amount says what it needs.
-  const [needsAmount, setNeedsAmount] = useState(false);
+  // Q-U3, S9a (fix 21): Enter on something it can't save says why, in one line under the box.
+  const [trouble, setTrouble] = useState<string | null>(null);
   // ADD-9: loose words being read (by the AI), and what the box holds now (a late reading for old words is dropped).
   const [loose, setLoose] = useState(false);
   const looseFor = useRef<string | null>(null);
@@ -62,10 +64,25 @@ export function QuickAdd() {
   const defaultSplitFor = (categoryId: string | null) =>
     defaultSplit({ remembered: null, category: categories.find((c) => c.id === categoryId), householdRatio: household?.default_ratio, people: people.list, me: me?.id ?? '' });
 
+  // PLC-6 (S9a): abroad, a bare amount is in the country's money, at the day's rate (or the last one this phone has).
+  const currency = bareAmountCurrency(useCurrentCountry());
+  const [rated, setRated] = useState<{ currency: string; rate: string } | null>(null);
+  useEffect(() => {
+    if (currency === null) return;
+    let live = true;
+    void rateFor(currency).then((r) => { if (live && r) setRated({ currency, rate: r.rate }); });
+    return () => { live = false; };
+  }, [currency]);
+  const rate = currency !== null && rated?.currency === currency ? rated.rate : null;
+
+  const ctx = useMemo(
+    () => (me ? { today, me, partner: people.partner, categories, memory, entries, householdRatio: household?.default_ratio, currency, rate } : null),
+    [today, me, people.partner, categories, memory, entries, household, currency, rate],
+  );
   const reading: Reading | null = useMemo(() => {
-    if (!me || text.trim() === '') return null;
-    return readQuickAdd(text, { today, me, partner: people.partner, categories, memory, entries, householdRatio: household?.default_ratio });
-  }, [text, today, me, people.partner, categories, memory, entries, household]);
+    if (!ctx || text.trim() === '') return null;
+    return readQuickAdd(text, ctx);
+  }, [text, ctx]);
   const words = reading ? readingWords(reading, { categories, people: people.list.length > 0 ? people.list : me ? [me] : [], today }) : null;
   const complete = reading !== null && reading.confident && reading.saveAs.trim() !== '';
 
@@ -80,9 +97,13 @@ export function QuickAdd() {
   const openForm = (r: Reading) => {
     if (!me) return;
     const base = blankForm({ me: me.id, people: people.list, today, split: r.split });
+    // PLC-6: abroad, the form opens paying in that currency, with the amount as typed (and the rate, when known).
+    const money = r.original
+      ? { amountText: r.original.amount, foreign: { currency: r.original.currency, rateText: r.original.rate ?? '' } }
+      : { amountText: formatPlainPounds(r.amount) };
     const prefill: FormState = withSplit(
       {
-        ...base, amountText: formatPlainPounds(r.amount), description: r.description, categoryId: r.categoryId,
+        ...base, ...money, description: r.description, categoryId: r.categoryId,
         categoryTouched: r.typedCategory, payer: r.payer, splitTouched: r.typedSplit, date: r.date, tags: r.tags,
       },
       r.split,
@@ -102,9 +123,19 @@ export function QuickAdd() {
     void locate().then((where) => { here.current = where; });
   };
 
+  /** S9a (fix 21): the line under the box for something Enter can't save. */
+  const troubleWords = (p: QuickAddProblem): string => (p.kind === 'tooLarge' ? strings.entry.tooLarge(formatPence(p.max))
+    : p.kind === 'noSuchDate' ? strings.home.noSuchDate(p.day, p.month) : strings.home.quickAddNeedsAmount);
+
   const save = (e: SyntheticEvent) => {
     e.preventDefault();
     if (savedText.current === text) return;
+    const problem = ctx && text.trim() !== '' ? quickAddTrouble(text, ctx) : null;
+    // An amount over the maximum, or a day no month has: said at once (the AI would read no better).
+    if (problem && problem.kind !== 'amount') {
+      setTrouble(troubleWords(problem));
+      return;
+    }
     if (!reading) {
       if (text.trim() === '') return;
       // ADD-9: words the grammar can't read go to the AI, with smart features on and a connection; the reading
@@ -120,7 +151,7 @@ export function QuickAdd() {
           const stale = textNow.current !== words || document.querySelector('[role="dialog"][data-state="open"]') !== null;
           if (looseFor.current === words) { looseFor.current = null; setLoose(false); }
           if (stale) return;
-          if (!r.ok || (r.data.amount === null && r.data.description === null)) { setNeedsAmount(true); return; }
+          if (!r.ok || (r.data.amount === null && r.data.description === null)) { setTrouble(strings.home.quickAddNeedsAmount); return; }
           const d = r.data;
           const partner = people.list.find((p) => p.id !== me.id);
           // The split it read, in the app's terms ("A paid 60%" is this phone's person's share).
@@ -141,7 +172,7 @@ export function QuickAdd() {
         });
         return;
       }
-      setNeedsAmount(true);
+      setTrouble(troubleWords(problem ?? { kind: 'amount' }));
       return;
     }
     if (!complete) {
@@ -154,6 +185,8 @@ export function QuickAdd() {
         id: newId(),
         description: reading.saveAs, amount: reading.amount, date: reading.date, categoryId: reading.categoryId,
         payer: reading.payer, split: reading.split, tags: reading.tags,
+        // PLC-6: abroad, the pounds with the amount as typed and the rate, as the sheet stores them.
+        ...(reading.original?.rate != null ? { original: { amount: reading.original.amount, currency: reading.original.currency, rate: reading.original.rate } } : {}),
         // PLC-2: the town, if it was found while typing (never waited for).
         ...(here.current && reading.date === layer.today()
           ? { place: here.current.place, lat: here.current.lat, lng: here.current.lng, ...(here.current.country ? { country: here.current.country } : {}) }
@@ -194,7 +227,7 @@ export function QuickAdd() {
   };
 
   // The reading, the amount in ink and the rest in ink-2 (its words are also the button's name).
-  const amountWords = reading ? formatPence(reading.amount) : '';
+  const amountWords = reading ? readingAmount(reading) : '';
   const restWords = words !== null && words.startsWith(amountWords) ? words.slice(amountWords.length) : words;
 
   return (
@@ -215,7 +248,7 @@ export function QuickAdd() {
           disabled={otherWindow}
           placeholder={strings.home.quickAddPlaceholder}
           value={text}
-          onChange={(e) => { setText(e.target.value); textNow.current = e.target.value; setNeedsAmount(false); savedText.current = null; lookUp(); }}
+          onChange={(e) => { setText(e.target.value); textNow.current = e.target.value; setTrouble(null); savedText.current = null; lookUp(); }}
           onKeyDown={holdEnterWhileComposing}
           enterKeyHint="send"
           autoComplete="off"
@@ -237,7 +270,9 @@ export function QuickAdd() {
       </div>
       {/* The reading's two lines are kept whether or not there is one, so nothing below moves as you type. */}
       <div className="h-[calc(2*1.4*var(--size-secondary)+1rem)] overflow-hidden">
-        {reading && words ? (
+        {trouble !== null ? (
+          <p className="text-secondary text-ink m-0 px-1 py-2" role="status">{trouble}</p>
+        ) : reading && words ? (
           <>
             <button
               type="button"
@@ -254,8 +289,6 @@ export function QuickAdd() {
           </>
         ) : loose ? (
           <p className="text-secondary text-ink-2 m-0 px-1 py-2" role="status">{strings.home.readingWords}</p>
-        ) : needsAmount ? (
-          <p className="text-secondary text-ink m-0 px-1 py-2" role="status">{strings.home.quickAddNeedsAmount}</p>
         ) : (
           <p className="text-secondary text-ink-2 m-0 line-clamp-2 px-1 py-2">{strings.home.quickAddHint}</p>
         )}

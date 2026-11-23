@@ -30,6 +30,7 @@
 
 - **From the S0/S1 review, still open:** demo household: trip descriptions get random categories and the monthly settle date drifts (cosmetic). (Fixed in S2: the Sheet's history entry, through one history coordinator `src/ui/history.ts`; toasts through one persistent live region; `errors.ts` reports with an unserialisable reason.)
 - **A bank import notifies once per kept row** (S8). NOT-1 says each change is sent at once, so importing 40 rows sends the partner 40 notifications (each its own tag). If that is noisy in real use, group one import into a single "Sam imported 40 entries" notification.
+- **Larger screens, the rest of L2 (S9b deferral).** From 900 px Activity is two panes; Bills (list | bill), Inbox (list | item) and Settings (sections | section) are still one centred column, their forms opening as centred dialogs. Also: mark the row whose entry is open in the Activity pane (`aria-current`).
 - **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour for now; revisit with real use in S2 (the person always sees the reading before saving).
 
 ## Deferred criteria

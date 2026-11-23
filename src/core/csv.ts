@@ -11,11 +11,10 @@
  */
 import { isIsoDate, type IsoDate } from './dates';
 import type { InsightEntry, InsightSettlement } from './insights';
-import { formatPlainPounds, parseStatementAmount, pence, type Pence } from './money';
+import { formatPlainPounds, MAX_PENCE, parseStatementAmount, pence, type Pence } from './money';
 
 export const MAX_CSV_BYTES = 5 * 1024 * 1024;
 export const MAX_CSV_ROWS = 20_000;
-const MAX_PENCE = 100_000_000;
 const DESCRIPTION_MAX = 120;
 
 /** A CSV file's text as rows of cells. Blank lines are dropped; rows may have different lengths. */

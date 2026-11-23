@@ -5,12 +5,13 @@
  */
 import { useId, useMemo, useState } from 'react';
 import { addMonths, startOfMonth } from '../../core/dates';
-import { formatPence } from '../../core/money';
-import { onThisDay } from '../../core/recap';
-import { useChapters, useDataLayer, useEntries, useHousehold } from '../../data';
+import { formatPence, pence } from '../../core/money';
+import { monthCard, onThisDay } from '../../core/recap';
+import { useCategories, useChapters, useDataLayer, useEntries, useHousehold } from '../../data';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
-import { NO_ENTRIES } from '../shared/empty';
+import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
+import { toInsight } from './model';
 import { useRecapInput } from './recapData';
 
 import { read, recapSeen, settleSeen, write, yearSeen } from './seen';
@@ -32,6 +33,7 @@ export function RecapLists() {
   const recapsId = useId();
   const yearsId = useId();
   const settleDay = useHousehold().data?.settle_day ?? null;
+  const categories = useCategories().data ?? NO_CATEGORIES;
   const { months, years } = useMemo(() => {
     const live = rows.filter((e) => e.deleted_at === null);
     const had = new Set(live.map((e) => e.date.slice(0, 7)));
@@ -43,18 +45,37 @@ export function RecapLists() {
     // From settle day on, the month so far has its recap too (SET-4), first.
     if (settleDay !== null && Number(today.slice(8, 10)) >= settleDay) ms.unshift({ month: today.slice(0, 7), soFar: true });
     const ys = [...new Set([...had].map((m) => m.slice(0, 4)))].sort().reverse();
-    return { months: ms, years: ys };
+    // S9b (INS-4): each month as a card with its total and one line, the core's figures (as its recap's headline).
+    const entries = ms.length === 0 ? [] : live.map(toInsight);
+    const cards = ms.map((m) => {
+      const card = monthCard(entries, m.month, today);
+      return { ...m, total: card?.total ?? pence(0), top: card?.topCategoryId ?? null, anything: card !== null };
+    });
+    return { months: cards, years: ys };
   }, [rows, today, settleDay]);
+  const nameOf = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
   if (months.length === 0 && years.length === 0) return null;
   return (
     <>
       {months.length > 0 ? (
         <section aria-labelledby={recapsId} className="flex flex-col gap-2">
           <h2 id={recapsId} className="text-heading rule-ledger m-0">{strings.recap.recaps}</h2>
-          <ul aria-labelledby={recapsId} className="m-0 flex list-none flex-wrap gap-x-4 p-0">
+          {/* DESIGN §4.6: month cards (month, total, one line), newest first, as many to a row as fit (two on a phone). */}
+          <ul aria-labelledby={recapsId} className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-3 p-0 pt-1">
             {months.map((m) => (
-              <li key={m.month}>
-                <Linked to={{ name: 'recap', month: m.month }}>{m.soFar ? strings.recap.soFarName(m.month) : strings.recap.monthName(m.month)}</Linked>
+              <li key={m.month} className="flex min-w-0">
+                {/* Named by its month; its total and line are read after it, as its description. */}
+                <a
+                  href={`/recap/${m.month}`}
+                  onClick={(e) => { e.preventDefault(); go({ name: 'recap', month: m.month }); }}
+                  aria-label={m.soFar ? strings.recap.soFarName(m.month) : strings.recap.monthName(m.month)}
+                  aria-describedby={`${recapsId}-${m.month}-total ${recapsId}-${m.month}-line`}
+                  className="bg-surface border-line press flex w-full min-w-0 flex-col gap-1 rounded-[16px] border px-4 py-3 no-underline"
+                >
+                  <span className="text-secondary text-ink-2">{m.soFar ? strings.recap.soFarName(m.month) : strings.recap.monthName(m.month)}</span>
+                  <span id={`${recapsId}-${m.month}-total`} className="text-body text-ink nums-list">{formatPence(m.total)}</span>
+                  <span id={`${recapsId}-${m.month}-line`} className="text-caption text-ink-2 line-clamp-2">{m.anything ? strings.recap.cardMostly(nameOf(m.top)) : strings.recap.cardNothing}</span>
+                </a>
               </li>
             ))}
           </ul>

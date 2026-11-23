@@ -19,7 +19,7 @@ export {
   dismissProblem, sendCode, verifyCode, signOut, createHousehold, joinHousehold, setIdentity, setMonzoMe, monzoNameOf, requestChange,
   decideChange, rememberChoice, OfflineError, NotSignedInError, NotInHouseholdError, NotReadyError, EntryNotFoundError, ChangesWaitingError,
   NAME_MAX, OtherWindowError, JOINT_MONEY_EDIT, SPLIT_AGAIN, type ChangeRequest,
-  saveRecurring, pauseRecurring, resumeRecurring, endRecurring, keepInboxItem, dismissInboxItem, saveCategory, archiveCategory, reorderCategories,
+  saveRecurring, pauseRecurring, resumeRecurring, endRecurring, keepInboxItem, dismissInboxItem, reopenInboxItem, unkeepInboxItem, saveCategory, archiveCategory, reorderCategories,
   CATEGORY_COLOURS, type CategoryColour, type CategoryDraft, type RecurringDraft,
   saveChapter, closeChapter, setCurrentChapter, currentChapterId, currentOpenChapter, type ChapterDraft,
   currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor, askLocation,
@@ -44,4 +44,5 @@ export {
   type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow, type ImportRuleRow, type RestoreCounts,
 } from './api';
 export { REFUSAL_MESSAGES, type WriteProblem, type RefusalReason } from './problems';
+export { reportProblem } from './feedback';
 export { browserGeo, frankfurterRates, type GeoService, type RatesService, type Located } from './places';

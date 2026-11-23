@@ -1,8 +1,9 @@
 /**
  * The Inbox (S3; INB-1, INB-2, INB-3, REC-3): a bill whose amount varies waits here on its day, one card at a
  * time with a counter. Keep opens the Add sheet prefilled from its regular payment (the amount at its usual
- * figure, to change); saving it makes the entry and clears the card. Not ours clears it without money. Until
- * then it is not money: the balance and Activity leave it out.
+ * figure, to change); saving it makes the entry and clears the card. "Usually £90.00" (S9a, DESIGN §4.9) keeps it
+ * at that amount in one tap. Not ours clears it without money, with Undo. Until then it is not money: the balance
+ * and Activity leave it out.
  *
  * S7 (IMP-3, INB-1): after the database's own items, under the same counter, the bank rows being reviewed on this
  * phone, one card at a time in date order: Keep (an entry at once, with Undo), Change first (the Add sheet,
@@ -13,13 +14,14 @@ import { useId, useState } from 'react';
 import { formatDate, isIsoDate, type IsoDate } from '../../core/dates';
 import { formatPence, formatPlainPounds, pence } from '../../core/money';
 import {
-  dismissInboxItem, keepImportNow, skipImportNow, stopReviewing, undoKeep, undoSkip, useCategories, useDataLayer, useHousehold, useImportQueue, useInbox,
-  useRecurring, type ImportCard, type InboxItemRow, type RecurringRow,
+  dismissInboxItem, keepImportNow, keepInboxItem, reopenInboxItem, skipImportNow, stopReviewing, undoKeep, undoSkip, unkeepInboxItem, useCategories, useDataLayer, useHousehold,
+  useImportQueue, useInbox, useRecurring, type ImportCard, type InboxItemRow, type RecurringRow,
 } from '../../data';
 import { Button, ICON, useToast } from '../../ui/primitives';
+import { Animal } from '../../ui/rig/Animal';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
-import type { FormState } from '../entry/form';
+import { draftOf, type FormState } from '../entry/form';
 import { formFromTemplate } from '../entry/schedule';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
@@ -55,33 +57,77 @@ export function Inbox() {
   const toast = useToast();
   const item = items?.[0];
 
+  /** The bill as its regular payment would enter it (payer, split, category), at its day and the usual amount. */
+  const billForm = (it: InboxItemRow, bill: Bill): Partial<FormState> => {
+    const template: RecurringRow | undefined = templates?.find((t) => t.id === it.recurring_id);
+    const base: Partial<FormState> = template ? formFromTemplate(template, people.list, bill.date) : {};
+    return {
+      ...base,
+      amountText: bill.estimate > 0 ? formatPlainPounds(pence(bill.estimate)) : '',
+      description: bill.description,
+      categoryId: bill.categoryId ?? base.categoryId ?? null,
+      categoryTouched: true,
+      splitTouched: true,
+      date: bill.date,
+    };
+  };
+  /** REC-3 (S9a, DESIGN §4.9): "Usually £90.00": the person's tap keeps the bill at its usual amount, at once. */
+  const keepUsual = (it: InboxItemRow, bill: Bill) => {
+    const form = billForm(it, bill);
+    const built = 'payer' in form ? draftOf(form as FormState, people.list) : null;
+    if (!built || !('draft' in built)) {
+      keep(it, bill);
+      return;
+    }
+    try {
+      keepInboxItem(it.id, built.draft);
+      setDecided((d) => new Set([...d, it.id]));
+      // INB-2 (S9a review): Undo takes the entry away (deleted, logged) and puts the bill back in the Inbox.
+      const undo = () => {
+        try {
+          unkeepInboxItem(it.id);
+        } catch (err) {
+          toast.show({ message: plainError(err) });
+          return;
+        }
+        setDecided((d) => new Set([...d].filter((x) => x !== it.id)));
+      };
+      toast.show({
+        message: strings.entry.savedWhat(built.draft.description, formatPence(built.draft.amount)),
+        action: { label: strings.entry.undo, onAction: undo },
+        duration: 5000,
+      });
+    } catch (err) {
+      toast.show({ message: plainError(err) });
+    }
+  };
   const keep = (it: InboxItemRow, bill: Bill) => {
     // SCAN-4: a receipt sorted later opens the Add sheet with its photo (read then, if smart features are on).
     if (it.source === 'scan' && it.receipt_path) {
       sheets.openEntry({ mode: 'add', inboxItem: it.id, receiptPath: it.receipt_path });
       return;
     }
-    const template: RecurringRow | undefined = templates?.find((t) => t.id === it.recurring_id);
-    const base: Partial<FormState> = template ? formFromTemplate(template, people.list, bill.date) : {};
-    sheets.openEntry({
-      mode: 'add',
-      inboxItem: it.id,
-      prefill: {
-        ...base,
-        amountText: bill.estimate > 0 ? formatPlainPounds(pence(bill.estimate)) : '',
-        description: bill.description,
-        categoryId: bill.categoryId ?? base.categoryId ?? null,
-        categoryTouched: true,
-        splitTouched: true,
-        date: bill.date,
-      },
-    });
+    sheets.openEntry({ mode: 'add', inboxItem: it.id, prefill: billForm(it, bill) });
   };
   const dismiss = (it: InboxItemRow, bill: Bill) => {
     try {
       dismissInboxItem(it.id);
       setDecided((d) => new Set([...d, it.id]));
-      toast.show({ message: strings.inbox.dismissed(it.source === 'scan' ? strings.smart.receiptToSort : bill.description) });
+      // INB-2 (S9a): Undo puts it back in the Inbox.
+      const undo = () => {
+        try {
+          reopenInboxItem(it.id);
+        } catch (err) {
+          toast.show({ message: plainError(err) });
+          return;
+        }
+        setDecided((d) => new Set([...d].filter((x) => x !== it.id)));
+      };
+      toast.show({
+        message: strings.inbox.dismissed(it.source === 'scan' ? strings.smart.receiptToSort : bill.description),
+        action: { label: strings.entry.undo, onAction: undo },
+        duration: 5000,
+      });
     } catch (err) {
       toast.show({ message: plainError(err) });
     }
@@ -109,22 +155,29 @@ export function Inbox() {
           count={total}
           today={today}
           onKeep={keep}
+          onUsual={templates?.some((t) => t.id === item.recurring_id) ? keepUsual : null}
           onDismiss={dismiss}
         />
       ) : cards?.[0] ? (
         <ImportCardView key={cards[0].id} card={cards[0]} count={total} today={today} />
       ) : cards === undefined ? null : (
-        <p className="text-note text-ink-2 m-0">{strings.inbox.nothing}</p>
+        // S9b (INB-2): nothing waiting, and the cat asleep on it (as Activity's empty list).
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <span aria-hidden="true"><Animal kind="cat" mood="sleepy" pose="curled" size={96} /></span>
+          <p className="text-note text-ink-2 m-0 max-w-[30ch]">{strings.inbox.nothing}</p>
+        </div>
       )}
     </div>
   );
 }
 
-function InboxCard({ item, count, today, onKeep, onDismiss }: {
+function InboxCard({ item, count, today, onKeep, onUsual, onDismiss }: {
   item: InboxItemRow;
   count: number;
   today: IsoDate;
   onKeep: (it: InboxItemRow, bill: Bill) => void;
+  /** REC-3: the one-tap answer, for a bill with its regular payment and a usual amount. */
+  onUsual: ((it: InboxItemRow, bill: Bill) => void) | null;
   onDismiss: (it: InboxItemRow, bill: Bill) => void;
 }) {
   const bill = billOf(item);
@@ -140,7 +193,16 @@ function InboxCard({ item, count, today, onKeep, onDismiss }: {
       ) : (
         <>
           <p className="text-subtitle m-0 break-words">{strings.inbox.due(bill.description)}</p>
-          <p className="text-secondary text-ink-2 nums-list m-0">{strings.inbox.usual(formatPence(pence(bill.estimate)), formatDate(bill.date, today))}</p>
+          {onUsual && bill.estimate > 0 ? (
+            <>
+              <p className="text-secondary text-ink-2 nums-list m-0">{formatDate(bill.date, today)}</p>
+              <div>
+                <Button variant="plain" onClick={() => { onUsual(item, bill); }}>{strings.inbox.usually(formatPence(pence(bill.estimate)))}</Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-secondary text-ink-2 nums-list m-0">{strings.inbox.usual(formatPence(pence(bill.estimate)), formatDate(bill.date, today))}</p>
+          )}
         </>
       )}
       <div className="flex flex-wrap gap-3">

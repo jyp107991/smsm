@@ -18,11 +18,11 @@ describe('category memory', () => {
     open = layer;
     await layer.ready;
     rememberChoice('  Sainsbury’s ', { categoryId: categoryId('Household') }, layer);
-    // At once, before the server has answered.
-    expect(layer.memory().map((m) => [m.key, m.category_id])).toEqual([['sainsbury’s', categoryId('Household')]]);
+    // At once, before the server has answered. S9a (TXT-3): the normalised key leaves the apostrophe out (was 'sainsbury’s').
+    expect(layer.memory().map((m) => [m.key, m.category_id])).toEqual([['sainsburys', categoryId('Household')]]);
     expect(layer.waiting()).toHaveLength(0);
     await layer.idle();
-    expect(controls.tables.categoryMemory).toMatchObject([{ household_id: HID, key: 'sainsbury’s', category_id: categoryId('Household'), source: 'user', uses: 1 }]);
+    expect(controls.tables.categoryMemory).toMatchObject([{ household_id: HID, key: 'sainsburys', category_id: categoryId('Household'), source: 'user', uses: 1 }]);
   });
 
   it('CAT-4: a split is remembered the same way; choosing only one keeps the other', async () => {

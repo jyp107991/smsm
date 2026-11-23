@@ -32,7 +32,7 @@ export function StatementPage({ month }: { month: string }) {
   const tableName = useId();
   const s = useMemo(() => {
     if (!entries || !settlements || !a || !b) return null;
-    return statement(entries.map(toInsight), settlements.map((x) => ({ ...toSettle(x), id: x.id })), [a.id, b.id], month);
+    return statement(entries.map(toInsight), settlements.map((x) => ({ ...toSettle(x), id: x.id, createdAt: x.created_at })), [a.id, b.id], month);
   }, [entries, settlements, a, b, month]);
   const name = strings.recap.monthName(month);
   const balance = (nets: Record<string, number>) => {

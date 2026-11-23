@@ -6,10 +6,13 @@ import { installGlobalErrorReporting } from './data/reporting';
 import { applyTheme } from './ui/theme';
 import { dismissBoot } from './ui/boot';
 import { installPreloadRecovery } from './ui/loadRetry';
+import { installShort } from './ui/short';
 
 installGlobalErrorReporting();
 // The theme this phone chose, before the first paint (DESIGN §6: both themes, following the system unless set).
 applyTheme();
+// S9b review 3: how short the screen is (index.html set it before the first paint; kept up to date from here).
+installShort();
 
 // Korean font slices for the default type (DESIGN §3.2): hundreds of small @font-face rules, so they
 // load after first paint rather than blocking it. Until they arrive, Hangul shows in the phone's own font.

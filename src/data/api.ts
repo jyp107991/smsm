@@ -82,7 +82,7 @@ export type RecurringWrite = Pick<RecurringRow, (typeof RECURRING_WRITE_COLUMNS)
 export type RecurringColumn = Exclude<(typeof RECURRING_WRITE_COLUMNS)[number], 'id' | 'household_id'>;
 
 /** An Inbox decision (INB-2): kept (with the entry it became) or dismissed. */
-export interface InboxPatch { status: 'kept' | 'dismissed'; expense_id: string | null }
+export interface InboxPatch { status: 'open' | 'kept' | 'dismissed'; expense_id: string | null }
 
 /** The columns the phone owns on a category (CAT-1). */
 /** The columns the phone owns on a chapter (CHP-1; S4a). */

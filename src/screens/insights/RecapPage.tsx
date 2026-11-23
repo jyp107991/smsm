@@ -1,6 +1,6 @@
 /**
  * The recap (S5b; INS-2, DESIGN §4.7): one screen, five parts: the headline; one stacked bar of where it went;
- * up to three notes; between you (what each paid, today's balance, Settle up); one moment. Template wording; the
+ * up to three notes; between you (what each paid, the balance at the month's end, Settle up); one moment. Template wording; the
  * figures are the core's (core/recap). From settle day on, the current month's recap is "so far".
  */
 import { ArrowLeft } from 'lucide-react';
@@ -10,6 +10,8 @@ import { formatPence, pence } from '../../core/money';
 import { recapOf } from '../../core/recap';
 import { recapWording, useBalance, useCategories, useDataLayer, useHousehold } from '../../data';
 import { Button, ICON } from '../../ui/primitives';
+import { Animal, type AnimalKind } from '../../ui/rig/Animal';
+import { categoryColour } from '../../ui/tokens';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
 import { NO_CATEGORIES } from '../shared/empty';
@@ -50,6 +52,9 @@ export function RecapPage({ month }: { month: string }) {
   useEffect(() => { if (seen !== null) markRecapSeen(month, seen); }, [seen, month]);
   const name = strings.recap.monthName(month);
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? strings.insights.uncategorised;
+  const colourOf = (id: string | null) => (id === null ? 'stone' : categoryColour(categories.find((c) => c.id === id)?.colour ?? 'stone'));
+  const [first, second] = people.list;
+  const animals: AnimalKind[] = [first?.animal ?? 'cat', second?.animal ?? (first?.animal === 'dog' ? 'cat' : 'dog')];
 
   const header = (
     <header className="flex flex-col gap-2">
@@ -78,23 +83,37 @@ export function RecapPage({ month }: { month: string }) {
   const spent = recap.total > 0;
 
   const owes = balance.status === 'ready' && balance.state.kind === 'owes';
+  const worded = wording !== null && wording.month === month;
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-8 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
       {header}
       <article className="bg-surface flex flex-col gap-8 rounded-[20px] px-5 py-6">
+        {/* DESIGN §4.7: the month with both animals (still: nothing on the recap plays by itself). */}
+        <div aria-hidden="true" className="-mb-4 flex items-end justify-center gap-1">
+          {animals.map((kind, i) => <Animal key={i} kind={kind} mood="happy" pose="sitting" size={72} motion={false} />)}
+        </div>
         <Part title={strings.recap.headline} hidden>
-          <p className="text-sentence nums-list m-0">{spent ? (wording?.month === month ? wording.headline : recap.headline) : strings.recap.nothing}</p>
-          {spent && wording?.month === month && wording.aside ? <p className="text-body text-ink-2 m-0">{wording.aside}</p> : null}
+          <p className="text-sentence nums-list m-0">{spent ? (worded ? wording.headline : recap.headline) : strings.recap.nothing}</p>
+          {spent && worded && wording.aside ? <p className="text-body text-ink-2 m-0">{wording.aside}</p> : null}
+          {/* The chapters line belongs to the template's everyday headline: kept wording (from before S9a, or any
+              wording) may already count the chapters in its total, so beside it the line would count them twice. */}
+          {spent && !worded && recap.comparison !== null && recap.total !== recap.everyday ? (
+            <p className="text-body text-ink-2 nums-list m-0">{strings.recap.chaptersLine(formatPence(pence(recap.total - recap.everyday)))}</p>
+          ) : null}
         </Part>
 
         {recap.bar.length > 0 ? (
           <Part title={strings.recap.whereItWent}>
-            <StackedBar items={recap.bar.map((b) => ({ key: b.categoryId ?? (b.name ? 'rest' : 'none'), colour: b.categoryId === null ? 'stone' : (categories.find((c) => c.id === b.categoryId)?.colour ?? 'stone'), total: b.total }))} />
+            <StackedBar items={recap.bar.map((b) => ({ key: b.categoryId ?? (b.name ? 'rest' : 'none'), colour: colourOf(b.categoryId), total: b.total }))} />
+            {/* S9b (INS-2): each part of the bar named beside its own colour, with its amount: never colour alone. */}
             <ul aria-label={strings.recap.whereItWent} className="m-0 list-none p-0">
               {recap.bar.map((b) => (
                 <li key={b.categoryId ?? (b.name ? 'rest' : 'none')} className="border-line flex min-h-11 items-baseline justify-between gap-4 border-b py-2 last:border-b-0">
-                  <span className="text-body min-w-0 break-words">{b.name || catName(b.categoryId)}</span>{' '}
+                  <span className="text-body flex min-w-0 items-baseline gap-2.5 break-words">
+                    <span aria-hidden="true" className="inline-block size-2.5 shrink-0 rounded-[3px]" style={{ background: `var(--cat-${colourOf(b.categoryId)})` }} />
+                    <span className="min-w-0">{b.name || catName(b.categoryId)}</span>
+                  </span>{' '}
                   <span className="text-body nums-list shrink-0">{formatPence(b.total)}</span>
                 </li>
               ))}
@@ -114,8 +133,15 @@ export function RecapPage({ month }: { month: string }) {
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {spent ? people.list.map((p) => <li key={p.id} className="text-body nums-list">{strings.recap.paidLine(p.name, formatPence(recap.paid[p.id] ?? pence(0)))}</li>) : null}
           </ul>
-          {balance.status === 'ready' ? (
-            <p className="text-body m-0">{(() => { const w = balanceWords(balance.state, people.name); return `${w.words}${w.amount ?? ''}`; })()}</p>
+          {/* S9a (INS-2): the balance when the month ended, from the one balance function (core/recap), not today's. */}
+          {people.list.length === 2 ? (
+            <div className="flex flex-col gap-0.5">
+              <p className="text-secondary text-ink-2 m-0">{recap.soFar ? strings.recap.balanceToday : strings.recap.balanceAtEnd(strings.recap.shortName(month))}</p>
+              <p className="text-body nums-list m-0">{(() => {
+                const w = balanceWords(recap.balance ? { kind: 'owes', ...recap.balance } : { kind: 'square' }, people.name);
+                return `${w.words}${w.amount ?? ''}`;
+              })()}</p>
+            </div>
           ) : null}
           {owes ? <div><Button variant="plain" onClick={() => { sheets.openSettle({ mode: 'new' }); }}>{strings.home.settleUp}</Button></div> : null}
         </Part>

@@ -33,7 +33,7 @@ test('ACT-1 OFF-3 TXT-3 DAT-1: Activity groups by day, newest first; search igno
   await addWithSheet(jae.page, { amount: '25', description: 'Flowers', category: 'Gifts', notes: 'birthday' });
   const settle = await openSettleUp(sam.page);
   await settle.getByRole('textbox', { name: 'Amount' }).fill('5');
-  await settle.getByRole('button', { name: 'Record it' }).click();
+  await settle.getByRole('button', { name: 'Record Sam’s payment' }).click();
   await rowNamed(household.id, 'Flowers');
 
   await goActivity(jae.page);

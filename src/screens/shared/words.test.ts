@@ -1,7 +1,7 @@
 /** The screens' wording (DESIGN §5): sentences with names, history lines, requests. */
 import { describe, expect, it } from 'vitest';
 import { pence } from '../../core/money';
-import { balanceWords, entrySentence, historyLine, requestWords, splitWords, whenWords, type Person } from './words';
+import { balanceWords, dayInSentence, entrySentence, historyLine, requestWords, splitWords, whenWords, type Person } from './words';
 
 const J = 'j';
 const S = 's';
@@ -52,6 +52,24 @@ describe('history (ACT-2)', () => {
     );
     expect(both).toBe('Jae changed the description and the category, yesterday 18:02');
     expect(historyLine({ actor: null, action: 'created', at, summary: {} }, people, '2026-11-14', 'Europe/London')).toMatch(/^Posted automatically/);
+  });
+
+  it('ACT-2 REC-1: a regular payment paused, resumed, ended or given a new rhythm says so', () => {
+    const line = (summary: object) => historyLine({ actor: J, action: 'edited', at, summary }, people, '2026-11-13', 'Europe/London');
+    expect(line({ active: { before: true, after: false } })).toBe('Jae paused it, today 18:02');
+    // The database leaves posted_count out of the log; the in-memory one does too, but a stray one changes nothing.
+    expect(line({ active: { before: false, after: true }, posted_count: { before: 3, after: 5 } })).toBe('Jae resumed it, today 18:02');
+    expect(line({ end_date: { before: null, after: '2026-11-13' } })).toBe('Jae changed the end date, today 18:02');
+    expect(line({ frequency: { before: 'monthly', after: 'weekly' }, every: { before: 1, after: 3 }, start_date: { before: '2026-12-03', after: '2026-11-28' } }))
+      .toBe('Jae changed how often and the start, today 18:02');
+    // Paused together with something else is an ordinary edit.
+    expect(line({ active: { before: true, after: false }, description: { before: 'a', after: 'b' } })).toBe('Jae changed the description, today 18:02');
+  });
+
+  it('REC-1: a day inside a sentence is lower case when it is today or yesterday', () => {
+    expect(dayInSentence('2026-11-13', '2026-11-13')).toBe('today');
+    expect(dayInSentence('2026-11-12', '2026-11-13')).toBe('yesterday');
+    expect(dayInSentence('2026-11-10', '2026-11-13')).toBe('Tue 10 Nov');
   });
 
   it('DAT-1: the time is the phone\'s own day and clock', () => {

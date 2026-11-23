@@ -598,6 +598,9 @@ isOneToOne: false
 "gen_salt":
 { Args: { "": string }; Returns: string
                            },
+"give_other_its_emoji":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
 "health":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },

@@ -60,7 +60,7 @@
  *   - Under the monzo.me name a check line "Sam will pay you at monzo.me/jaetest", live as you type; "@name"
  *     is accepted and saved without the "@". "Usual split" is not in the "Paying each other" section.
  *   - Settle up opened by the person owed says "Sam paid Jae" and its button is "Record Sam’s payment" (the
- *     one who owes still reads "Sam pays Jae" and "Record it"). Editing a settle-up: dialog "Edit settle-up".
+ *     one who owes still reads "Sam pays Jae"; S9a: its button is "Record Sam’s payment" too). Editing a settle-up: dialog "Edit settle-up".
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -703,14 +703,14 @@ describe('Q-U11 SET-1 SET-2 SET-3 PPL-5: Settings and Settle up say who', () => 
     expect(controls.tables.settlements.map((s) => [s.from_user, s.to_user, s.amount_pence])).toEqual([[SAM_ID, JAE_ID, 2000]]);
   });
 
-  it('Q-U11 SET-1: the one who owes still reads "Sam pays Jae" and "Record it"', async () => {
+  it('Q-U11 SET-1: the one who owes still reads "Sam pays Jae"; the button names Sam’s payment (S9a fix 15, was "Record it")', async () => {
     const { layer } = couple({ as: 'sam', expenses: [storedExpense()] });
     show(layer);
     const balance = await screen.findByRole('region', { name: 'Balance' });
     fireEvent.click(await within(balance).findByRole('button', { name: 'Settle up' }));
     const sheet = await screen.findByRole('dialog', { name: 'Settle up' });
     expect(within(sheet).getByText('Sam pays Jae')).toBeTruthy();
-    expect(within(sheet).getByRole('button', { name: 'Record it' })).toBeTruthy();
+    expect(within(sheet).getByRole('button', { name: 'Record Sam’s payment' })).toBeTruthy();
   });
 
   it('Q-U11 SET-3: editing a settle-up is titled "Edit settle-up"', async () => {

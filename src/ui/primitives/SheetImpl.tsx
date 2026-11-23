@@ -7,6 +7,8 @@ import { strings } from '../strings';
 import { Button } from './Button';
 import { cx, ICON } from './util';
 import { swallowRepeatTap, watchTaps } from '../taps';
+import { useWide } from '../wide';
+import { inToastLayer, pressBeganInToastLayer } from './Toast';
 
 import type { SheetProps } from './Sheet';
 
@@ -43,14 +45,19 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
 }) {
   const ownId = useId();
   const id = layerId ?? ownId;
+  // S9b (DESIGN §4.11, L3): from 900 px wide a sheet is a dialog in the middle of the screen (a picker small, the add
+  // form taller), not a drawer along the bottom far from what opened it; it isn't dragged there.
+  const wide = useWide();
   const [confirming, setConfirming] = useState(false);
   const active = useRef(false);
   const opener = useRef<HTMLElement | null>(null);
 
   // Before the content mounts (the portal renders a beat later), so this is still the opener.
   // A sheet opened over another (the date grid over the Add sheet) stacks above it, scrim and all.
-  const [stacked, setStacked] = useState({ open: false, depth: 0 });
-  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth });
+  // S9b review 8: how it moves is chosen as it opens (a dialog's fade from 900 px, else the drawer's rise), so a window
+  // resized across 900 px while it is open doesn't play its entrance again.
+  const [stacked, setStacked] = useState({ open: false, depth: 0, wide });
+  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth, wide: open ? wide : stacked.wide });
   const depth = stacked.depth;
   useLayoutEffect(() => {
     if (open) opener.current = focusedElement();
@@ -145,6 +152,7 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
       }}
       dismissible={!dirty}
       repositionInputs={false}
+      handleOnly={wide}
     >
       <Drawer.Portal>
         {/* The scrim (Q-L3): warm ink by day, black by night, so the sheet reads as lifted off a dimmed page. */}
@@ -173,20 +181,33 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
             opener.current = null;
           }}
           onPointerDownOutside={(event) => {
+            // S9b (ADD-6): Undo on the toast is not a tap outside the sheet (S9b review: nor when the sheet hears of the
+            // tap only after Undo has replaced the toast, as it does on a touch screen).
+            if (inToastLayer(event.target) || pressBeganInToastLayer()) {
+              event.preventDefault();
+              return;
+            }
             if (dirty) {
               event.preventDefault();
               setConfirming(true);
             }
           }}
           style={{ zIndex: 50 + 10 * depth }}
+          data-sheet={full ? 'full' : 'fit'}
+          data-sheet-motion={stacked.wide ? 'dialog' : 'drawer'}
           className={cx(
             'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
             'max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
             full && 'h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
+            // From 900 px: centred over the whole screen (the rail under its dim too), all corners rounded.
+            'min-[900px]:top-0 min-[900px]:my-auto min-[900px]:w-[calc(100%-4rem)] min-[900px]:rounded-[28px]',
+            full
+              ? 'min-[900px]:h-[min(calc(100dvh-4rem),52rem)] min-[900px]:max-h-[calc(100dvh-4rem)] min-[900px]:max-w-[36rem]'
+              : 'min-[900px]:h-fit min-[900px]:max-h-[min(80dvh,44rem)] min-[900px]:max-w-[28rem]',
           )}
         >
           {/* The drag handle: decoration only (the whole sheet drags; Close and back are the accessible ways out). */}
-          <div aria-hidden="true" className="bg-line mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full" />
+          <div aria-hidden="true" className="bg-line mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full min-[900px]:invisible min-[900px]:h-0 min-[900px]:mt-1" />
           <header className="flex shrink-0 items-start gap-2 pt-2 pr-2 pl-5">
             <div className="min-w-0 flex-1 pt-2">
               <Drawer.Title className="text-title break-words">{title}</Drawer.Title>

@@ -1,9 +1,13 @@
+/** S9a (TXT-3): the apostrophe-like marks people and keyboards type: ’ ‘ ʼ ′ and the straight one. */
+const APOSTROPHES = /['\u2018\u2019\u02BC\u2032]/gu;
+
 /**
  * Text keys for matching and search (SPEC TXT-3): Unicode-normalised (NFKC, so full-width and half-width
- * forms and composed/decomposed Hangul agree), case-folded without a locale, trimmed, inner spaces collapsed.
+ * forms and composed/decomposed Hangul agree), case-folded without a locale, trimmed, inner spaces collapsed,
+ * and apostrophes left out (S9a), so "sainsbury's", "Sainsbury’s" and "sainsburys" are one key.
  */
 export function normaliseKey(s: string): string {
-  return s.normalize('NFKC').toLowerCase().trim().replace(/\s+/gu, ' ');
+  return s.normalize('NFKC').replace(APOSTROPHES, '').toLowerCase().trim().replace(/\s+/gu, ' ');
 }
 
 export function matches(haystack: string, needle: string): boolean {

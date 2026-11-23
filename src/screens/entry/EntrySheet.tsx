@@ -17,6 +17,7 @@ import { formatDate, formatDay } from '../../core/dates';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
+import { splitForNewPayer } from '../../core/split';
 import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
@@ -37,15 +38,16 @@ import { DateSheet } from '../shared/MonthGrid';
 import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
 import { defaultSplit, descriptionSuggestions, guessFor, otherCategoryId } from '../shared/suggest';
-import type { Person } from '../shared/words';
+import { dayInSentence, type Person } from '../shared/words';
 import type { EntryRequest } from '../sheets';
 import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
 import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
 import { Itemise, PhotoButton, ReceiptPhoto, type ReadingState } from './ReceiptParts';
 import { RecurringHistory, Toggle } from './RecurringParts';
+import { TagsField } from './TagsField';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
-  blankForm, draftOf, followExact, formFromRow, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, sumWords, summaryWords,
+  backSoFar, blankForm, draftOf, followExact, formFromRow, movesBalance, parsedAmount, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, stillToComeBack, sumWords, summaryWords,
   withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
 } from './form';
 
@@ -99,7 +101,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   // The form starts once, from what was asked; later changes to the lists don't reset what is typed.
   const [initial] = useState((): FormState => {
     if (request.mode === 'edit' && existing) return formFromRow(existing, pair, request.input);
-    if (request.mode === 'refund') return refundForm(request.of, pair, today);
+    if (request.mode === 'refund') return refundForm(request.of, pair, today, entries);
     if (template) return formFromTemplate(template, pair, today);
     const split = defaultSplit({ remembered: null, category: undefined, householdRatio: household?.default_ratio, people: pair, me: me?.id ?? '' });
     const blank = blankForm({ me: me?.id ?? '', people: pair, today, split });
@@ -162,6 +164,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [pickingDate, setPickingDate] = useState(false);
   // Q-U5: "Other" stays chosen once picked, or when the split started off the chips, even when its stepper
   // passes a preset (otherwise the stepper vanishes under the finger and the next tap lands on the date).
+  // S9a (fix 8): who paid was changed in this sheet.
+  const [payerMoved, setPayerMoved] = useState(false);
   const [otherChosen, setOtherChosen] = useState(() => {
     const id = pair[0]?.id;
     return initial.splitMode === 'ratio' && id !== undefined && !(SHEET_PRESETS as readonly number[]).includes(initial.ratio[id] ?? 50);
@@ -398,6 +402,31 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       return;
     }
     const draft = result.draft;
+    // MB-2 (S9a): never more back than the original still has to come back (the database refuses it too).
+    const original = draft.kind === 'money_back' && draft.refundOf ? entries.find((x) => x.id === draft.refundOf) : undefined;
+    // As the database: only a change that raises it is checked (an older refund can still be renamed).
+    const raises = !(existing && existing.kind === 'money_back' && existing.deleted_at === null && existing.refund_of === draft.refundOf
+      && draft.amount <= existing.amount_pence);
+    // MB-3 (S9a review): money back is never for an original that was deleted (the database refuses it too).
+    if (original && raises && original.deleted_at !== null) {
+      setErrors([strings.invalid.originalDeleted]);
+      return;
+    }
+    if (original && raises) {
+      const left = stillToComeBack(original, entries, existing?.id);
+      if (draft.amount > left) {
+        setErrors([strings.entry.moreThanLeft(formatPence(left))]);
+        return;
+      }
+    }
+    // MB-2 (S9a review): an original is never edited below what has already come back on it (the database too).
+    if (existing && existing.kind === 'expense' && draft.kind === 'expense' && draft.amount < existing.amount_pence) {
+      const back = backSoFar(existing, entries);
+      if (back > draft.amount) {
+        setErrors([strings.entry.backMoreThanAmount(formatPence(back))]);
+        return;
+      }
+    }
     let id: string;
     let undo: () => void;
     try {
@@ -470,7 +499,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       setErrors([strings.recurring.everyNeeded]);
       return;
     }
-    if (r.endDate !== null && r.endDate < r.startDate) {
+    // An end before the start is refused when picked; one already stored (End tapped before it started) stays as it is.
+    const keptEnd = template !== undefined && r.endDate === template.end_date && r.startDate === template.start_date;
+    if (r.endDate !== null && r.endDate < r.startDate && !keptEnd) {
       setErrors([strings.recurring.endBeforeStart]);
       return;
     }
@@ -558,6 +589,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
   const remainder = remainderWords(s, pair);
   const summary = summaryWords(s, pair);
+  // S9a (fix 8): after a change of payer, a combination that doesn't move the balance says so.
+  const noChange = (() => {
+    if (isBack || movesBalance(s, pair) !== false) return null;
+    return strings.entry.noBalanceChange(payerPerson.name);
+  })();
   const sum = sumWords(s);
   const yesterday = yesterdayOf(today);
   const otherDay = s.date !== today && s.date !== yesterday;
@@ -651,14 +687,18 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
               people={pair}
               value={s.payer}
               onChange={(payer) => {
-                // A split is each person's own share; only its wording follows the payer. Money back that is
-                // all one person's stays that person's (Q-U5: the meaning never flips).
-                if (isBack && (s.splitMode === 'treat' || s.splitMode === 'for_other')) {
-                  const holder = s.splitMode === 'treat' ? s.payer : other?.id;
-                  update({ ...s, payer, splitMode: holder === payer ? 'treat' : 'for_other' });
+                if (payer === s.payer) return;
+                // A split is each person's own share; only its wording follows the payer (Q-U5, S9a fix 8: the
+                // meaning never flips). "For Sam" that Sam now paid is Sam's own; a treat someone else paid is "for"
+                // the one whose treat it was (core/split splitForNewPayer).
+                setPayerMoved(true);
+                if ((s.splitMode === 'treat' || s.splitMode === 'for_other') && first && second) {
+                  const next = splitForNewPayer({ amount: parsedAmount(s) ?? pence(0), split: { mode: s.splitMode }, from: s.payer, to: payer, members: [first.id, second.id] });
+                  update({ ...s, payer, splitMode: next.mode });
                 } else update({ ...s, payer });
               }}
             />
+            {payerMoved && noChange ? <p aria-live="polite" className="text-secondary text-ink-2 m-0 mt-2">{noChange}</p> : null}
           </Group>
 
           <Group label={strings.entry.shared}>
@@ -719,7 +759,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         />
       ) : (
       <Group label={strings.entry.date}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
+        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.entry.date}>
           <Chip selected={s.date === today} onSelectedChange={() => { touched.current.date = true; update({ ...s, date: today }); }}>
             {strings.entry.today}
           </Chip>
@@ -771,6 +811,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
+        {/* ADD-4: tags, as chips (quick add's #tags land here too). A regular payment keeps none of its own. */}
+        {!rec ? (
+          <div className="mt-4">
+            <TagsField tags={s.tags} onChange={(tags) => { update({ ...s, tags }); }} />
+          </div>
+        ) : null}
         {/* CHP-1: with no chapter open yet, one can be started from here (it is chosen for this entry). */}
         {!rec && request.mode === 'add' && request.inboxItem === undefined && !(chapters ?? []).some((c) => !c.closed) ? (
           <div className="mt-4">
@@ -788,7 +834,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         <div className="flex flex-col gap-4">
           {!template.active ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.pausedNote}</p> : null}
           {template.end_date !== null && template.end_date <= today ? (
-            <p className="text-secondary text-ink-2 m-0">{strings.recurring.endedNote(formatDay(template.end_date, today))}</p>
+            <p className="text-secondary text-ink-2 m-0">{strings.recurring.endedNote(dayInSentence(template.end_date, today))}</p>
           ) : null}
           <div className="flex flex-wrap gap-3">
             {template.active
@@ -814,7 +860,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       <DateSheet
         open={picking !== null}
         onClose={() => { setPicking(null); }}
-        value={picking === 'end' ? (rec.endDate ?? rec.startDate) : rec.startDate}
+        // An end not picked yet starts from today (or the start, if that is later), not from a start long past.
+        value={picking === 'end' ? (rec.endDate ?? (rec.startDate > today ? rec.startDate : today)) : rec.startDate}
         today={today}
         max={null}
         title={picking === 'end' ? strings.recurring.pickEnd : strings.recurring.pickStart}
@@ -956,7 +1003,7 @@ function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
       </Group>
 
       <Group label={strings.recurring.starts}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.starts}>
+        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.recurring.starts}>
           <Chip selected={rec.startDate === today} onSelectedChange={() => { onChange({ startDate: today }); }}>
             {strings.entry.today}
           </Chip>
@@ -980,7 +1027,7 @@ function EndsAndSwitches({ rec, today, onChange, onPick }: {
   return (
     <>
       <Group label={strings.recurring.ends}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.ends}>
+        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.recurring.ends}>
           <Chip selected={rec.endDate === null} onSelectedChange={() => { onChange({ endDate: null }); }}>
             {strings.recurring.never}
           </Chip>

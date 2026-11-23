@@ -4,11 +4,11 @@
  * the database's log. A deleted entry says so and offers Restore. Settle-ups open here too.
  */
 import { ArrowLeft } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, photoUrl, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useHistory,
+  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useHistory,
   useOnline, useSettlements, useSyncStatus, type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -17,11 +17,13 @@ import { go, pathOf } from '../../ui/router';
 import { Button, ICON, useToast } from '../../ui/primitives';
 import { strings } from '../../ui/strings';
 import { CategoryMark } from '../shared/CategoryMark';
+import { ReceiptImage } from '../shared/ReceiptImage';
 import { Comments } from './Comments';
 import { countryName } from '../chapters/model';
 import { formatForeign } from '../../core/fx';
 import { Head } from '../shared/Head';
 import { useTapAction } from '../shared/once';
+import { plainError } from '../shared/plain';
 import { usePeople } from '../shared/people';
 import { entrySentence, historyLine, owesForThis, payerOf } from '../shared/words';
 import { useSheets } from '../sheets';
@@ -161,14 +163,27 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         {row.country !== home ? <Detail label={strings.places.country}>{countryName(row.country) ?? row.country}</Detail> : null}
         {row.place ? <Detail label={strings.places.place}>{row.place}</Detail> : null}
         {row.notes ? <Detail label={strings.entry.note}>{row.notes}</Detail> : null}
+        {/* ADD-4: its tags, as the small tags on its row. */}
+        {row.tags.length > 0 ? (
+          <Detail label={strings.entry.tags}>
+            <span className="inline-flex flex-wrap justify-end gap-1.5">
+              {row.tags.map((t) => <span key={t} className="text-secondary bg-sunk rounded-[8px] px-2 py-0.5 break-words">{t}</span>)}
+            </span>
+          </Detail>
+        ) : null}
       </dl>
       {row.receipt_path ? <ReceiptImage path={row.receipt_path} /> : null}
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
           <Button
             onClick={() => {
-              // Q-F4: a second tap restores nothing, and says nothing.
-              if (restoreExpense(row.id)) toast.show({ message: strings.entry.restored(label) });
+              // Q-F4: a second tap restores nothing, and says nothing. MB-3 (S9a review): money back whose original
+              // was deleted can't be restored on its own (the line says why).
+              try {
+                if (restoreExpense(row.id)) toast.show({ message: strings.entry.restored(label) });
+              } catch (err) {
+                toast.show({ message: plainError(err) });
+              }
             }}
           >
             {strings.entry.restore}
@@ -187,7 +202,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
                 if (!deleteExpense(row.id)) return;
                 toast.show({
                   message: strings.entry.deleted(label),
-                  action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
+                  action: { label: strings.entry.undo, onAction: () => { try { restoreExpense(row.id); } catch (err) { toast.show({ message: plainError(err) }); } } },
                   duration: 5000,
                 });
               }}
@@ -291,22 +306,3 @@ function History({ id }: { id: string }) {
 }
 
 /** SCAN-1: the receipt kept with the entry (this phone's copy, else a short-lived address from the server). */
-function ReceiptImage({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    void photoUrl(path).then((u) => { if (live) setUrl(u); });
-    return () => { live = false; };
-  }, [path]);
-  return (
-    <figure className="m-0">
-      {url ? (
-        <a href={url} target="_blank" rel="noreferrer" className="block w-fit">
-          <img src={url} alt={strings.smart.photo} className="bg-sunk max-h-72 max-w-full rounded-[12px] object-contain" />
-        </a>
-      ) : (
-        <span role="img" aria-label={strings.smart.photo} className="bg-sunk block h-40 w-32 rounded-[12px]" />
-      )}
-    </figure>
-  );
-}

@@ -10,7 +10,10 @@ import {
   closeChapter, setCurrentChapter, useCategories, useChapters, useCurrentChapter, useDataLayer, useEntries, useSyncStatus, useCommentCounts,
 } from '../../data';
 import { Button, ICON, useToast } from '../../ui/primitives';
-import { go } from '../../ui/router';
+import { go, pathOf } from '../../ui/router';
+import { formatDay } from '../../core/dates';
+import { newestFirst } from '../../core/filters';
+import { ReceiptThumb } from '../shared/ReceiptImage';
 import { strings } from '../../ui/strings';
 import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { usePeople } from '../shared/people';
@@ -33,11 +36,35 @@ export function ChapterPage({ id }: { id: string }) {
   const [editing, setEditing] = useState<ChapterEditing>(null);
   const ids = useMemo(() => people.list.map((p) => p.id), [people.list]);
   const summary = useMemo(() => (chapter ? summaryOf(chapter, entries, ids, today) : null), [chapter, entries, ids, today]);
+  // S9a (ACT-1): the one order, as Activity: newest first, then the one added last, then by id.
   const rows = useMemo(
     () => entries.filter((e) => e.chapter_id === id && e.deleted_at === null)
-      .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.created_at < b.created_at ? 1 : -1)),
+      .sort((a, b) => newestFirst({ date: a.date, createdAt: a.created_at, id: a.id }, { date: b.date, createdAt: b.created_at, id: b.id })),
     [entries, id],
   );
+  // S9b (CHP-3): its entries by day (as Activity), its places in the order first visited, its receipt photos.
+  const days = useMemo(() => {
+    const groups: { date: string; rows: typeof rows }[] = [];
+    for (const r of rows) {
+      const last = groups[groups.length - 1];
+      if (last?.date === r.date) last.rows.push(r);
+      else groups.push({ date: r.date, rows: [r] });
+    }
+    return groups;
+  }, [rows]);
+  const places = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of [...rows].reverse()) {
+      const name = r.place?.trim();
+      if (!name) continue;
+      const key = name.normalize('NFKC').toLowerCase();
+      if (!seen.has(key)) seen.set(key, name);
+    }
+    return [...seen.values()];
+  }, [rows]);
+  const photos = useMemo(() => rows.filter((r) => r.receipt_path), [rows]);
+  const placesId = useId();
+  const photosId = useId();
   const summaryId = useId();
   const catId = useId();
   const payId = useId();
@@ -118,15 +145,54 @@ export function ChapterPage({ id }: { id: string }) {
         </Figures>
       ) : null}
 
+      {places.length > 0 ? (
+        <section aria-labelledby={placesId} className="flex flex-col gap-3">
+          <h2 id={placesId} className="text-heading rule-ledger m-0">{strings.chapters.places}</h2>
+          <p className="text-body m-0 break-words">{places.join(' · ')}</p>
+        </section>
+      ) : null}
+
+      {photos.length > 0 ? (
+        <section aria-labelledby={photosId} className="flex flex-col gap-3">
+          <h2 id={photosId} className="text-heading rule-ledger m-0">{strings.chapters.photos}</h2>
+          {/* A strip of small photos, wrapping onto a second line rather than off the page; each opens its entry. */}
+          <ul className="m-0 flex list-none flex-wrap gap-3 p-0">
+            {photos.map((r) => (
+              <li key={r.id} className="shrink-0">
+                <a
+                  href={pathOf({ name: 'entry', id: r.id })}
+                  onClick={(e) => { e.preventDefault(); go({ name: 'entry', id: r.id }); }}
+                  aria-label={r.description}
+                  className="block rounded-[12px]"
+                >
+                  <ReceiptThumb path={r.receipt_path ?? ''} />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section aria-labelledby={entriesId} className="flex flex-col">
         <h2 id={entriesId} className="text-heading rule-ledger m-0">{strings.chapters.entries}</h2>
         {rows.length === 0 ? <p className="text-secondary text-ink-2 mt-3 mb-0">{strings.chapters.noEntries}</p> : (
+          // The entries, a day at a time under the day's date (as Activity): a list of days, each with its rows.
           <ul aria-labelledby={entriesId} className="m-0 list-none p-0">
-            {rows.map((r) => (
-              <li key={r.id} className="border-line border-b last:border-b-0">
-                <EntryRowView row={r} categories={categories} people={people.list} pending={pendingIds.has(r.id)} comments={commentCounts.get(r.id) ?? 0} />
-              </li>
-            ))}
+            {days.map((d) => {
+              const dayId = `${entriesId}-${d.date}`;
+              return (
+                <li key={d.date} className="flex flex-col">
+                  <h3 id={dayId} className="text-subtitle text-ink-2 mt-4 mb-0">{formatDay(d.date, today)}</h3>
+                  <ul aria-labelledby={dayId} className="m-0 list-none p-0">
+                    {d.rows.map((r) => (
+                      <li key={r.id} className="border-line border-b last:border-b-0">
+                        <EntryRowView row={r} categories={categories} people={people.list} pending={pendingIds.has(r.id)} comments={commentCounts.get(r.id) ?? 0} />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

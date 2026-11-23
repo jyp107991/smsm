@@ -92,7 +92,7 @@ export interface MemoryControls {
 const DEFAULT_CATEGORIES: readonly [string, string, string][] = [
   ['Groceries', '🛒', 'moss'], ['Eating out', '🍜', 'amber'], ['Rent & bills', '🏠', 'walnut'], ['Utilities', '💡', 'honey'],
   ['Transport', '🚆', 'slate'], ['Subscriptions', '📺', 'plum'], ['Household', '🧺', 'oak'], ['Going out', '🍸', 'berry'],
-  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '•', 'stone'],
+  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '📦', 'stone'],
 ];
 
 /** The palette names a category may use (migration 6, DESIGN §3.1). */
@@ -235,7 +235,7 @@ export function createMemoryApi(
     const o = before as Record<string, Json>;
     const n = after as Record<string, Json>;
     for (const k of Object.keys(n)) {
-      if (k === 'updated_at' || k === 'updated_by') continue;
+      if (k === 'updated_at' || k === 'updated_by' || k === 'posted_count') continue;
       if (JSON.stringify(o[k] ?? null) !== JSON.stringify(n[k] ?? null)) out[k] = { before: o[k] ?? null, after: n[k] ?? null };
     }
     return out;
@@ -272,6 +272,52 @@ export function createMemoryApi(
     else list.push(next);
     log(entity, next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
     return next;
+  }
+
+  const pounds = (p: number) => `£${String(Math.floor(p / 100))}.${String(p % 100).padStart(2, '0')}`;
+
+  /**
+   * What check_refund_limit does (S9a migration), on the row as it will be after a write (`before`: as it was). Money
+   * back is for one of the household's own expenses, never one that was deleted, and never more than it still has to
+   * come back; an original is never edited below what has come back on it. Only a write that raises what has come
+   * back is checked (new, more money, another original, restored); an unrelated edit never is.
+   */
+  function checkRefundLimit(r: ExpenseRow, before: ExpenseRow | undefined) {
+    const liveBack = (originalId: string, exceptId: string | null) => tables.expenses
+      .filter((e) => e.refund_of === originalId && e.household_id === r.household_id && e.kind === 'money_back' && e.deleted_at === null && e.id !== exceptId)
+      .reduce((t, e) => t + e.amount_pence, 0);
+    if (r.kind === 'expense') {
+      if (before && before.kind === 'expense' && r.deleted_at === null && r.amount_pence < before.amount_pence) {
+        const back = liveBack(r.id, null);
+        if (back > r.amount_pence) refuse(`money back on this is ${pounds(back)}, more than the new amount`, '23514');
+      }
+      return;
+    }
+    if (r.refund_of === null || r.deleted_at !== null) return;
+    const original = tables.expenses.find((e) => e.id === r.refund_of);
+    if (!original || original.household_id !== r.household_id || original.kind !== 'expense') {
+      refuse('money back can only be for an expense of yours', '23514');
+      return;
+    }
+    if (before && before.kind === 'money_back' && before.deleted_at === null && before.refund_of === r.refund_of && r.amount_pence <= before.amount_pence) return;
+    if (original.deleted_at !== null) refuse('the original was deleted, so this can’t be money back for it', '23514');
+    const left = Math.max(0, original.amount_pence - liveBack(original.id, r.id));
+    if (r.amount_pence > left) refuse(`that’s more than the ${pounds(left)} still to come back`, '23514');
+  }
+
+  /**
+   * What follow_original does (S9a migration): an original's live money back is deleted with it, and restored with it
+   * (as it was: not checked again).
+   */
+  function followOriginal(before: ExpenseRow, after: ExpenseRow) {
+    if (after.kind !== 'expense') return;
+    const deleting = before.deleted_at === null && after.deleted_at !== null;
+    const restoring = before.deleted_at !== null && after.deleted_at === null;
+    if (!deleting && !restoring) return;
+    for (const back of tables.expenses.filter((e) => e.refund_of === after.id && e.household_id === after.household_id && e.kind === 'money_back')) {
+      if (deleting && back.deleted_at === null) patchRow(tables.expenses, back.id, { deleted_at: after.deleted_at }, 'expense');
+      if (restoring && back.deleted_at === before.deleted_at) patchRow(tables.expenses, back.id, { deleted_at: null }, 'expense');
+    }
   }
 
   function patchRow<R extends { id: string; household_id: string; updated_at: string; deleted_at: string | null }>(
@@ -567,8 +613,18 @@ export function createMemoryApi(
           if (r.external_id !== null && tables.expenses.some((e) => e.id !== r.id && e.household_id === r.household_id && e.source === r.source && e.external_id === r.external_id)) {
             refuse('duplicate key value violates unique constraint "expenses_external"', '23505');
           }
+          checkRefundLimit(r, tables.expenses.find((e) => e.id === r.id));
         })),
-    patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => patchRow(tables.expenses, id, patch, 'expense')),
+    patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => {
+      const before = tables.expenses.find((e) => e.id === id && e.household_id === myHousehold());
+      // keep_first_deletion (S9a review): a deleted row "deleted" again keeps the moment it was first deleted, so
+      // restoring its original still finds the money back deleted with it.
+      const kept = before && before.deleted_at !== null && patch.deleted_at !== null ? { ...patch, deleted_at: before.deleted_at } : patch;
+      if (before) checkRefundLimit({ ...before, ...kept }, before);
+      const next = patchRow(tables.expenses, id, kept, 'expense');
+      if (before) followOriginal(before, next);
+      return next;
+    }),
     upsertSettlement: (row: SettlementWrite) =>
       call('upsertSettlement', row, () =>
         writeRow(tables.settlements, row, 'settlement', (w) => ({
@@ -671,9 +727,10 @@ export function createMemoryApi(
           ? { ...existing, ...sent, updated_at: stamp }
           : { posted_count: 0, created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
         if (existing) next = guardRecurring(existing, next);
-        if (next.amount_pence <= 0 || next.every < 1 || (next.end_date !== null && next.end_date < next.start_date)) {
-          refuse('new row violates check constraint "recurring_check"', '23514');
-        }
+        // The table's checks (amount > 0, every 1–52). An end before the start is not one of them: End on a payment
+        // that hasn't started yet stores today as its end (the phone refuses one picked before the start).
+        if (next.amount_pence <= 0) refuse('new row violates check constraint "recurring_amount_pence_check"', '23514');
+        if (next.every < 1 || next.every > 52) refuse('new row violates check constraint "recurring_every_check"', '23514');
         checkMoney(next as unknown as ExpenseRow);
         if (existing) tables.recurring[i] = next;
         else tables.recurring.push(next);

@@ -103,7 +103,7 @@ describe('settling up', () => {
     expect(within(jaeSheet).getByRole('button', { name: 'Record Sam’s payment' })).toBeTruthy();
   });
 
-  it('SET-2: the person who owes gets Pay with Monzo; SET-1: an amount over what is owed gets a quiet line', async () => {
+  it('SET-2: the person who owes gets Pay with Monzo; SET-1: an amount over what is owed is refused, saying what is owed', async () => {
     const owes = couple({ as: 'sam', expenses: [storedExpense()] });
     show(owes.layer);
     fireEvent.click(await within(await balanceText()).findByRole('button', { name: 'Settle up' }));
@@ -112,12 +112,18 @@ describe('settling up', () => {
     const amount = within(samSheet).getByRole('textbox', { name: 'Amount' });
     expect(within(samSheet).queryByText(/more than/)).toBeNull();
     fireEvent.change(amount, { target: { value: '30' } });
-    expect(within(samSheet).getByText('That’s more than the £20.00 Sam owes Jae.')).toBeTruthy();
-    // A quiet line, not a block: it is no alert, and the amount can still be recorded.
+    // S9a (fix 15, SET-1): more than is owed is now refused (it would turn the debt round), with what is owed and a
+    // one-tap "Use £20.00"; before S9a it was a quiet line and £30.00 could be recorded. The line is still no alert.
+    expect(within(samSheet).getByText('That’s more than Sam owes (£20.00).')).toBeTruthy();
     expect(within(samSheet).queryByRole('alert')).toBeNull();
-    fireEvent.click(within(samSheet).getByRole('button', { name: 'Record it' }));
+    fireEvent.click(within(samSheet).getByRole('button', { name: 'Record Sam’s payment' }));
     await settle(owes.layer);
-    expect(owes.controls.tables.settlements).toMatchObject([{ from_user: SAM_ID, to_user: JAE_ID, amount_pence: 3000 }]);
+    expect(owes.controls.tables.settlements).toEqual([]);
+    fireEvent.click(within(samSheet).getByRole('button', { name: 'Use £20.00' }));
+    expect(within(samSheet).queryByText(/more than/)).toBeNull();
+    fireEvent.click(within(samSheet).getByRole('button', { name: 'Record Sam’s payment' }));
+    await settle(owes.layer);
+    expect(owes.controls.tables.settlements).toMatchObject([{ from_user: SAM_ID, to_user: JAE_ID, amount_pence: 2000 }]);
   });
 
   it('SET-2: "Did it go through?" says what Yes will do, without claiming it is already recorded', async () => {

@@ -634,3 +634,82 @@ describe('the Inbox on a phone behind the UK date (DAT-1, INB-2)', () => {
     expect(c.controls.tables.expenses.filter((e) => e.recurring_id === ENERGY)).toMatchObject([{ date: '2026-11-15', occurrence_date: '2026-11-15' }]);
   });
 });
+
+// ───────── The owner's check of adding, changing, pausing and ending regular payments ─────────
+describe('changing and stopping a regular payment (REC-1, REC-6, ACT-2)', () => {
+  /** Opens a template's sheet from the list it is in. */
+  async function openFrom(list: 'Subscriptions' | 'Next 30 days' | 'Paused or ended', name: RegExp) {
+    if (list !== 'Paused or ended') showSegment(list);
+    fireEvent.click(within(await screen.findByRole('list', { name: list })).getByRole('button', { name }));
+    return screen.findByRole('dialog', { name: 'Edit regular payment' });
+  }
+  const closed = async () => { await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Edit regular payment' })).toBeNull(); }); };
+
+  it('REC-1: ended today, the sheet says "Ended today" (not "Today" mid-sentence); a paused one says so too', async () => {
+    const c = billsHousehold();
+    show(c.layer);
+    await goBills();
+    fireEvent.click(within(await openFrom('Subscriptions', /^Netflix\b/)).getByRole('button', { name: 'End' }));
+    await closed();
+    let sheet = await openFrom('Paused or ended', /^Netflix\b/);
+    expect(text(sheet)).toContain('Ended today. Nothing posts after that.');
+    expect(within(sheet).queryByRole('button', { name: 'End' })).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
+    await closed();
+    sheet = await openFrom('Paused or ended', /^Old gym\b/);
+    expect(text(sheet)).toContain('Paused. Nothing posts until you resume it.');
+    expect(within(sheet).getByRole('button', { name: 'Resume' })).toBeTruthy();
+    expect(within(sheet).queryByRole('button', { name: 'Pause' })).toBeNull();
+  });
+
+  it('ACT-2 REC-1: the history says "paused it", "resumed it" and "changed the end date", not "changed the details"', async () => {
+    const c = billsHousehold();
+    show(c.layer);
+    await goBills();
+    fireEvent.click(within(await openFrom('Subscriptions', /^Netflix\b/)).getByRole('button', { name: 'Pause' }));
+    await closed();
+    await settle(c.layer);
+    fireEvent.click(within(await openFrom('Paused or ended', /^Netflix\b/)).getByRole('button', { name: 'Resume' }));
+    await closed();
+    await settle(c.layer);
+    fireEvent.click(within(await openFrom('Subscriptions', /^Netflix\b/)).getByRole('button', { name: 'End' }));
+    await closed();
+    await settle(c.layer);
+    const sheet = await openFrom('Paused or ended', /^Netflix\b/);
+    const history = within(sheet).getByRole('region', { name: 'History' });
+    await waitFor(() => { expect(within(history).getAllByRole('listitem')).toHaveLength(3); });
+    const lines = within(history).getAllByRole('listitem').map(text);
+    expect(lines[0]).toMatch(/^Jae paused it, /);
+    expect(lines[1]).toMatch(/^Jae resumed it, /);
+    expect(lines[2]).toMatch(/^Jae changed the end date, /);
+  });
+
+  it('REC-1: "When it ends" opens on this month for a payment that started long ago (not on its first month)', async () => {
+    const c = billsHousehold();
+    show(c.layer);
+    await goBills();
+    const sheet = await openFrom('Next 30 days', /^Rent\b/);
+    const ends = within(sheet).getByRole('group', { name: 'Ends' });
+    fireEvent.click(within(ends).getAllByRole('button')[1] as HTMLElement);
+    const picker = await screen.findByRole('dialog', { name: 'When it ends' });
+    expect(within(picker).getByRole('heading', { level: 3 }).textContent).toBe('November 2026');
+  });
+
+  it('REC-1: a payment that hasn’t started yet can be ended, and its description still changed afterwards', async () => {
+    const later = template(9, { description: 'Gym', amount_pence: 2500, ...byJae(2500), category_id: categoryId('Health'), start_date: '2026-11-24', posted_count: 0 });
+    const c = couple({ recurring: [...TEMPLATES, later], expenses: POSTED, inboxItems: [ENERGY_BILL] });
+    show(c.layer);
+    await goBills();
+    fireEvent.click(within(await openFrom('Next 30 days', /^Gym\b/)).getByRole('button', { name: 'End' }));
+    await closed();
+    await settle(c.layer);
+    expect(tablesOf(c).recurring.find((r) => r.id === R(9))).toMatchObject({ end_date: TODAY, start_date: '2026-11-24' });
+    expect(screen.queryByText(/couldn’t|could not|refused/i)).toBeNull();
+    const sheet = await openFrom('Paused or ended', /^Gym\b/);
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Description' }), { target: { value: 'Gym (old)' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await closed();
+    await settle(c.layer);
+    expect(tablesOf(c).recurring.find((r) => r.id === R(9))).toMatchObject({ description: 'Gym (old)', end_date: TODAY, start_date: '2026-11-24' });
+  });
+});

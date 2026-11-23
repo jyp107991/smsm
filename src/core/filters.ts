@@ -3,6 +3,7 @@
  * Text search ignores case and character width and is Unicode-normalised (TXT-3).
  */
 import type { IsoDate } from './dates';
+import { pence, type Pence } from './money';
 import type { SplitMode, UserId } from './split';
 import { matches } from './text';
 
@@ -56,4 +57,33 @@ export function applyFilter<T extends FilterEntry>(rows: readonly T[], f: Filter
     if (f.kinds && f.kinds.length > 0 && !f.kinds.includes(r.kind)) return false;
     return true;
   });
+}
+
+/**
+ * S9a (PLC-7, CHP-6): the line above a filtered Activity ("12 entries · £340.20"), from the whole filtered set, not
+ * the rows drawn: expenses add, money back subtracts; settle-ups and deleted rows are in neither the count nor the total.
+ */
+export function filteredTotal(rows: readonly (FilterEntry & { amount: Pence; deleted?: boolean })[]): { count: number; total: Pence } {
+  let count = 0;
+  let total = 0;
+  for (const r of rows) {
+    if (r.kind === 'settlement' || r.deleted === true) continue;
+    count += 1;
+    total += r.kind === 'money_back' ? 0 - r.amount : r.amount;
+  }
+  return { count, total: pence(total) };
+}
+
+/** S9a (ACT-1): what the one order reads: the entry's date, when it was added (an ISO timestamp) and its id. */
+export interface Ordered { date: IsoDate; createdAt: string; id: string }
+
+/**
+ * S9a (ACT-1, EXP-1): the one order for Home's Recent, Activity and the statement: by date, newest first; then by when
+ * it was added, newest first; then by id, so the order never depends on the order rows arrive in.
+ */
+export function newestFirst(a: Ordered, b: Ordered): number {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+  if (a.id !== b.id) return a.id < b.id ? 1 : -1;
+  return 0;
 }

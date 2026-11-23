@@ -54,7 +54,7 @@ function rng(seed: number) {
 const CATEGORY_DEFS: readonly [string, string, string][] = [
   ['Groceries', '🛒', 'moss'], ['Eating out', '🍜', 'amber'], ['Rent & bills', '🏠', 'walnut'], ['Utilities', '💡', 'honey'],
   ['Transport', '🚆', 'slate'], ['Subscriptions', '📺', 'plum'], ['Household', '🧺', 'oak'], ['Going out', '🍸', 'berry'],
-  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '•', 'stone'],
+  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '📦', 'stone'],
 ];
 
 function id(n: number): string {
@@ -169,6 +169,10 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     });
   }
 
+  const JAPAN_CATEGORY: Record<string, string> = {
+    'ラーメン': 'Eating out', Izakaya: 'Eating out', Sushi: 'Eating out', Coffee: 'Eating out', Lawson: 'Groceries', Shinkansen: 'Transport',
+    'Temple entry': 'Travel',
+  };
   const totalDays = daysBetween(start, today);
   for (let i = 0; i <= totalDays; i += 1) {
     const date = addDays(start, i);
@@ -180,7 +184,11 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
       for (let j = 0; j < n; j += 1) {
         const yen = between(1200, 9800);
         const rate = 0.0052;
-        add({ date, description: pick(['ラーメン', 'Lawson', 'Shinkansen', 'Izakaya', 'Temple entry', 'Sushi', 'Coffee']), amount: Math.round(yen * rate * 100), category: pick(['Eating out', 'Eating out', 'Travel', 'Transport']), payer: pick(MEMBERS), chapter: japan.id, country: 'JP', place, original: { amount: yen, currency: 'JPY', rate } });
+        const description = pick(['ラーメン', 'Lawson', 'Shinkansen', 'Izakaya', 'Temple entry', 'Sushi', 'Coffee']);
+        // S9b (demo finding): each thing in its one sensible category. The draw that used to pick a category at
+        // random is still made, so every later row of the seed stays as it was.
+        pick(['Eating out', 'Eating out', 'Travel', 'Transport']);
+        add({ date, description, amount: Math.round(yen * rate * 100), category: JAPAN_CATEGORY[description] ?? 'Travel', payer: pick(MEMBERS), chapter: japan.id, country: 'JP', place, original: { amount: yen, currency: 'JPY', rate } });
       }
       continue;
     }

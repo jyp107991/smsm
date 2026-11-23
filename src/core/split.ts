@@ -77,6 +77,19 @@ export function computeEntry(input: {
   return { paid, shares };
 }
 
+/**
+ * S9a (fix 8): the split to save once the payer changes from `from` to `to`, so that nobody's share moves.
+ * "For Sam" paid by Jae becomes Sam's own (a treat: Sam paid for Sam); a treat becomes "for" the one whose treat it
+ * was; exact amounts and a ratio stay as they are (a ratio's leftover penny may move to the new payer, SPL-3).
+ */
+export function splitForNewPayer(input: { amount: Pence; split: SplitParams; from: UserId; to: UserId; members: readonly [UserId, UserId] }): SplitParams {
+  const { split, from, to } = input;
+  if (from === to) return split;
+  if (split.mode === 'for_other') return { mode: 'treat' };
+  if (split.mode === 'treat') return { mode: 'for_other' };
+  return split;
+}
+
 function sumMap(m: PenceMap): number {
   return Object.values(m).reduce((t, v) => t + v, 0);
 }

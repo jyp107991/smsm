@@ -113,6 +113,7 @@ function OwnToasts({ children }: { children: ReactNode }) {
  */
 export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDismiss: (id: number) => void }) {
   const current = showing(toasts);
+  useEffect(() => watchPresses(), []);
   // S9 (performance audit P4): the slot comes and goes with CSS animations (toast.css), not a JS animation
   // library measuring the card: the last toast stays for its short exit, inert, then goes.
   const [leaving, setLeaving] = useState<ToastEntry | null>(null);
@@ -130,18 +131,46 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
   const place = useClearPlace(layer, current !== undefined, current?.about);
   // Toasts already read out: the update prompt coming back after a passing toast isn't read again.
   const [announced] = useState(() => new Set<number>());
-  const slot = current ?? leaving;
+  // S9b (ADD-6): a sheet with no room above it (the full Add sheet) hides the toast until it closes; it then comes
+  // back for its whole time, so its Undo is never lost behind the sheet.
+  const slot = place.hidden ? null : (current ?? leaving);
   return (
     <div
       ref={layer}
       role="status"
+      // S9b (ADD-6): an explicit live region, so an open sheet (a modal dialog, which hides the rest of the page from
+      // assistive tech) leaves the toast and its Undo readable and pressable.
+      aria-live="polite"
       aria-label={strings.ui.notifications}
+      data-toast-layer=""
       style={place.top !== null ? { top: `${String(place.top)}px` } : { bottom: `max(${String(place.bottom)}px, calc(env(safe-area-inset-bottom) + 1rem))` }}
       className="pointer-events-none fixed inset-x-0 z-[90] flex flex-col items-center gap-2 px-4"
     >
       {slot ? <ToastSlot toast={slot} present={current !== undefined} onDismiss={onDismiss} announced={announced} /> : null}
     </div>
   );
+}
+
+/** Taps and focus in the toast layer are not "outside" an open sheet: pressing Undo never closes the sheet. */
+export function inToastLayer(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-toast-layer]') !== null;
+}
+
+/**
+ * S9b review: whether the press now going on began in the toast layer. A sheet hears about a tap outside it late (on a
+ * touch screen, at the click), by when Undo has already done its work and its toast (and the button) has been
+ * replaced, so the tap's own target no longer says where it began. Recorded at every pointer-down, before anything
+ * else sees it.
+ */
+let pressInToast = false;
+let listening = 0;
+const notePress = (e: PointerEvent) => { pressInToast = inToastLayer(e.target); };
+function watchPresses(): () => void {
+  if (listening++ === 0) document.addEventListener('pointerdown', notePress, { capture: true });
+  return () => { if (--listening === 0) document.removeEventListener('pointerdown', notePress, { capture: true }); };
+}
+export function pressBeganInToastLayer(): boolean {
+  return pressInToast;
 }
 
 /** The exit's length (toast.css), in ms. */
@@ -159,16 +188,18 @@ const SETTLE_MS = 700;
  * Where the toast goes so it never covers what must stay in view (Q-L4): anything marked `data-toast-avoid`
  * (the tab bar, the Quick add box, an open sheet's footer). It starts at the bottom and steps up over each
  * marked thing it would cover; if that would push it off the top, it sits at the top instead. While a sheet
- * is open only the sheet's own marks count (the page under the scrim can be covered); a sheet that is
- * closing counts for nothing, so the tab bar is avoided again the moment Save is pressed.
+ * is open the toast never covers the sheet at all (S9b, ADD-6: `besideSheet`); a sheet that is closing counts
+ * for nothing, so the tab bar is avoided again the moment Save is pressed.
  *
  * Measured before the first paint, then only when something changes: the window or the visual viewport
  * resizes or scrolls, a marked element or the toast changes size, or a sheet opens or closes. After each
  * change it follows every frame for a short while (sheets slide), then stops, so a toast that stays (the
  * update prompt) costs nothing while nothing moves.
  */
-function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean, about: string | undefined): { bottom: number; top: number | null } {
-  const [place, setPlace] = useState<{ bottom: number; top: number | null }>({ bottom: EDGE, top: null });
+function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean, about: string | undefined): Place {
+  const [place, setPlace] = useState<Place>({ bottom: EDGE, top: null, hidden: false });
+  // The card's last size, for working out where it would go while it is hidden.
+  const lastCard = useRef<{ height: number; left: number; right: number } | null>(null);
   useLayoutEffect(() => {
     if (!active) return;
     let frame = 0;
@@ -176,9 +207,12 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean,
     const measure = () => {
       const card = layer.current?.firstElementChild;
       if (card instanceof HTMLElement) {
-        const next = clearPlace(card.getBoundingClientRect(), about);
-        setPlace((was) => (was.bottom === next.bottom && was.top === next.top ? was : next));
+        const r = card.getBoundingClientRect();
+        if (r.height > 0) lastCard.current = { height: r.height, left: r.left, right: r.right };
       }
+      const box = lastCard.current ?? { height: 64, left: EDGE, right: window.innerWidth - EDGE };
+      const next = clearPlace(box, about);
+      setPlace((was) => (was.bottom === next.bottom && was.top === next.top && was.hidden === next.hidden ? was : next));
     };
     const loop = () => {
       frame = 0;
@@ -224,7 +258,8 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean,
       viewport?.removeEventListener('scroll', changed);
     };
   }, [layer, active, about]);
-  return place;
+  // With no toast to place, nothing is hidden (a hidden one comes back in full when the sheet goes).
+  return active || !place.hidden ? place : { ...place, hidden: false };
 }
 
 /**
@@ -236,17 +271,54 @@ function visibleBottom(): number {
   return viewport ? Math.min(window.innerHeight, viewport.offsetTop + viewport.height) : window.innerHeight;
 }
 
-function clearPlace(card: DOMRect, about: string | undefined): { bottom: number; top: number | null } {
+interface Place {
+  bottom: number;
+  top: number | null;
+  /** S9b: an open sheet leaves no room for it. */
+  hidden: boolean;
+}
+
+/** Where a sheet comes to rest: its box without the slide it is still making (vaul rises with a transform). */
+function restingBox(el: Element): { top: number; bottom: number } {
+  const r = el.getBoundingClientRect();
+  const t = getComputedStyle(el).transform;
+  const m = /^matrix(3d)?\(([^)]+)\)$/.exec(t);
+  const parts = m?.[2]?.split(',').map(Number) ?? [];
+  const ty = (m?.[1] ? parts[13] : parts[5]) ?? 0;
+  return { top: r.top - (Number.isFinite(ty) ? ty : 0), bottom: r.bottom - (Number.isFinite(ty) ? ty : 0) };
+}
+
+/**
+ * S9b (ADD-6): with a sheet open, the toast never covers it. It goes below the sheet if there is room there (a
+ * centred dialog on a large screen), else above the sheet's top edge, else (the full-height Add sheet) it is hidden
+ * until the sheet closes.
+ */
+function besideSheet(sheets: readonly Element[], tall: number): Place | null {
+  const boxes = sheets.map(restingBox).filter((b) => b.bottom > b.top);
+  if (boxes.length === 0) return null;
+  const height = visibleBottom();
+  const viewTop = window.visualViewport?.offsetTop ?? 0;
+  const page = window.innerHeight;
+  const top = Math.min(...boxes.map((b) => b.top));
+  const bottom = Math.max(...boxes.map((b) => b.bottom));
+  if (bottom + CLEARANCE + tall <= height - EDGE) return { bottom: EDGE + Math.max(0, Math.round(page - height)), top: null, hidden: false };
+  const above = Math.floor(top - CLEARANCE - tall);
+  if (above >= viewTop + EDGE) return { bottom: EDGE, top: above, hidden: false };
+  return { bottom: EDGE, top: null, hidden: true };
+}
+
+function clearPlace(card: { height: number; left: number; right: number }, about: string | undefined): Place {
   const page = window.innerHeight;
   const height = visibleBottom();
   const tall = card.height || 64;
+  const sheets = [...document.querySelectorAll('[role="dialog"][data-state="open"]')];
+  const placed = besideSheet(sheets, tall);
+  if (placed) return placed;
   // Row ids are uuids; anything else is not looked for.
   const row = about !== undefined && /^[\w-]+$/.test(about) ? `, [data-row="${about}"]` : '';
   const marked = [...document.querySelectorAll<HTMLElement>(`[data-toast-avoid]${row}`)];
-  // Only an open sheet's marks; a sheet sliding away (data-state="closed") counts for nothing.
-  const inOpenSheet = marked.filter((m) => m.closest('[role="dialog"][data-state="open"]'));
-  const onPage = marked.filter((m) => !m.closest('[role="dialog"]'));
-  const rects = (inOpenSheet.length > 0 ? inOpenSheet : onPage)
+  // With no sheet open (above), the page's marks; a sheet sliding away (data-state="closed") counts for nothing.
+  const rects = marked.filter((m) => !m.closest('[role="dialog"]'))
     .map((m) => m.getBoundingClientRect())
     .filter((r) => r.height > 0 && r.width > 0 && r.bottom > 0 && r.top < height && r.left < card.right && card.left < r.right);
   let bottom = EDGE;
@@ -263,7 +335,9 @@ function clearPlace(card: DOMRect, about: string | undefined): { bottom: number;
   }
   const viewTop = window.visualViewport?.offsetTop ?? 0;
   // `bottom` is measured from the visible bottom; the layer is placed from the page's.
-  return height - bottom - tall < viewTop + EDGE ? { bottom: EDGE, top: Math.round(viewTop) + EDGE } : { bottom: bottom + Math.max(0, Math.round(page - height)), top: null };
+  return height - bottom - tall < viewTop + EDGE
+    ? { bottom: EDGE, top: Math.round(viewTop) + EDGE, hidden: false }
+    : { bottom: bottom + Math.max(0, Math.round(page - height)), top: null, hidden: false };
 }
 
 /**
