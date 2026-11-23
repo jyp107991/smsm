@@ -492,3 +492,79 @@ for (const size of SIZES) {
     });
   }
 }
+
+// ───────── S9: a regular payment started long ago (DECISIONS 23 Nov "S9: a regular payment started long ago") ─────────
+
+/** How the sheet names a day: "Thu 26 Nov" this year, "2 Jan 2027" in another (core/dates formatDate). */
+function dayName(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const month = (MONTHS[d.getUTCMonth()] ?? '').slice(0, 3);
+  if (iso.slice(0, 4) !== today().slice(0, 4)) return `${String(d.getUTCDate())} ${month} ${String(d.getUTCFullYear())}`;
+  return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] ?? ''} ${String(d.getUTCDate())} ${month}`;
+}
+
+/** The occurrences before today and the first on or after it, by REC-2's rule (an independent count, not the app's). */
+function pastOf(step: (k: number) => string): { count: number; next: string } {
+  let k = 0;
+  while (step(k) < today()) k += 1;
+  return { count: k, next: step(k) };
+}
+
+for (const theme of THEMES) {
+  test.describe(`390×844, ${theme}: a start in the past`, () => {
+    test.beforeEach(async ({ page }) => { await start(page, { width: 390, height: 844 }, theme); });
+
+    test('S9 REC-1 REC-2: the sheet says what a past start adds; "Start from" moves the start and adds nothing, "Add them" adds each once', async ({ page }) => {
+      const where = `390×844, ${theme}`;
+      const net0 = await jaeNet(page);
+
+      // Monthly, started ten months ago (a few days after today's date then): every month since would post at once.
+      const startMonthly = addMonths(addDays(today(), 3), -10);
+      const monthly = pastOf((k) => addMonths(startMonthly, k));
+      expect(monthly.count).toBeGreaterThanOrEqual(9);
+      let sheet = await openNew(page);
+      await fill(page, sheet, { amount: '100', description: 'Storage unit', category: 'Household', payer: 'Jae', split: '50/50', startsOn: startMonthly });
+      const starts = sheet.getByRole('group', { name: 'Starts' });
+      await expect(starts).toContainText(`This adds ${String(monthly.count)} past payments, ${pounds(monthly.count * 10000)} in all.`);
+      const move = starts.getByRole('button', { name: `Start from ${dayName(monthly.next)} instead`, exact: true });
+      await expect(move).toBeVisible();
+      await expect(starts.getByRole('button', { name: 'Add them', exact: true })).toBeVisible();
+      await move.scrollIntoViewIfNeeded();
+      await check(page, `${where}: the past payments line`);
+      const box = await move.boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+      // Save before choosing: nothing is saved, and the sheet says what to do.
+      await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(sheet.getByRole('alert')).toHaveText('First choose: add the past payments, or start from the next one.');
+      await expect(sheet).toBeVisible();
+
+      // Start from the next one: the start moves there, the line goes, and nothing past posts.
+      await move.click();
+      await expect(starts.getByRole('button', { name: dayName(monthly.next), exact: true })).toBeVisible();
+      await expect(starts).not.toContainText('past payment');
+      await save(page, sheet, 'Saved Storage unit as a regular payment');
+      await expectJaeNet(page, net0, 'starting from the next one posts nothing past');
+      await show(page, 'Next 30 days');
+      await expect(next30(page).getByRole('button', { name: /^Storage unit,/ }).first()).toBeVisible();
+
+      // Weekly, started 15 days ago: 3 past (15, 8 and 1 days ago). Add them: each posts once, moving the balance by its share.
+      const startWeekly = addDays(today(), -15);
+      const weekly = pastOf((k) => addDays(startWeekly, 7 * k));
+      expect(weekly).toEqual({ count: 3, next: addDays(today(), 6) });
+      sheet = await openNew(page);
+      await fill(page, sheet, { amount: '20', description: 'Piano lessons', category: 'Household', payer: 'Jae', split: '50/50', often: 'Weekly', startsOn: startWeekly });
+      const starts2 = sheet.getByRole('group', { name: 'Starts' });
+      await expect(starts2).toContainText('This adds 3 past payments, £60.00 in all.');
+      await starts2.getByRole('button', { name: 'Add them', exact: true }).click();
+      await expect(starts2).toContainText('They’re added when you save.');
+      await expect(starts2.getByRole('button', { name: `Start from ${dayName(weekly.next)} instead`, exact: true })).toBeVisible();
+      await check(page, `${where}: past payments chosen`);
+      await save(page, sheet, 'Saved Piano lessons as a regular payment');
+      await expectJaeNet(page, net0 + 3 * 1000, 'three past lessons, each Sam’s half once');
+      await tab(page, 'Activity');
+      await expect(page.getByRole('main').getByRole('link', { name: 'Piano lessons, £20.00, Jae paid' })).toHaveCount(3);
+      await expectNoHorizontalOverflow(page, `${where}: Activity after adding past payments`);
+    });
+  });
+}

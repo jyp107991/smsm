@@ -465,6 +465,15 @@ export const strings = {
       `${frequency === 'weekly' ? 'week' : frequency === 'monthly' ? 'month' : 'year'}${n === 1 ? '' : 's'}`,
     starts: 'Starts',
     startsHint: 'It posts on this day, then on the same day each time.',
+    /** S9: a start in the past posts every occurrence since at once; the sheet says so, worked out by the core. */
+    pastPayments: (n: number, total: string | null) =>
+      n === 1 ? `This adds 1 past payment${total === null ? '' : `, ${total}`}.`
+        : `This adds ${String(n)} past payments${total === null ? '' : `, ${total} in all`}.`,
+    pastBills: (n: number) => (n === 1 ? 'This puts 1 past bill in the Inbox to fill in.' : `This puts ${String(n)} past bills in the Inbox to fill in.`),
+    addPast: (n: number) => (n === 1 ? 'Add it' : 'Add them'),
+    pastAdded: (n: number) => (n === 1 ? 'It’s added when you save.' : 'They’re added when you save.'),
+    startFrom: (day: string) => `Start from ${day} instead`,
+    pastFirst: 'First choose: add the past payments, or start from the next one.',
     lockedRhythm: (often: string, n: number, unit: string, start: string) =>
       n === 1 ? `${often}, from ${start}` : `Every ${String(n)} ${unit}, from ${start}`,
     lockedHint: 'It has posted already, so its days stay as they are. To repeat on other days, end it and add a new one.',

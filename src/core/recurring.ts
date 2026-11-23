@@ -32,6 +32,38 @@ export function dueOccurrences(s: Schedule, postedCount: number, today: IsoDate)
   return out;
 }
 
+// ───────── S9: a start date in the past ─────────
+
+export interface PastOccurrences {
+  /** The occurrences before today (and not after the end date): saving posts them all at once. */
+  count: number;
+  /** What they come to, exactly: count × the amount. */
+  totalPence: Pence;
+  /** The first occurrence on or after today, not after the end date: the start the sheet offers instead. */
+  nextDate: IsoDate | null;
+}
+
+/**
+ * What a template's start date in the past would post as soon as it is saved (post_due_recurring posts every
+ * occurrence due by the UK today; one today posts today, as for any payment starting today, so it is not counted).
+ * The dates are `occurrence`'s, which are the database's (tests/unit/recurring-sql.test.ts).
+ */
+export function pastOccurrences(t: { schedule: Schedule; amount: Pence }, today: IsoDate): PastOccurrences {
+  let count = 0;
+  let nextDate: IsoDate | null = null;
+  const last = t.schedule.endDate ?? '9999-12-31';
+  for (let k = 0; ; k += 1) {
+    const d = occurrence(t.schedule, k);
+    if (d > last) break;
+    if (d >= today) {
+      nextDate = d;
+      break;
+    }
+    count += 1;
+  }
+  return { count, totalPence: pence(count * t.amount), nextDate };
+}
+
 // ───────── S3: what regular payments cost, what is coming up, and "looks monthly" ─────────
 
 export type Frequency = Schedule['frequency'];

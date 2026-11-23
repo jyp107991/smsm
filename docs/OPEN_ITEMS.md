@@ -1,7 +1,7 @@
 # smsm: open items
 
 What is still to do before v1.0, and why. Done items are taken off with where they were done (BUILD_LOG, DECISIONS).
-Last checked against the code and tests on 23 Nov 2026 (S9 data-safety pass).
+Last checked against the code and tests on 23 Nov 2026 (S9 engineering items).
 
 ## Slices
 - [x] S0 pipeline and look
@@ -13,7 +13,7 @@ Last checked against the code and tests on 23 Nov 2026 (S9 data-safety pass).
 - [x] S6 smart features
 - [x] S7 import and export
 - [x] S8 notifications
-- [ ] S9 hardening → v1.0.0. Done: performance pass (live, `docs/qa/S9-performance.md`), acceptance pass and its fixes (S9a, S9b, PR #19), the data-safety pass (`tests/unit/data-safety.test.ts`). Still to do: the rest of release QA (ENGINEERING §9: the whole browser suite with the live AI eval, and the two-phone day below), the items under Known risks marked S9, then tag `v1.0.0`.
+- [ ] S9 hardening → v1.0.0. Done: performance pass (live, `docs/qa/S9-performance.md`), acceptance pass and its fixes (S9a, S9b, PR #19), the data-safety pass (`tests/unit/data-safety.test.ts`). Also done: the three S9 risks (Actions pinned to commits, a second keep-alive on the Worker, a regular payment started long ago asks first). Still to do: the rest of release QA (ENGINEERING §9: the whole browser suite with the live AI eval, and the two-phone day below), then tag `v1.0.0`.
 
 ## Needs the owner
 - [ ] Skim the remaining proposals in `docs/DECISIONS.md` (the main ones are confirmed).
@@ -24,13 +24,12 @@ Last checked against the code and tests on 23 Nov 2026 (S9 data-safety pass).
 Done and taken off: Supabase project, account ids, tokens and GitHub secrets (DEPLOY §1–3, first deploy 16 Nov); how sign-in codes reach you both (Gmail, DECISIONS 17 Nov); logo C, type A and the fifth colour (DECISIONS 17 Nov); the eval receipts (found online at the owner's word, BUILD_LOG 18 Nov ~01:30).
 
 ## Known risks
-- **A regular payment started long ago back-posts every occurrence at once** (S9, needs a choice). A new template's start date can be years back; `post_due_recurring` then posts each occurrence since (a resumed one skips what fell due while paused: migration `recurring_guards`). Planned in S3 as "confirm before back-posting more than a few"; not decided yet.
 - **`service_role` grants, when Monzo arrives live (SPEC §9, Later).** No server-side code writes money rows in v1: restore and import run as the signed-in person, the nightly job as the database owner. Code that does later must be able to run `check_money`'s helper and reach the tables it needs.
 - **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour: the person always sees the reading before saving, and no one has reported it in real use. Revisit if the owner or partner does.
 - **Larger screens, the rest of L2 (S9b deferral).** From 900 px Activity is two panes; Bills (list | bill), Inbox (list | item) and Settings (sections | section) are still one centred column, their forms opening as centred dialogs. Also: mark the row whose entry is open in the Activity pane (`aria-current`).
 - **Demo only, cosmetic:** the seeded monthly settle-up date drifts when the demo starts after the 28th (`addMonths` chained from the start day). The trip's random categories were fixed in S9b (DECISIONS 23 Nov, "S9b: demo only").
 
-Done and taken off: the keep-alive that doesn't depend on GitHub (a Cron Trigger on the app's Worker calling `health()` daily: DEPLOY §1, DECISIONS 23 Nov "S9: a second keep-alive"); Actions pinned to commit SHAs (DECISIONS 23 Nov "S9: Actions pinned", `tests/unit/workflows-pinned.test.ts`); one notification per imported row (a batch of 3 or more is now one notification: DECISIONS 18 Nov, "S8 fresh-review fixes" (2)).
+Done and taken off: a regular payment started long ago now asks before adding its past payments (DECISIONS 23 Nov "S9: a regular payment started long ago"); the keep-alive that doesn't depend on GitHub (a Cron Trigger on the app's Worker calling `health()` daily: DEPLOY §1, DECISIONS 23 Nov "S9: a second keep-alive"); Actions pinned to commit SHAs (DECISIONS 23 Nov "S9: Actions pinned", `tests/unit/workflows-pinned.test.ts`); one notification per imported row (a batch of 3 or more is now one notification: DECISIONS 18 Nov, "S8 fresh-review fixes" (2)).
 
 ## Deferred criteria
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
