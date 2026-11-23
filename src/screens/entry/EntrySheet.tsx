@@ -12,8 +12,9 @@
  */
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
-import { startTransition, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent, type ReactNode } from 'react';
-import { formatDate, formatDay } from '../../core/dates';
+import { startTransition, useEffect, useId, useMemo, useRef, useState, type RefObject, type SyntheticEvent, type ReactNode } from 'react';
+import { formatDate, formatDay, formatShortDate } from '../../core/dates';
+import { keepsAnchor, pastOccurrences } from '../../core/recurring';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
@@ -211,6 +212,65 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     if (rec) setRec({ ...rec, ...next });
     setErrors([]);
   };
+
+  // S9: a start in the past posts every occurrence since at once (post_due_recurring). The core counts them and what
+  // they come to; the person chooses: add them (keep the start) or start from the next one. Asked for a new template,
+  // or for an edit of a live one that hasn't posted yet when its schedule changes (the phone's posted_count can be out
+  // of date, so an edit that keeps the schedule never asks); a paused one skips what fell due, a posted one can't move.
+  const recEvery = rec ? everyOf(rec.everyText) : null;
+  const scheduleChanged = template !== undefined && rec !== null
+    && (rec.frequency !== template.frequency || recEvery !== template.every || rec.startDate !== template.start_date || rec.endDate !== template.end_date);
+  const amountNow = parsedAmount(s);
+  const pastSchedule = rec && recEvery !== null ? { frequency: rec.frequency, every: recEvery, startDate: rec.startDate, endDate: rec.endDate } : null;
+  const past = pastSchedule && (template === undefined || (template.active && template.posted_count === 0 && scheduleChanged))
+    ? pastOccurrences({ schedule: pastSchedule, amount: amountNow ?? pence(0) }, today)
+    : null;
+  // "Start from <next>" keeps the day only when the next date is on it; when it isn't (30 Nov from the 31st), online
+  // the template is saved paused from the start picked, then resumed (the server skips the past, the 31st stays);
+  // offline that skip would be counted whenever the writes arrive, so the start moves and the button says so.
+  const nextKeepsDay = past?.nextDate != null && pastSchedule !== null && keepsAnchor(pastSchedule, past.nextDate);
+  const skipKeepingDay = past?.nextDate != null && !nextKeepsDay && online;
+  /** What the choice was made on: another start, rhythm, end, amount or "Amount varies" (or, for the skip, the connection) asks again. */
+  const pastKey = rec ? [rec.frequency, recEvery, rec.startDate, rec.endDate, rec.amountVaries, amountNow, nextKeepsDay ? '' : online].join('|') : '';
+  const [pastAnswer, setPastAnswer] = useState<{ key: string; choice: 'add' | 'skip' } | null>(null);
+  const startsRef = useRef<HTMLDivElement>(null);
+  const [focusStart, setFocusStart] = useState(0);
+  useEffect(() => {
+    if (focusStart === 0) return;
+    // A frame later: the sheet's focus trap first moves focus off the button that just went away.
+    const frame = requestAnimationFrame(() => { startsRef.current?.querySelectorAll<HTMLButtonElement>('button')[1]?.focus(); });
+    return () => { cancelAnimationFrame(frame); };
+  }, [focusStart]);
+  const pastChoice: PastChoice | null = rec && past !== null && past.count > 0 ? (() => {
+    const answer = pastAnswer?.key === pastKey ? pastAnswer.choice : null;
+    const next = past.nextDate;
+    const nextDay = next === null ? '' : dayInSentence(next, today);
+    const amountLine = rec.amountVaries ? strings.recurring.pastBills(past.count)
+      : strings.recurring.pastPayments(past.count, amountNow === null ? null : formatPence(past.totalPence));
+    const repeatsOn = next === null || nextKeepsDay ? null
+      : rec.frequency === 'monthly' ? strings.recurring.thenMonthly(Number(next.slice(8)))
+        : strings.recurring.thenYearly(formatShortDate(next, `${next.slice(0, 4)}-01-01`));
+    return {
+      line: answer === 'skip' ? strings.recurring.pastSkipped(past.count, rec.amountVaries, nextDay) : amountLine,
+      choice: answer,
+      addLabel: strings.recurring.addPast(past.count),
+      addedNote: strings.recurring.pastAdded(past.count),
+      moveLabel: next === null ? null : strings.recurring.startFrom(nextDay, skipKeepingDay ? null : repeatsOn),
+      moveIsChoice: skipKeepingDay,
+      onAdd: () => { setPastAnswer({ key: pastKey, choice: 'add' }); setErrors([]); },
+      onMove: () => {
+        if (next === null) return;
+        if (skipKeepingDay) {
+          setPastAnswer({ key: pastKey, choice: 'skip' });
+          setErrors([]);
+          return;
+        }
+        changeSchedule({ startDate: next });
+        // The choice it came from goes; focus moves to the start, now that day.
+        setFocusStart((n) => n + 1);
+      },
+    };
+  })() : null;
 
   /** A new description: the category and split follow the household's guess until the person picks them. */
   const describe = (description: string) => {
@@ -511,13 +571,23 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       setErrors(result.errors);
       return;
     }
+    // S9: past payments are added only when the person has said so.
+    if (pastChoice && pastChoice.choice === null) {
+      setErrors([strings.recurring.pastFirst]);
+      return;
+    }
     const d = result.draft;
+    // Start from the next one, keeping the day: saved paused, then resumed; the server skips what is past.
+    const skipping = pastChoice?.choice === 'skip';
     try {
-      saveRecurring({
+      if (skipping && template) pauseRecurring(template.id);
+      const savedId = saveRecurring({
         ...(template ? { id: template.id } : { id: rowId }),
         description: d.description, amount: d.amount, categoryId: d.categoryId, payer: d.payer, split: d.split, notes: d.notes ?? null,
         frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: r.amountVaries, isSubscription: r.isSubscription,
+        ...(skipping && !template ? { active: false } : {}),
       });
+      if (skipping) resumeRecurring(savedId);
     } catch (err) {
       setErrors([plainError(err)]);
       return;
@@ -754,6 +824,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           rec={rec}
           today={today}
           startLocked={template !== undefined && template.posted_count > 0}
+          past={pastChoice}
+          startsRef={startsRef}
           onChange={changeSchedule}
           onPick={setPicking}
         />
@@ -955,10 +1027,26 @@ function PayerToggle({ label, people, value, onChange }: { label: string; people
  * S3 (REC-1): how often, every, starts (any day: the owner picks the day it recurs on), ends, and the two
  * switches. The start can't move once something has posted, so posted days never shift.
  */
-function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
+/** S9: what a start in the past adds, and the two ways on (worked out by the core, chosen by the person). */
+interface PastChoice {
+  line: string;
+  /** What the person chose for this schedule, if anything. */
+  choice: 'add' | 'skip' | null;
+  addLabel: string;
+  addedNote: string;
+  moveLabel: string | null;
+  /** The move is a choice made at Save (pressed), not a new start now. */
+  moveIsChoice: boolean;
+  onAdd: () => void;
+  onMove: () => void;
+}
+
+function ScheduleFields({ rec, today, startLocked, past, startsRef, onChange, onPick }: {
   rec: ScheduleState;
   today: string;
   startLocked: boolean;
+  past: PastChoice | null;
+  startsRef: RefObject<HTMLDivElement | null>;
   onChange: (next: Partial<ScheduleState>) => void;
   onPick: (which: 'start' | 'end') => void;
 }) {
@@ -1003,13 +1091,29 @@ function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
       </Group>
 
       <Group label={strings.recurring.starts}>
-        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.recurring.starts}>
-          <Chip selected={rec.startDate === today} onSelectedChange={() => { onChange({ startDate: today }); }}>
-            {strings.entry.today}
-          </Chip>
-          <Chip selected={rec.startDate !== today} aria-haspopup="dialog" onSelectedChange={() => { onPick('start'); }}>
-            {rec.startDate !== today ? formatDate(rec.startDate, today) : strings.entry.pickDate}
-          </Chip>
+        <div ref={startsRef} className="flex flex-col gap-3" role="group" aria-label={strings.recurring.starts}>
+          <div className="flex flex-wrap gap-x-2 gap-y-3">
+            <Chip selected={rec.startDate === today} onSelectedChange={() => { onChange({ startDate: today }); }}>
+              {strings.entry.today}
+            </Chip>
+            <Chip selected={rec.startDate !== today} aria-haspopup="dialog" onSelectedChange={() => { onPick('start'); }}>
+              {rec.startDate !== today ? formatDate(rec.startDate, today) : strings.entry.pickDate}
+            </Chip>
+          </div>
+          {/* Read out as it appears or changes (a new start, amount or rhythm). Always in the page (never display:none,
+              which some screen readers don't announce from); empty, it takes no room (the gap above is taken back). */}
+          <div aria-live="polite" className="flex flex-col gap-2 empty:-mt-3">
+            {past ? <p className="text-body text-ink nums-list m-0 break-words">{past.line}</p> : null}
+            {past?.choice === 'add' ? <p className="text-secondary text-ink-2 m-0">{past.addedNote}</p> : null}
+          </div>
+          {past ? (
+            <div className="flex flex-wrap gap-x-2 gap-y-3">
+              <Button variant="plain" aria-pressed={past.choice === 'add'} onClick={past.onAdd}>{past.addLabel}</Button>
+              {past.moveLabel !== null ? (
+                <Button variant="plain" {...(past.moveIsChoice ? { 'aria-pressed': past.choice === 'skip' } : {})} onClick={past.onMove}>{past.moveLabel}</Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p>
       </Group>

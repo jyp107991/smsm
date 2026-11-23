@@ -135,9 +135,60 @@ export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch
   return json({ ok: false, reason: invalid > 0 ? 'invalid' : threw > 0 ? 'error' : 'timeout' } satisfies Outcome<never>);
 }
 
+// ───────── S9: the second keep-alive (wrangler.jsonc `triggers.crons`, once a day) ─────────
+
+const KEEPALIVE_TIMEOUT_MS = 15_000;
+
+/**
+ * A free Supabase project pauses after 7 days without activity. Once a day the Worker calls the same public
+ * `health()` RPC as the GitHub keep-alive (.github/workflows/keepalive.yml) and the smoke test, with the publishable
+ * key it already has: no new secret, and it keeps the project awake even if GitHub stops running scheduled
+ * workflows. It never throws (the next day tries again); it tries twice, each within 15 s. What it logs is one plain
+ * line with the outcome and an HTTP status at most: never the key, the project's address or an error's own words.
+ */
+export async function keepAlive(
+  env: Pick<AiEnv, 'SUPABASE_URL' | 'SUPABASE_ANON_KEY'>,
+  fetchImpl: typeof fetch = fetch,
+  log: (line: string) => void = (line) => { console.log(line); },
+): Promise<'ok' | 'failed' | 'off'> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+    log('keep-alive: off (SUPABASE_URL or SUPABASE_ANON_KEY is not set on this Worker)');
+    return 'off';
+  }
+  const url = `${env.SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/rpc/health`;
+  let why = '';
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const res = await fetchImpl(url, {
+        method: 'POST',
+        headers: { apikey: env.SUPABASE_ANON_KEY, 'content-type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(KEEPALIVE_TIMEOUT_MS),
+      });
+      const body: unknown = res.ok ? await res.json().catch(() => null) : null;
+      if (res.ok && typeof body === 'object' && body !== null && (body as { ok?: unknown }).ok === true) {
+        log(`keep-alive: ok${attempt > 1 ? ' (second try)' : ''}`);
+        return 'ok';
+      }
+      why = res.ok ? 'health() did not say ok' : `HTTP ${String(res.status)}`;
+    } catch (e) {
+      why = e instanceof Error && e.name === 'TimeoutError' ? 'no answer within 15 s' : 'the request did not complete';
+    }
+  }
+  log(`keep-alive: failed twice (${why}); tomorrow's run tries again`);
+  return 'failed';
+}
+
+/** Cloudflare's scheduled() handler (module syntax): what a Cron Trigger passes. */
+interface ScheduledController { readonly cron: string; readonly scheduledTime: number }
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (new URL(req.url).pathname === '/api/ai') return handleAi(req, env);
     return env.ASSETS.fetch(req);
+  },
+  /** One cron (wrangler.jsonc): the keep-alive. The runtime waits for the returned promise. */
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    await keepAlive(env);
   },
 };

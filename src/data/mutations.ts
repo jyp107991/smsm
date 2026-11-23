@@ -12,6 +12,7 @@ import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
+import { occurrence } from '../core/recurring';
 import type { Pence } from '../core/money';
 import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
@@ -524,10 +525,11 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
  * REC-1, REC-6: adds a regular payment or (with an existing template's id) edits it; returns its id at once.
  * Its money is built by the core like an entry's; the phone never sends posted_count, so an edit changes
  * future occurrences only. A second submit of the same form changes nothing (Q-F1). Once stored, the phone
- * posts what is due (REC-2), so a payment due today is money at once.
+ * posts what is due (REC-2), so a payment due today is money at once. `active: false` adds a new one paused (S9:
+ * "Start from <next> instead" keeping its day is a paused add, then `resumeRecurring`); an edit never sends `active`.
  */
-export function saveRecurring(input: RecurringDraft & { id?: string }, layer = activeDataLayer()): string {
-  const { id, ...draft } = input;
+export function saveRecurring(input: RecurringDraft & { id?: string; active?: boolean }, layer = activeDataLayer()): string {
+  const { id, active, ...draft } = input;
   const ctx = context(layer);
   const existing = id === undefined ? undefined : shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
   // An end before the start is refused when it is picked; one already stored (End tapped before the first day) is kept.
@@ -548,7 +550,7 @@ export function saveRecurring(input: RecurringDraft & { id?: string }, layer = a
     id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
     shares: money.shares, is_subscription: draft.isSubscription, frequency: draft.frequency, every: draft.every, start_date: draft.startDate,
-    end_date: draft.endDate, active: existing?.active ?? true, notes: draft.notes ?? existing?.notes ?? null,
+    end_date: draft.endDate, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
     posted_count: existing?.posted_count ?? 0, created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
   };
   // Q-F1: the same form saved twice (a double tap) changes nothing.
@@ -565,11 +567,15 @@ const EDIT_COLUMNS: readonly RecurringColumn[] = RECURRING_WRITE_COLUMNS.filter(
   (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active',
 );
 
-function changeRecurring(id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date'>>, layer: DataLayer): boolean {
+function changeRecurring(
+  id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date'>>, layer: DataLayer,
+  /** What the server will make of it, for the phone's waiting copy only (never sent). */
+  expected: Partial<Pick<RecurringRow, 'posted_count'>> = {},
+): boolean {
   const ctx = context(layer);
   const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
   if (!current) throw new EntryNotFoundError(id);
-  const next: RecurringRow = { ...current, ...change, updated_at: layer.now().toISOString() };
+  const next: RecurringRow = { ...current, ...change, ...expected, updated_at: layer.now().toISOString() };
   if (sameJson(recurringWrite(current), recurringWrite(next))) return false;
   layer.enqueue({
     opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: false, row: next, input: null,
@@ -583,8 +589,19 @@ export function pauseRecurring(id: string, layer = activeDataLayer()): boolean {
   return changeRecurring(id, { active: false }, layer);
 }
 
+/**
+ * REC-1: resume. The server skips what fell due while it was paused (recurring_guard: every occurrence before the UK
+ * today); the phone's waiting copy shows the same count, so nothing past looks due before the server answers. Only
+ * `active` is sent (posted_count is the server's).
+ */
 export function resumeRecurring(id: string, layer = activeDataLayer()): boolean {
-  return changeRecurring(id, { active: true }, layer);
+  const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  if (!current || current.active) return changeRecurring(id, { active: true }, layer);
+  const schedule = { frequency: current.frequency as 'weekly' | 'monthly' | 'yearly', every: current.every, startDate: current.start_date, endDate: null };
+  const today = layer.today();
+  let skipped = current.posted_count;
+  for (let n = 0; n < 10000 && occurrence(schedule, skipped) < today; n += 1) skipped += 1;
+  return changeRecurring(id, { active: true }, layer, { posted_count: skipped });
 }
 
 /** REC-1: end on a day (today unless told); the template and its history stay. */

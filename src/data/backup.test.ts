@@ -1,9 +1,9 @@
 /** EXP-1 (the JSON backup part): everything entered, from the phone's copy, offline too. */
 import { afterEach, describe, expect, it } from 'vitest';
 import { pence } from '../core/money';
-import { couple, JAE_ID, TODAY } from '../../tests/fixtures/couple';
+import { categoryId, couple, JAE_ID, TODAY } from '../../tests/fixtures/couple';
 import { BACKUP_FORMAT, backupJson } from './backup';
-import { addExpense, deleteExpense } from './mutations';
+import { addExpense, deleteExpense, saveCategory } from './mutations';
 import type { DataLayer } from './queryClient';
 
 let open: DataLayer | null = null;
@@ -26,5 +26,22 @@ describe('backup', () => {
     const expenses = data['expenses'] as { id: string; deleted_at: string | null }[];
     expect(expenses.map((e) => e.id).sort()).toEqual([kept, gone].sort());
     expect(expenses.find((e) => e.id === gone)?.deleted_at).not.toBeNull();
+  });
+
+  it('EXP-1 OFF-3: a category made or changed while offline is in the backup, so its entries keep it when restored', async () => {
+    // S9 data-safety pass: the file had the categories as last fetched, so a category still waiting to sync was
+    // missing (an entry in it came back from a restore with no category) and an edit waiting to sync was not in it.
+    const { layer, network } = couple();
+    open = layer;
+    await layer.ready;
+    network.set(false);
+    const pets = saveCategory({ name: 'Pets', emoji: '🐾', colour: 'moss' }, layer);
+    saveCategory({ id: categoryId('Groceries'), name: 'Groceries', emoji: '🥕', colour: 'moss' }, layer);
+    const vet = addExpense({ description: 'Vet', amount: pence(3000), date: TODAY, categoryId: pets, payer: JAE_ID, split: { mode: 'treat' } }, layer);
+    const data = JSON.parse(backupJson({ appVersion: '0.1.0' }, layer)) as { categories: { id: string; name: string; emoji: string }[]; expenses: { id: string; category_id: string | null }[] };
+    expect(data.categories.length).toBe(13);
+    expect(data.categories.find((c) => c.id === pets)).toMatchObject({ name: 'Pets', emoji: '🐾' });
+    expect(data.categories.find((c) => c.id === categoryId('Groceries'))?.emoji).toBe('🥕');
+    expect(data.expenses.find((e) => e.id === vet)?.category_id).toBe(pets);
   });
 });

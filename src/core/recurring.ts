@@ -32,6 +32,49 @@ export function dueOccurrences(s: Schedule, postedCount: number, today: IsoDate)
   return out;
 }
 
+// ───────── S9: a start date in the past ─────────
+
+export interface PastOccurrences {
+  /** The occurrences before today (and not after the end date): saving posts them all at once. */
+  count: number;
+  /** What they come to, exactly: count × the amount. */
+  totalPence: Pence;
+  /** The first occurrence on or after today, not after the end date: the start the sheet offers instead. */
+  nextDate: IsoDate | null;
+}
+
+/**
+ * What a template's start date in the past would post as soon as it is saved (post_due_recurring posts every
+ * occurrence due by the UK today; one today posts today, as for any payment starting today, so it is not counted).
+ * The dates are `occurrence`'s, which are the database's (tests/unit/recurring-sql.test.ts).
+ */
+export function pastOccurrences(t: { schedule: Schedule; amount: Pence }, today: IsoDate): PastOccurrences {
+  let count = 0;
+  let nextDate: IsoDate | null = null;
+  const last = t.schedule.endDate ?? '9999-12-31';
+  for (let k = 0; ; k += 1) {
+    const d = occurrence(t.schedule, k);
+    if (d > last) break;
+    if (d >= today) {
+      nextDate = d;
+      break;
+    }
+    count += 1;
+  }
+  return { count, totalPence: pence(count * t.amount), nextDate };
+}
+
+/**
+ * Whether the schedule started afresh on its occurrence `d` gives the same dates from then on (REC-2's anchor). Weekly
+ * always does. Monthly and yearly do when `d` is on the start's own day of the month; an occurrence cut short
+ * by a shorter month (30 Nov from the 31st) or a common year (28 Feb from 29 Feb) does not: started there, it would
+ * repeat on the shorter day.
+ */
+export function keepsAnchor(s: Schedule, d: IsoDate): boolean {
+  // A yearly occurrence is always in the start's month, so for both it is the day of the month that tells.
+  return s.frequency === 'weekly' || d.slice(8) === s.startDate.slice(8);
+}
+
 // ───────── S3: what regular payments cost, what is coming up, and "looks monthly" ─────────
 
 export type Frequency = Schedule['frequency'];

@@ -33,8 +33,8 @@ jobs:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -67,6 +67,17 @@ jobs:
           echo "The push function did not answer ?init=1"; exit 1
       - name: Deploy the app
         run: set -o pipefail; npx wrangler deploy --var "SUPABASE_URL:$VITE_SUPABASE_URL" --var "SUPABASE_ANON_KEY:$VITE_SUPABASE_PUBLISHABLE_KEY" 2>&1 | scripts/redact.sh | tee deploy-app.log
+      # S9: the second keep-alive. wrangler deploy sends wrangler.jsonc's triggers.crons and lists each as
+      # "schedule: <cron>"; a cron it could not set fails the deploy. This checks every one is listed.
+      - name: The keep-alive Cron Trigger is deployed
+        run: |
+          set -euo pipefail
+          node -e "const s=require('fs').readFileSync('wrangler.jsonc','utf8').replace(/^\s*\/\/.*$/gm,'');for(const c of JSON.parse(s).triggers.crons)console.log(c)" > crons.txt
+          test -s crons.txt
+          while IFS= read -r cron; do
+            grep -qF "schedule: $cron" deploy-app.log || { echo "Cron Trigger '$cron' is not in wrangler's deploy output."; exit 1; }
+            echo "Cron Trigger deployed: $cron"
+          done < crons.txt
       - name: Deploy the demo and gallery
         run: set -o pipefail; npx wrangler deploy -c wrangler.demo.jsonc 2>&1 | scripts/redact.sh | tee deploy-demo.log
       - name: Smoke test

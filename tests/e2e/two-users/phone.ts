@@ -4,7 +4,7 @@
  * Every phone runs on a fixed clock (DAT-4): it starts at CLOCK_START and runs on from there, so timers,
  * the Undo window and Realtime behave normally while "today" is always the same date.
  */
-import { chromium, type BrowserContext, type Page } from '@playwright/test';
+import { chromium, type BrowserContext, type Page, type Route } from '@playwright/test';
 import { env } from './env';
 
 /** Saturday 14 November 2026, 22:00 in London (GMT). In Tokyo it is already 07:00 on Sunday 15 November. */
@@ -31,6 +31,8 @@ export class Phone {
   private pg: Page | null = null;
   private realStart = 0;
   private offline = false;
+  /** Whether the open browser has airplane mode's network cut in place (see `setOffline`). */
+  private cut = false;
 
   constructor(opts: PhoneOptions) {
     this.name = opts.name;
@@ -68,6 +70,8 @@ export class Phone {
       permissions: ['clipboard-read', 'clipboard-write'],
       ...(executablePath ? { executablePath } : {}),
     });
+    this.cut = false;
+    if (this.offline) await this.cutNetwork(true);
     // The clock keeps running across restarts as it would on a real phone.
     await this.ctx.clock.install({ time: new Date(CLOCK_START.getTime() + (Date.now() - this.realStart)) });
     this.pg = this.ctx.pages()[0] ?? (await this.ctx.newPage());
@@ -94,11 +98,43 @@ export class Phone {
     return this.open(path);
   }
 
-  /** Airplane mode on or off; applies to the open browser and to the next restart. */
+  /**
+   * Airplane mode on or off; applies to the open browser and to the next restart.
+   *
+   * `context.setOffline` gives the app what a phone gives it (navigator.onLine, the online and offline events)
+   * and fails requests, but in Chromium it covers the page's current document only. A document being left
+   * (`page.goto` while offline) loses the emulation as the next one arrives: it sees navigator.onLine turn
+   * true, gets an `online` event, and a request it sends then reaches the server and is not reported to
+   * Playwright at all. So the app, rightly, sent a write that was waiting, and the offline test saw it arrive
+   * on the other phone (CI run 45272812175; reproduced in Chromium 153 and 159, with and without a service
+   * worker). In airplane mode nothing leaves the phone, so while offline every request for another host (the
+   * database, the AI and rate services) is also failed here as a phone fails it; the app's own files are
+   * left to the service worker, as on a phone.
+   */
   async setOffline(offline: boolean): Promise<void> {
     this.offline = offline;
-    if (this.ctx) await this.ctx.setOffline(offline);
+    if (!this.ctx) return;
+    // The cut is in place before the app hears it is offline, and gone before it hears it is back, so a
+    // request is never let out while the app believes it is offline, nor failed by the cut once it is online.
+    if (offline) {
+      await this.cutNetwork(true);
+      await this.ctx.setOffline(true);
+    } else {
+      await this.cutNetwork(false);
+      await this.ctx.setOffline(false);
+    }
     // The app learns about the network through the browser's own events, as on a phone.
+  }
+
+  private readonly offSite = (url: URL): boolean => url.origin !== new URL(env.appUrl).origin;
+
+  private readonly disconnected = (route: Route): Promise<void> => route.abort('internetdisconnected');
+
+  private async cutNetwork(on: boolean): Promise<void> {
+    if (!this.ctx || on === this.cut) return;
+    if (on) await this.ctx.route(this.offSite, this.disconnected);
+    else await this.ctx.unroute(this.offSite, this.disconnected);
+    this.cut = on;
   }
 
   /** The access token supabase-js keeps in localStorage (key `sb-<ref>-auth-token`). */

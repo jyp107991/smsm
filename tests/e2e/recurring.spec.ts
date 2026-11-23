@@ -353,7 +353,7 @@ for (const size of SIZES) {
         await expect(sheet.getByRole('radiogroup', { name: 'How often' })).toHaveCount(0);
         await expect(sheet.getByRole('group', { name: 'Starts' })).toHaveCount(0);
         await expect(sheet).toContainText(/Monthly, from /);
-        await expect(sheet).toContainText('It has posted already, so its days stay as they are. To repeat on other days, end it and add a new one.');
+        await expect(sheet).toContainText('It has started, so its days stay as they are. To repeat on other days, end it and add a new one.');
         await check(page, `${where}: a posted regular payment's sheet`);
         await fill(page, sheet, { amount: '40' });
         await save(page, sheet, 'Saved Window box as a regular payment');
@@ -491,4 +491,123 @@ for (const size of SIZES) {
       });
     });
   }
+}
+
+// ───────── S9: a regular payment started long ago (DECISIONS 23 Nov "S9: a regular payment started long ago") ─────────
+
+/** How the sheet names a day: "Thu 26 Nov" this year, "2 Jan 2027" in another (core/dates formatDate). */
+function dayName(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const month = (MONTHS[d.getUTCMonth()] ?? '').slice(0, 3);
+  if (iso.slice(0, 4) !== today().slice(0, 4)) return `${String(d.getUTCDate())} ${month} ${String(d.getUTCFullYear())}`;
+  return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] ?? ''} ${String(d.getUTCDate())} ${month}`;
+}
+
+/** The occurrences before today and the first on or after it, by REC-2's rule (an independent count, not the app's). */
+function pastOf(step: (k: number) => string): { count: number; next: string } {
+  let k = 0;
+  while (step(k) < today()) k += 1;
+  return { count: k, next: step(k) };
+}
+
+for (const theme of THEMES) {
+  test.describe(`390×844, ${theme}: a start in the past`, () => {
+    test.beforeEach(async ({ page }) => { await start(page, { width: 390, height: 844 }, theme); });
+
+    test('S9 REC-1 REC-2: the sheet says what a past start adds; "Start from" moves the start and adds nothing, "Add them" adds each once', async ({ page }) => {
+      const where = `390×844, ${theme}`;
+      const net0 = await jaeNet(page);
+
+      // Monthly, started ten months ago (a few days after today's date then, on a day every month has): every month
+      // since would post at once.
+      let soon = addDays(today(), 3);
+      while (Number(soon.slice(8)) > 28) soon = addDays(soon, 1);
+      const startMonthly = addMonths(soon, -10);
+      const monthly = pastOf((k) => addMonths(startMonthly, k));
+      expect(monthly.count).toBeGreaterThanOrEqual(9);
+      let sheet = await openNew(page);
+      const starts = sheet.getByRole('group', { name: 'Starts' });
+      // The line's live region is in the page before anything is said (never display:none, so it is announced).
+      await expect(starts.locator('[aria-live="polite"]')).toHaveCSS('display', 'flex');
+      await fill(page, sheet, { amount: '100', description: 'Storage unit', category: 'Household', payer: 'Jae', split: '50/50', startsOn: startMonthly });
+      await expect(starts).toContainText(`This adds ${String(monthly.count)} past payments, ${pounds(monthly.count * 10000)} in all.`);
+      const move = starts.getByRole('button', { name: `Start from ${dayName(monthly.next)} instead`, exact: true });
+      await expect(move).toBeVisible();
+      await expect(starts.getByRole('button', { name: 'Add them', exact: true })).toBeVisible();
+      await move.scrollIntoViewIfNeeded();
+      await check(page, `${where}: the past payments line`);
+      const box = await move.boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+      // Save before choosing: nothing is saved, and the sheet says what to do.
+      await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(sheet.getByRole('alert')).toHaveText('First choose: add the past payments, or start from the next one.');
+      await expect(sheet).toBeVisible();
+
+      // Start from the next one: the start moves there, the line goes, and nothing past posts.
+      await move.click();
+      await expect(starts.getByRole('button', { name: dayName(monthly.next), exact: true })).toBeVisible();
+      await expect(starts).not.toContainText('past payment');
+      await save(page, sheet, 'Saved Storage unit as a regular payment');
+      await expectJaeNet(page, net0, 'starting from the next one posts nothing past');
+      await show(page, 'Next 30 days');
+      await expect(next30(page).getByRole('button', { name: /^Storage unit,/ }).first()).toBeVisible();
+
+      // Weekly, started 15 days ago: 3 past (15, 8 and 1 days ago). Add them: each posts once, moving the balance by its share.
+      const startWeekly = addDays(today(), -15);
+      const weekly = pastOf((k) => addDays(startWeekly, 7 * k));
+      expect(weekly).toEqual({ count: 3, next: addDays(today(), 6) });
+      sheet = await openNew(page);
+      await fill(page, sheet, { amount: '20', description: 'Piano lessons', category: 'Household', payer: 'Jae', split: '50/50', often: 'Weekly', startsOn: startWeekly });
+      const starts2 = sheet.getByRole('group', { name: 'Starts' });
+      await expect(starts2).toContainText('This adds 3 past payments, £60.00 in all.');
+      const addThem = starts2.getByRole('button', { name: 'Add them', exact: true });
+      await addThem.click();
+      await expect(starts2).toContainText('They’re added when you save.');
+      // The choice stays, pressed, with focus.
+      await expect(addThem).toHaveAttribute('aria-pressed', 'true');
+      await expect(addThem).toBeFocused();
+      await expect(starts2.getByRole('button', { name: `Start from ${dayName(weekly.next)} instead`, exact: true })).toBeVisible();
+      await check(page, `${where}: past payments chosen`);
+      await save(page, sheet, 'Saved Piano lessons as a regular payment');
+      await expectJaeNet(page, net0 + 3 * 1000, 'three past lessons, each Sam’s half once');
+      await tab(page, 'Activity');
+      await expect(page.getByRole('main').getByRole('link', { name: 'Piano lessons, £20.00, Jae paid' })).toHaveCount(3);
+      await expectNoHorizontalOverflow(page, `${where}: Activity after adding past payments`);
+    });
+
+    test('S9 review 1: from the 31st, "Start from" a shorter month-end keeps the 31st: nothing past posts, and the start stays', async ({ page }) => {
+      const where = `390×844, ${theme}`;
+      const net0 = await jaeNet(page);
+      // A 31st and a rhythm whose next date falls in a shorter month (30 Nov, 28 Feb, …), counted by REC-2's rule.
+      let found: { start: string; every: number; count: number; next: string } | null = null;
+      for (let back = 2; back <= 24 && !found; back += 1) {
+        const m = addMonths(`${today().slice(0, 7)}-01`, -back);
+        const start = `${m.slice(0, 7)}-31`;
+        if (new Date(`${start}T00:00:00Z`).getUTCDate() !== 31) continue; // a 30-day month or February: no 31st
+        for (const every of [1, 2, 3]) {
+          const p = pastOf((k) => addMonths(start, every * k));
+          if (p.count >= 2 && p.next.slice(8) !== '31') { found = { start, every, ...p }; break; }
+        }
+      }
+      if (!found) throw new Error('no 31st start found');
+      const nextName = found.next === today() ? 'today' : dayName(found.next);
+      const sheet = await openNew(page);
+      await fill(page, sheet, { amount: '20', description: 'Cleaner', category: 'Household', payer: 'Jae', split: '50/50', every: String(found.every), startsOn: found.start });
+      const starts = sheet.getByRole('group', { name: 'Starts' });
+      await expect(starts).toContainText(`This adds ${String(found.count)} past payments, ${pounds(found.count * 2000)} in all.`);
+      const move = starts.getByRole('button', { name: `Start from ${nextName} instead`, exact: true });
+      await move.click();
+      await expect(move).toHaveAttribute('aria-pressed', 'true');
+      await expect(move).toBeFocused();
+      await expect(starts).toContainText(`It starts on ${nextName}, without the ${String(found.count)} past payments.`);
+      // The start picked stays (the day it repeats on).
+      await expect(starts.getByRole('button', { name: dayName(found.start), exact: true })).toBeVisible();
+      await check(page, `${where}: start from the next one, keeping the 31st`);
+      await save(page, sheet, 'Saved Cleaner as a regular payment');
+      await expectJaeNet(page, net0 + (found.next === today() ? 1000 : 0), 'nothing past posts (one due today would)');
+      await tab(page, 'Activity');
+      await expect(page.getByRole('main').getByRole('link', { name: 'Cleaner, £20.00, Jae paid' })).toHaveCount(found.next === today() ? 1 : 0);
+    });
+  });
 }
