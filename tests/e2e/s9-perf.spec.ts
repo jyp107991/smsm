@@ -102,12 +102,30 @@ test.describe('S9 P1: Activity', () => {
     await expect(lastHeading).toBeInViewport();
   });
 
-  test('ACT-1: search finds an old entry that is not yet drawn', async ({ page }) => {
+  test('ACT-1: search, then scrolling, reaches the oldest month\'s entry (more matches than the first screenful)', async ({ page }) => {
     await page.goto('/activity');
     await expect(rows(page).first()).toBeVisible();
-    // The demo's oldest month has its rent; searching finds every rent, the oldest included.
-    await page.getByRole('searchbox', { name: 'Search' }).fill('rent');
-    await expect.poll(() => rows(page).count()).toBeGreaterThan(10);
+    // Netflix is paid every month of the demo's 18, from its first month: more than the first screenful of rows
+    // (whether the rest are drawn at once or as the list scrolls depends on how tall the screen is).
+    await page.getByRole('searchbox', { name: 'Search' }).fill('Netflix');
+    await expect.poll(() => rows(page).first().getAttribute('aria-label')).toMatch(/^Netflix,/);
+    const main = page.getByRole('main');
+    /** The day of the last heading drawn, as a date (headings for another year read "3 Jun 2025"). */
+    const lastDay = () => main.getByRole('heading', { level: 2 }).last().innerText().then((t) => {
+      const m = /(\d{1,2}) (\w{3}) (\d{4})$/.exec(t);
+      return m ? new Date(`${m[1] ?? ''} ${m[2] ?? ''} ${m[3] ?? ''} 12:00 UTC`).getTime() : Date.now();
+    });
+    const monthsAgo = (n: number) => { const d = new Date(); d.setUTCMonth(d.getUTCMonth() - n); return d.getTime(); };
+    for (let i = 0; i < 20 && (await lastDay()) > monthsAgo(17); i += 1) {
+      await page.mouse.wheel(0, 3000);
+      await page.waitForTimeout(150);
+    }
+    expect(await lastDay(), 'the oldest month\'s Netflix').toBeLessThanOrEqual(monthsAgo(17));
+    expect(await lastDay()).toBeGreaterThanOrEqual(monthsAgo(19));
+    const oldest = rows(page).last();
+    await oldest.scrollIntoViewIfNeeded();
+    await expect(oldest).toBeInViewport();
+    await expect(oldest).toHaveAttribute('aria-label', /^Netflix,/);
   });
 });
 
@@ -177,9 +195,16 @@ test.describe('S9 P2: cold start', () => {
 test.describe('S9 P3: fonts', () => {
   test('TXT-6: an English-only Home fetches no Korean font file; the Latin faces are preloaded, Batang 700 included', async ({ page }) => {
     const fonts: string[] = [];
-    page.on('request', (r) => { if (r.url().endsWith('.woff2')) fonts.push(r.url().split('/').pop() ?? ''); });
+    let koreanRules = false;
+    page.on('request', (r) => {
+      if (r.url().endsWith('.woff2')) fonts.push(r.url().split('/').pop() ?? '');
+      if (/fonts-korean-a-[^/]*\.css$/.test(r.url())) koreanRules = true;
+    });
     await page.goto('/');
     await expect(balance(page)).toBeVisible();
+    // S9 review: the Korean rules are asked for at startup (so a Hangul name never swaps font after Home shows);
+    // only the font files wait for Hangul on screen.
+    expect(koreanRules, 'the Korean @font-face rules were requested by the time Home showed').toBe(true);
     await page.evaluate(async () => { await document.fonts.ready; });
     await page.waitForTimeout(1500);
     expect(await page.evaluate(() => /[가-힣]/.test(document.body.innerText))).toBe(false);
@@ -206,5 +231,76 @@ test.describe('S9 P3: fonts', () => {
       return [...document.fonts].some((f) => f.family.replace(/"/g, '') === 'Gowun Dodum' && f.status === 'loaded' && /U\+(a|b|c|d)[0-9a-f]{3}/i.test(f.unicodeRange) && !/U\+0-|U\+20-/i.test(f.unicodeRange));
     });
     expect(used).toBe(true);
+  });
+});
+
+/** Every request for a file whose name starts with one of these, while `blocked` says so, fails (a dead connection). */
+async function blockFiles(page: Page, names: readonly string[]) {
+  const state = { blocked: true };
+  const pattern = new RegExp(`/assets/(${names.join('|')})-[^/]*\\.js(\\?.*)?$`);
+  await page.route(pattern, (route) => (state.blocked ? route.abort() : route.continue()));
+  return state;
+}
+const couldntLoad = (page: Page) => page.getByText(/Couldn.t load this\./);
+
+test.describe('S9 review 1: a file that does not arrive', () => {
+  // The page's own requests, with no service worker answering from its cache.
+  test.use({ serviceWorkers: 'block' });
+
+  test('Activity: "Couldn\'t load this." in its place, the tab bar still there; Try again loads it once the connection is back', async ({ page }) => {
+    const files = await blockFiles(page, ['Activity']);
+    await page.goto('/');
+    await expect(balance(page)).toBeVisible();
+    // The idle-time fetch fails; the page may reload once for it (once per session), then stays.
+    await page.waitForTimeout(4000);
+    await expect(balance(page)).toBeVisible();
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(couldntLoad(page)).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Home' })).toBeVisible();
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    files.blocked = false;
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
+    await expect(rows(page).first()).toBeVisible();
+  });
+
+  test('ADD-1: Add expense, whose sheet\'s files failed, says so with Try again, and then opens', async ({ page }) => {
+    const files = await blockFiles(page, ['EntrySheet', 'SheetImpl']);
+    await page.goto('/');
+    await expect(balance(page)).toBeVisible();
+    await page.waitForTimeout(4000);
+    await expect(balance(page)).toBeVisible();
+    await page.getByRole('button', { name: 'Add expense', exact: true }).click();
+    await expect(couldntLoad(page)).toBeVisible();
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    files.blocked = false;
+    await page.getByRole('button', { name: 'Try again' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Add expense' });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole('textbox', { name: 'Amount' })).toBeVisible();
+  });
+
+  test('BAL-3: the plank\'s spring failing leaves Home up, the plank standing still', async ({ page }) => {
+    await blockFiles(page, ['PlankBeam']);
+    await page.goto('/');
+    await expect(balance(page)).toBeVisible();
+    await page.waitForTimeout(4000);
+    await expect(balance(page)).toBeVisible();
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    await expect(balance(page).locator('[data-tilt]')).toHaveCount(1);
+  });
+});
+
+test.describe('S9 review 5: no saved Home, no Home outline', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  test('a first visit (or a phone that signed out) gets plain paper as its first paint', async ({ page }) => {
+    await page.route('**/assets/*.js', (route) => route.abort());
+    await page.goto('/');
+    await expect(page.locator('#boot')).toBeVisible();
+    await expect(page.locator('#boot [data-boot="balance"]')).toBeHidden();
+    await page.evaluate(() => { localStorage.setItem('smsm-boot', JSON.stringify({ home: false })); });
+    await page.goto('/');
+    await expect(page.locator('#boot [data-boot="balance"]')).toBeHidden();
   });
 });

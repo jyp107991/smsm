@@ -37,8 +37,12 @@ import type { SheetProps } from './Sheet';
 const openSheets: { escape: () => void }[] = [];
 
 
-export default function SheetImpl({ open, onOpenChange, title, description, dirty = false, full = false, footer, children }: SheetProps) {
-  const id = useId();
+export default function SheetImpl({ open, onOpenChange, title, description, dirty = false, full = false, footer, children, layerId }: SheetProps & {
+  /** The history layer Sheet.tsx opened while this file was on its way (one entry, handed over). */
+  layerId?: string;
+}) {
+  const ownId = useId();
+  const id = layerId ?? ownId;
   const [confirming, setConfirming] = useState(false);
   const active = useRef(false);
   const opener = useRef<HTMLElement | null>(null);

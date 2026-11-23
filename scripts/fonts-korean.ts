@@ -9,11 +9,11 @@
  * declared by hand in type.css (preloaded and metric-matched), and latin-ext and Vietnamese are left
  * out. woff2 only; every browser smsm supports reads it.
  *
- * S9 (performance audit P3): Fontsource's Korean slices also list ASCII, Latin-1, punctuation, currency and
- * letterlike signs. Declared after the Latin faces, a Korean slice wins for those characters, so an English
- * screen fetched several Korean files for its spaces, digits, "£" and quotes. Those blocks are taken out of
- * every slice's unicode-range here (the Latin faces in type.css draw them); a slice left with nothing is
- * not written.
+ * S9 (performance audit P3): Fontsource's Korean slices also list ASCII, Latin-1, punctuation and signs.
+ * Declared after the Latin faces, a Korean slice wins for those characters, so an English screen fetched several
+ * Korean files for its spaces, digits, "£" and quotes. Whatever the Latin faces in type.css draw is taken out of
+ * every slice's unicode-range here; the rest (₩, ℃, Greek…) stays with the Korean face. A slice left with
+ * nothing is not written.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -39,13 +39,27 @@ const FACES: readonly Face[] = [
   { option: 'c', family: 'Nanum Myeongjo', pkg: '@fontsource/nanum-myeongjo', stem: 'nanum-myeongjo', weights: [400, 800] },
 ];
 
-/** Blocks the Latin faces draw: never claimed by a Korean slice. */
-const LATIN_BLOCKS: readonly (readonly [number, number])[] = [
-  [0x0000, 0x00ff], // ASCII and Latin-1
-  [0x2000, 0x206f], // general punctuation
-  [0x20a0, 0x20cf], // currency
-  [0x2100, 0x214f], // letterlike
-];
+/**
+ * What the Latin faces draw: the union of every Latin @font-face's unicode-range in src/styles/type.css. Exactly
+ * that is taken out of the Korean slices (S9 review: cutting whole blocks also cut ₩ ℃ ℉ ℓ № ℡ Ω Å, which no
+ * Latin face draws, so they fell back to the phone's font).
+ */
+function latinRanges(): [number, number][] {
+  const css = readFileSync('src/styles/type.css', 'utf8');
+  const out: [number, number][] = [];
+  for (const m of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
+    const body = m[1] ?? '';
+    if (!/-latin-/.test(body)) continue;
+    const range = /unicode-range:\s*([^;]+);/.exec(body)?.[1] ?? '';
+    for (const part of range.split(',').map((p) => p.trim()).filter(Boolean)) {
+      const [a, b] = part.replace(/^U\+/i, '').split('-');
+      out.push([parseInt(a ?? '', 16), parseInt(b ?? a ?? '', 16)]);
+    }
+  }
+  if (out.length === 0) throw new Error('No Latin unicode-range found in src/styles/type.css');
+  return out;
+}
+const LATIN_BLOCKS = latinRanges();
 
 const hex = (n: number) => n.toString(16);
 

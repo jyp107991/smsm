@@ -8,7 +8,7 @@
  * stands on a quiet ground; the beam is inset to 86 % of the width, so the animals sit inside the column.
  * Its parts are named like the animals' (`data-part`): `fulcrum`, `ground`.
  */
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { whenFirstScreen } from '../boot';
 import { Animal, type AnimalKind, type Mood } from './Animal';
 import { plankTilt } from '../plank';
@@ -42,7 +42,16 @@ const SEAT = 88;
  * S9 (performance audit P2): the beam's spring comes with the animation library (PlankBeam.tsx), fetched once the
  * first screen has painted. Until then the beam stands still at its tilt, exactly as the spring holds it at rest.
  */
-const SpringBeam = lazy(() => whenFirstScreen().then(() => import('./PlankBeam')).then((mod) => ({ default: mod.PlankBeam })));
+const SpringBeam = lazy(() => whenFirstScreen()
+  .then(() => import('./PlankBeam'))
+  .then((mod) => ({ default: mod.PlankBeam }))
+  // S9 review: if that file doesn't arrive, the beam simply stays still (it never takes Home down).
+  .catch(() => ({ default: StillBeam })));
+
+/** The beam at rest at its tilt: what the spring holds it at, without the spring. */
+function StillBeam({ tilt, children }: { tilt: number; onRest?: (tilt: number) => void; children: ReactNode }) {
+  return <div className="rig-plank-beam" data-tilt={tilt} style={{ transform: `rotate(${String(tilt)}deg)` }}>{children}</div>;
+}
 
 function Beam() {
   return (
@@ -92,7 +101,7 @@ export function Plank({ left, right, leftNetPence, motion = true, together = fal
         </g>
       </svg>
       {motion && !reduced ? (
-        <Suspense fallback={<div className="rig-plank-beam" data-tilt={tilt} style={{ transform: `rotate(${String(tilt)}deg)` }}>{seats}</div>}>
+        <Suspense fallback={<StillBeam tilt={tilt}>{seats}</StillBeam>}>
           <SpringBeam tilt={tilt} {...(onRest ? { onRest } : {})}>
             {seats}
           </SpringBeam>

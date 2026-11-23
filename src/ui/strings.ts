@@ -63,6 +63,8 @@ export const strings = {
     notConfigured: 'This copy of smsm isn’t connected to a household server yet.',
     cantLoad: 'Couldn’t reach the server to open your household. Check the connection and try again.',
     tryAgain: 'Try again',
+    /** S9 review: one screen's or sheet's file didn't arrive (offline before it was kept, a flaky connection). */
+    couldntLoad: 'Couldn’t load this.',
     offline: 'This needs a connection. Try again when you’re back online.',
     /** Anything the server said no to that has no plainer explanation (its own words go to the error report). */
     didntWork: 'That didn’t work. Check the connection and try again.',

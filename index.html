@@ -23,13 +23,15 @@
           var theme = localStorage.getItem('smsm-theme');
           if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
           var boot = JSON.parse(localStorage.getItem('smsm-boot') || 'null');
-          if (location.pathname !== '/' || (boot && boot.home === false)) root.dataset.boot = 'plain';
-          else if (boot && boot.home === true) {
+          // Home's outline only for a phone that last started on Home; otherwise (a first visit, signed out) plain paper.
+          if (location.pathname !== '/' || !boot || boot.home !== true) root.dataset.boot = 'plain';
+          else {
             root.style.setProperty('--boot-above', Math.max(0, Math.min(2000, Number(boot.above) || 0)) + 'px');
             root.style.setProperty('--boot-balance', Math.max(200, Math.min(800, Number(boot.balance) || 0)) + 'px');
           }
         } catch (e) {
-          /* private mode: the plain shape */
+          /* private mode: plain paper */
+          document.documentElement.dataset.boot = 'plain';
         }
       })();
     </script>
@@ -38,7 +40,7 @@
        * The static first paint (S9, DESIGN §6: no layout shift, skeletons match the final size): the paper, the
        * Home column (header, the balance, quick add) and the tab bar, in the tokens of either theme, drawn before
        * any script. It lies over the page until the app has drawn the same screen (src/ui/boot.ts removes it).
-       * Shapes only, no words. Elsewhere than Home (or signed out) it is the plain paper.
+       * Shapes only, no words. Elsewhere than Home, signed out or on a first visit it is the plain paper.
        */
       #boot { position: fixed; inset: 0; z-index: 95; overflow: hidden; pointer-events: none; background: var(--paper-grain) var(--paper); }
       #boot .b-col { box-sizing: border-box; max-width: 32rem; margin: 0 auto; padding: max(1rem, env(safe-area-inset-top)) 1.25rem 0; display: flex; flex-direction: column; gap: 1.5rem; }

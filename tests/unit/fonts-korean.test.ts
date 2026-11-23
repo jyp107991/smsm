@@ -1,24 +1,18 @@
 /**
  * S9 P3 (performance audit): the Korean font slices (scripts/fonts-korean.ts, DESIGN §3.2) must only ever be
- * fetched for Korean. Fontsource's slices also list ASCII, Latin-1, punctuation, currency and letterlike signs;
- * declared after the Latin faces they won over them, so an English-only Home fetched seven Korean files. Every
- * Hangul character must still resolve to a slice of the chosen face, and the first screen's largest text (the
- * balance amount, Gowun Batang 700 Latin) is preloaded with the other Latin files.
+ * fetched for Korean. Fontsource's slices also list ASCII, Latin-1, punctuation and signs; declared after the
+ * Latin faces they won over them, so an English-only Home fetched seven Korean files. Every Hangul character must
+ * still resolve to a slice of the chosen face, and the first screen's largest text (the balance amount, Gowun
+ * Batang 700 Latin) is preloaded with the other Latin files.
+ *
+ * S9 review: only what the Latin faces actually draw (their unicode-range in type.css) leaves the Korean slices.
+ * Cutting whole blocks also dropped ₩ ℃ ℉ ℓ № ℡ Ω Å, which then no face of ours drew.
  */
 import { describe, expect, it } from 'vitest';
 
 // The app tsconfig (which covers tests/unit) has no Node types: node:fs by a non-literal specifier, as in strings.test.ts.
 const nodeFs = 'node:fs';
 const { readFileSync } = (await import(/* @vite-ignore */ nodeFs)) as { readFileSync: (path: string, encoding: 'utf8') => string };
-
-/** The blocks a Korean slice must never claim: the Latin faces (type.css) draw them. */
-const LATIN_BLOCKS: readonly [number, number, string][] = [
-  [0x0000, 0x007f, 'ASCII'],
-  [0x0080, 0x00ff, 'Latin-1'],
-  [0x2000, 0x206f, 'general punctuation'],
-  [0x20a0, 0x20cf, 'currency'],
-  [0x2100, 0x214f, 'letterlike'],
-];
 
 interface Face { family: string; weight: string; file: string; ranges: [number, number][] }
 
@@ -42,20 +36,65 @@ function parse(css: string): Face[] {
 
 const covers = (faces: Face[], cp: number) => faces.some((f) => f.ranges.some(([lo, hi]) => cp >= lo && cp <= hi));
 
+/** What the Latin faces draw: every Latin @font-face's unicode-range in type.css. */
+const LATIN = parse(readFileSync('src/styles/type.css', 'utf8')).filter((f) => f.file.includes('-latin-'));
+const latin = (cp: number) => covers(LATIN, cp);
+
+/** Every code point a set of ranges covers (Korean slices stay well under U+10000). */
+function codePoints(ranges: readonly [number, number][]): Set<number> {
+  const out = new Set<number>();
+  for (const [lo, hi] of ranges) for (let cp = lo; cp <= hi; cp += 1) out.add(cp);
+  return out;
+}
+
+/** The package each Korean family comes from, and Fontsource's own numbered slices (before the script's cut). */
+const PACKAGES: Record<string, string> = {
+  'Gowun Batang': '@fontsource/gowun-batang', 'Gowun Dodum': '@fontsource/gowun-dodum',
+  'Hahmlet Variable': '@fontsource-variable/hahmlet', 'Nanum Myeongjo': '@fontsource/nanum-myeongjo',
+};
+function packageSlices(family: string): [number, number][] {
+  const json = JSON.parse(readFileSync(`node_modules/${PACKAGES[family] ?? ''}/unicode.json`, 'utf8')) as Record<string, string>;
+  return Object.entries(json).filter(([k]) => /^\[\d+\]$/.test(k)).flatMap(([, r]) => parse(`@font-face { unicode-range: ${r}; }`)[0]?.ranges ?? []);
+}
+
 describe('S9 P3: Korean slices are fetched only for Korean', () => {
   for (const option of ['a', 'b', 'c'] as const) {
     const faces = parse(readFileSync(`src/styles/fonts-korean-${option}.css`, 'utf8'));
 
-    it(`TXT-6 option ${option.toUpperCase()}: no slice claims ASCII, Latin-1, general punctuation, currency or letterlike signs`, () => {
+    it(`TXT-6 option ${option.toUpperCase()}: no slice claims a character the Latin faces draw`, () => {
+      expect(LATIN.length).toBeGreaterThan(3);
       expect(faces.length).toBeGreaterThan(50);
       for (const f of faces) {
         expect(f.ranges.length, `${f.file} has an empty unicode-range`).toBeGreaterThan(0);
         for (const [lo, hi] of f.ranges) {
-          for (const [blo, bhi, name] of LATIN_BLOCKS) {
-            expect(hi < blo || lo > bhi, `${f.file} claims ${name} (U+${lo.toString(16)}-${hi.toString(16)})`).toBe(true);
+          for (let cp = lo; cp <= hi; cp += 1) {
+            if (latin(cp)) throw new Error(`${f.file} claims U+${cp.toString(16)}, which the Latin faces draw`);
           }
         }
       }
+    });
+
+    it(`TXT-6 option ${option.toUpperCase()}: nothing else is lost: Fontsource's slices = these slices + the Latin faces' part of them`, () => {
+      for (const family of [...new Set(faces.map((f) => f.family))]) {
+        const weight = faces.find((f) => f.family === family)?.weight;
+        const now = codePoints(faces.filter((f) => f.family === family && f.weight === weight).flatMap((f) => f.ranges));
+        const before = codePoints(packageSlices(family));
+        const lost = [...before].filter((cp) => !now.has(cp) && !latin(cp));
+        expect(lost.map((cp) => `U+${cp.toString(16)}`), `${family}: characters no face draws any more`).toEqual([]);
+        const added = [...now].filter((cp) => !before.has(cp));
+        expect(added, `${family}: characters the package's slices never had`).toEqual([]);
+      }
+    });
+
+    it(`TXT-6 option ${option.toUpperCase()}: ₩ (and ℃, №, Ω) still come from the Korean face`, () => {
+      for (const family of [...new Set(faces.map((f) => f.family))]) {
+        const own = faces.filter((f) => f.family === family);
+        for (const cp of [0x20a9, 0x2103, 0x2116, 0x2126]) {
+          if (!codePoints(packageSlices(family)).has(cp)) continue;
+          expect(covers(own, cp), `${family}: U+${cp.toString(16)}`).toBe(true);
+        }
+      }
+      expect(covers(faces, 0x20a9), 'no slice has ₩').toBe(true);
     });
 
     it(`TXT-6 option ${option.toUpperCase()}: every Hangul syllable and letter still resolves to a slice of each face`, () => {
@@ -74,11 +113,10 @@ describe('S9 P3: Korean slices are fetched only for Korean', () => {
     });
   }
 
-  it('the generator itself leaves those blocks out (so a font package update keeps the rule)', () => {
+  it('the generator takes the Latin faces\' ranges from type.css itself (so a change there or a font update keeps the rule)', () => {
     const script = readFileSync('scripts/fonts-korean.ts', 'utf8');
-    expect(script).toMatch(/0x2000/);
-    expect(script).toMatch(/0x20a0|0x20A0/);
-    expect(script).toMatch(/0x2100/);
+    expect(script).toMatch(/src\/styles\/type\.css/);
+    expect(script).not.toMatch(/0x20a0|0x2100/i);
   });
 });
 
