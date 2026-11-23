@@ -8,6 +8,7 @@
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { Settings as Gear } from 'lucide-react';
 import { formatDay } from '../../core/dates';
+import { newestFirst } from '../../core/filters';
 import {
   dismissProblem, useCategories, useDataLayer, useEntries, useSettlements, useSyncStatus, type ExpenseDraft, type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
@@ -24,7 +25,7 @@ import { EntryRowView, SettlementRowView } from '../shared/rows';
 import { useSheets } from '../sheets';
 import { BalanceRegion } from './Balance';
 import { InboxButton, SuggestRecurring } from './BillsBanners';
-import { CurrentChapterChip } from './CurrentChapter';
+import { CurrentChips } from './CurrentChapter';
 import { TripBanner } from '../places/TripBanner';
 import { ThisMonth } from '../insights/ThisMonth';
 import { RecapBanners } from '../insights/RecapLinks';
@@ -56,7 +57,7 @@ export function Home() {
       <TripBanner />
       <RecapBanners />
       <BalanceRegion />
-      <CurrentChapterChip />
+      <CurrentChips />
       <QuickAdd />
       <ThisMonth />
       <SuggestRecurring />
@@ -101,7 +102,7 @@ type Recent = { kind: 'expense'; row: ExpenseRow } | { kind: 'settlement'; row: 
 
 /**
  * Q-U7: Home shows the ledger. "Recent" is the last few entries and settle-ups (newest first, by their date,
- * then when they were added), under day headings ("Today", "Yesterday", "Tue 10 Nov"); each day's rows are a
+ * then when they were added, then by id: the one order), under day headings ("Today", "Yesterday", "Tue 10 Nov"); each day's rows are a
  * list named by its heading. Never a blank "nothing today" while there is history.
  */
 function RecentRows() {
@@ -119,7 +120,8 @@ function RecentRows() {
       ...(entries ?? []).filter((e) => e.deleted_at === null).map((row) => ({ kind: 'expense' as const, row })),
       ...(settlements ?? []).filter((s) => s.deleted_at === null).map((row) => ({ kind: 'settlement' as const, row })),
     ];
-    all.sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0));
+    // S9a (ACT-1): the one order, as Activity and the statement (core/filters newestFirst).
+    all.sort((a, b) => newestFirst({ date: a.row.date, createdAt: a.row.created_at, id: a.row.id }, { date: b.row.date, createdAt: b.row.created_at, id: b.row.id }));
     const groups: { date: string; items: Recent[] }[] = [];
     for (const item of all.slice(0, RECENT)) {
       const last = groups[groups.length - 1];

@@ -7,8 +7,9 @@
 import seedList from '../../../content/merchants.json';
 import { suggest, type Memory } from '../../core/categorise';
 import { formatDay, type IsoDate } from '../../core/dates';
+import { formatForeign } from '../../core/fx';
 import { formatPence } from '../../core/money';
-import { parseQuickAdd, type QuickAddReading } from '../../core/quickadd';
+import { parseQuickAdd, quickAddProblem, type QuickAddContext, type QuickAddProblem, type QuickAddReading } from '../../core/quickadd';
 import { resolveDefaultSplit, type SplitParams, type UserId } from '../../core/split';
 import { normaliseKey, tidyDescription } from '../../core/text';
 import type { CategoryRow, ExpenseRow } from '../../data';
@@ -103,19 +104,34 @@ export interface Reading extends QuickAddReading {
   saveAs: string;
 }
 
-/** ADD-1, ADD-3: the quick-add text read, with what wasn't typed filled from what the household taught. */
-export function readQuickAdd(
-  text: string,
-  ctx: LearnContext & { today: IsoDate; me: Person; partner: Person | null; householdRatio: unknown },
-): Reading | null {
-  const people = ctx.partner ? [ctx.me, ctx.partner] : [ctx.me];
+/** What readQuickAdd and quickAddTrouble read with. */
+export type QuickAddCtx = LearnContext & {
+  today: IsoDate; me: Person; partner: Person | null; householdRatio: unknown;
+  /** PLC-6 (S9a): abroad, the currency of a bare amount and the rate this phone has for it (pounds per unit). */
+  currency?: string | null; rate?: string | null;
+};
+
+function grammarContext(ctx: QuickAddCtx): QuickAddContext {
   const partnerId = ctx.partner?.id ?? '\u0000partner';
   const names: Record<UserId, string> = { [ctx.me.id]: ctx.me.name, [partnerId]: ctx.partner?.name ?? '' };
   const animals: Record<UserId, 'cat' | 'dog'> = { [ctx.me.id]: ctx.me.animal, [partnerId]: ctx.partner?.animal ?? (ctx.me.animal === 'cat' ? 'dog' : 'cat') };
   const live = ctx.categories.filter((c) => !c.archived);
-  const r = parseQuickAdd(text, {
+  return {
     today: ctx.today, me: ctx.me.id, partner: partnerId, names, animals, categories: live.map((c) => ({ id: c.id, name: c.name })),
-  });
+    currency: ctx.currency ?? null, rate: ctx.rate ?? null,
+  };
+}
+
+/** S9a (fix 21): why Enter can't save the quick-add text (no amount, over the maximum, no such day), or null. */
+export function quickAddTrouble(text: string, ctx: QuickAddCtx): QuickAddProblem | null {
+  return quickAddProblem(text, grammarContext(ctx));
+}
+
+/** ADD-1, ADD-3: the quick-add text read, with what wasn't typed filled from what the household taught. */
+export function readQuickAdd(text: string, ctx: QuickAddCtx): Reading | null {
+  const people = ctx.partner ? [ctx.me, ctx.partner] : [ctx.me];
+  const live = ctx.categories.filter((c) => !c.archived);
+  const r = parseQuickAdd(text, grammarContext(ctx));
   if (!r) return null;
   // Q-U6: read and saved tidy, so the reading, the form opened from it and the saved row all say the same.
   const description = tidy(r.description);
@@ -138,11 +154,20 @@ export function readQuickAdd(
   };
 }
 
-/** ADD-2: the live reading, "£42.50 · Tesco · Groceries · Jae paid · 50/50" (date and tags only when said). */
+/** ADD-2: the reading's first words: the amount as typed ("£42.50"; abroad, "¥2,000"). */
+export function readingAmount(r: QuickAddReading): string {
+  return r.original ? formatForeign(r.original.amount, r.original.currency) : formatPence(r.amount);
+}
+
+/**
+ * ADD-2: the live reading, "£42.50 · Tesco · Groceries · Jae paid · 50/50" (date and tags only when said). Abroad
+ * (PLC-6), the amount as typed and then the pounds it saves as: "¥2,000 · £10.53 · Ramen · …" (no pounds while no rate).
+ */
 export function readingWords(r: Reading, ctx: { categories: readonly CategoryRow[]; people: readonly Person[]; today: IsoDate }): string {
   const name = ctx.people.find((p) => p.id === r.payer)?.name ?? '';
   const category = ctx.categories.find((c) => c.id === r.categoryId)?.name;
-  const parts = [formatPence(r.amount)];
+  const parts = [readingAmount(r)];
+  if (r.original?.rate != null) parts.push(formatPence(r.amount));
   if (r.description !== '') parts.push(r.description);
   if (category) parts.push(category);
   parts.push(strings.reading.paid(name), splitWords(r.split, r.payer, ctx.people));

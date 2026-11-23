@@ -274,6 +274,35 @@ export function createMemoryApi(
     return next;
   }
 
+  /**
+   * What check_refund_limit does (S9a migration): live money back is never more than its original still has to come
+   * back, checked when a write raises it (new, more money, another original, restored).
+   */
+  function checkRefundLimit(r: ExpenseRow, before: ExpenseRow | undefined) {
+    if (r.kind !== 'money_back' || r.refund_of === null || r.deleted_at !== null) return;
+    if (before && before.kind === 'money_back' && before.deleted_at === null && before.refund_of === r.refund_of && r.amount_pence <= before.amount_pence) return;
+    const original = tables.expenses.find((e) => e.id === r.refund_of);
+    if (!original) return;
+    const back = tables.expenses.filter((e) => e.refund_of === r.refund_of && e.kind === 'money_back' && e.deleted_at === null && e.id !== r.id)
+      .reduce((t, e) => t + e.amount_pence, 0);
+    const left = Math.max(0, original.amount_pence - back);
+    if (r.amount_pence > left) {
+      refuse(`that's more than the £${String(Math.floor(left / 100))}.${String(left % 100).padStart(2, '0')} still to come back`, '23514');
+    }
+  }
+
+  /** What follow_original does (S9a migration): an original's live money back is deleted with it, and restored with it. */
+  function followOriginal(before: ExpenseRow, after: ExpenseRow) {
+    if (after.kind !== 'expense') return;
+    const deleting = before.deleted_at === null && after.deleted_at !== null;
+    const restoring = before.deleted_at !== null && after.deleted_at === null;
+    if (!deleting && !restoring) return;
+    for (const back of tables.expenses.filter((e) => e.refund_of === after.id && e.kind === 'money_back')) {
+      if (deleting && back.deleted_at === null) patchRow(tables.expenses, back.id, { deleted_at: after.deleted_at }, 'expense');
+      if (restoring && back.deleted_at === before.deleted_at) patchRow(tables.expenses, back.id, { deleted_at: null }, 'expense');
+    }
+  }
+
   function patchRow<R extends { id: string; household_id: string; updated_at: string; deleted_at: string | null }>(
     list: R[], id: string, patch: { deleted_at: string | null }, entity: string,
   ): R {
@@ -567,8 +596,15 @@ export function createMemoryApi(
           if (r.external_id !== null && tables.expenses.some((e) => e.id !== r.id && e.household_id === r.household_id && e.source === r.source && e.external_id === r.external_id)) {
             refuse('duplicate key value violates unique constraint "expenses_external"', '23505');
           }
+          checkRefundLimit(r, tables.expenses.find((e) => e.id === r.id));
         })),
-    patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => patchRow(tables.expenses, id, patch, 'expense')),
+    patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => {
+      const before = tables.expenses.find((e) => e.id === id && e.household_id === myHousehold());
+      if (before) checkRefundLimit({ ...before, ...patch }, before);
+      const next = patchRow(tables.expenses, id, patch, 'expense');
+      if (before) followOriginal(before, next);
+      return next;
+    }),
     upsertSettlement: (row: SettlementWrite) =>
       call('upsertSettlement', row, () =>
         writeRow(tables.settlements, row, 'settlement', (w) => ({

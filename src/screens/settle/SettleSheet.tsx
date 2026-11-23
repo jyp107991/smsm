@@ -1,10 +1,13 @@
 /**
  * Settle up (SET-1, SET-2, SET-3): prefilled with the full balance and editable for a part payment; "Pay
  * with Monzo" when the person owed has saved a monzo.me name, then "Did it go through?" on return; or
- * "Record it". Editing a settle-up (from its page) uses the same sheet with "Save".
+ * "Record Sam’s payment" (S9a: it names whoever pays). More than is owed is refused, with a one-tap "Use £…"
+ * that fills in what is owed (core/balance settleProblem). Editing a settle-up (from its page) uses the same
+ * sheet with "Save".
  */
 import { useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { formatDay } from '../../core/dates';
+import { settleProblem } from '../../core/balance';
 import { formatPence, formatPlainPounds, parseAmount, pence } from '../../core/money';
 import {
   addSettlement, deleteSettlement, editSettlement, newId, useBalance, useDataLayer, type SettlementDraft,
@@ -70,11 +73,12 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
   // Q-U11: opened by the person owed (or to correct one already made), it records what the other has paid.
   const recordsTheirs = editing || people.me?.id === start.to;
   const monzoName = payer ? (people.rows.find((m) => m.user_id === start.to)?.monzo_me ?? null) : null;
-  // SET-1: a part payment is fine; more than is owed gets a quiet line (it would turn the debt round).
-  const owed = balance.status === 'ready' && balance.state.kind === 'owes' && balance.state.debtor === start.from ? balance.state.amount : null;
+  // SET-1 (S9a): a part payment is fine; more than is owed is refused (it would turn the debt round), saying what
+  // is owed, with a one-tap "Use £…" that puts it in the amount. The person still taps Record.
   const typed = parseAmount(amountText);
-  const overLine = editing || typed === null || (owed !== null && typed <= owed) ? null
-    : owed !== null ? strings.settle.moreThanOwed(from?.name ?? '', to?.name ?? '', formatPence(owed))
+  const over = editing || typed === null || balance.status !== 'ready' ? null : settleProblem(typed, balance.state, start.from);
+  const overLine = over === null ? null
+    : over.owed > 0 ? strings.settle.moreThanOwed(from?.name ?? '', formatPence(over.owed))
     : strings.settle.nothingOwed(from?.name ?? '', to?.name ?? '');
 
   const draft = (method: 'monzo' | 'other'): SettlementDraft | null => {
@@ -83,6 +87,8 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
       setError(strings.entry.amountNeeded);
       return null;
     }
+    // SET-1: refused; the line under the amount says why (and offers what is owed).
+    if (!editing && over !== null) return null;
     return { from: start.from, to: start.to, amount, date, note: note.trim() === '' ? null : note.trim(), method };
   };
 
@@ -201,13 +207,11 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
             <Button type="submit" form="settle-form" block>{strings.settle.save}</Button>
           ) : monzoName ? (
             <div className="flex flex-wrap gap-3">
-              <Button variant="plain" type="submit" form="settle-form" className="flex-auto">{strings.settle.recordIt}</Button>
+              <Button variant="plain" type="submit" form="settle-form" className="flex-auto">{strings.settle.recordTheirs(from?.name ?? '')}</Button>
               <Button className="flex-auto" onClick={payWithMonzo}>{strings.settle.payWithMonzo}</Button>
             </div>
           ) : (
-            <Button type="submit" form="settle-form" block>
-              {recordsTheirs ? strings.settle.recordTheirs(from?.name ?? '') : strings.settle.recordIt}
-            </Button>
+            <Button type="submit" form="settle-form" block>{strings.settle.recordTheirs(from?.name ?? '')}</Button>
           )}
         </div>
       }
@@ -228,7 +232,16 @@ function SettleForm({ request, open, onDone }: { request: SettleRequest; open: b
           enterKeyHint="done"
         />
         {/* A fixed place for the line, so it never moves what is under it. */}
-        {!editing ? <p className="text-secondary text-ink-2 m-0 -mt-3 min-h-[1.4rem]" aria-live="polite">{overLine}</p> : null}
+        {!editing ? (
+          <div className="-mt-3 flex min-h-[1.4rem] flex-col items-start gap-1">
+            <p className="text-secondary text-ink m-0" aria-live="polite">{overLine}</p>
+            {over !== null && over.owed > 0 ? (
+              <Button variant="plain" onClick={() => { setAmountText(formatPlainPounds(over.owed)); setError(null); }}>
+                {strings.settle.useOwed(formatPence(over.owed))}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {!editing && payer && !monzoName && to ? <p className="text-secondary text-ink-2 m-0">{strings.settle.noMonzo(to.name)}</p> : null}
         <Disclosure label={strings.entry.moreDetails} open={more} onOpenChange={setMore}>
           <div className="flex flex-col gap-4">

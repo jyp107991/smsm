@@ -26,6 +26,15 @@ export function currencyOf(country: string | null | undefined): string | null {
   return CURRENCY[country.toUpperCase()] ?? null;
 }
 
+/**
+ * PLC-6 (S9a): the currency a bare amount in quick add is in: the country's own when it has one and it isn't pounds;
+ * otherwise null (pounds, as at home).
+ */
+export function bareAmountCurrency(country: string | null | undefined): string | null {
+  const c = currencyOf(country);
+  return c === null || c === 'GBP' ? null : c;
+}
+
 /** "1,200.50" → { digits: 120050n, scale: 2 }; null for anything that isn't a positive decimal. */
 function decimal(text: string): { digits: bigint; scale: number } | null {
   const t = text.trim().replace(/,/g, '');

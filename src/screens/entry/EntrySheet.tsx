@@ -17,6 +17,7 @@ import { formatDate, formatDay } from '../../core/dates';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
+import { splitForNewPayer } from '../../core/split';
 import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
   addExpense, deleteExpense, editExpense, endRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
@@ -45,7 +46,7 @@ import { Itemise, PhotoButton, ReceiptPhoto, type ReadingState } from './Receipt
 import { RecurringHistory, Toggle } from './RecurringParts';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
-  blankForm, draftOf, followExact, formFromRow, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, sumWords, summaryWords,
+  blankForm, draftOf, followExact, formFromRow, movesBalance, parsedAmount, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, stillToComeBack, sumWords, summaryWords,
   withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
 } from './form';
 
@@ -99,7 +100,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   // The form starts once, from what was asked; later changes to the lists don't reset what is typed.
   const [initial] = useState((): FormState => {
     if (request.mode === 'edit' && existing) return formFromRow(existing, pair, request.input);
-    if (request.mode === 'refund') return refundForm(request.of, pair, today);
+    if (request.mode === 'refund') return refundForm(request.of, pair, today, entries);
     if (template) return formFromTemplate(template, pair, today);
     const split = defaultSplit({ remembered: null, category: undefined, householdRatio: household?.default_ratio, people: pair, me: me?.id ?? '' });
     const blank = blankForm({ me: me?.id ?? '', people: pair, today, split });
@@ -162,6 +163,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const [pickingDate, setPickingDate] = useState(false);
   // Q-U5: "Other" stays chosen once picked, or when the split started off the chips, even when its stepper
   // passes a preset (otherwise the stepper vanishes under the finger and the next tap lands on the date).
+  // S9a (fix 8): who paid was changed in this sheet.
+  const [payerMoved, setPayerMoved] = useState(false);
   const [otherChosen, setOtherChosen] = useState(() => {
     const id = pair[0]?.id;
     return initial.splitMode === 'ratio' && id !== undefined && !(SHEET_PRESETS as readonly number[]).includes(initial.ratio[id] ?? 50);
@@ -398,6 +401,18 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       return;
     }
     const draft = result.draft;
+    // MB-2 (S9a): never more back than the original still has to come back (the database refuses it too).
+    const original = draft.kind === 'money_back' && draft.refundOf ? entries.find((x) => x.id === draft.refundOf) : undefined;
+    // As the database: only a change that raises it is checked (an older refund can still be renamed).
+    const raises = !(existing && existing.kind === 'money_back' && existing.deleted_at === null && existing.refund_of === draft.refundOf
+      && draft.amount <= existing.amount_pence);
+    if (original && raises) {
+      const left = stillToComeBack(original, entries, existing?.id);
+      if (draft.amount > left) {
+        setErrors([strings.entry.moreThanLeft(formatPence(left))]);
+        return;
+      }
+    }
     let id: string;
     let undo: () => void;
     try {
@@ -558,6 +573,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
 
   const remainder = remainderWords(s, pair);
   const summary = summaryWords(s, pair);
+  // S9a (fix 8): after a change of payer, a combination that doesn't move the balance says so.
+  const noChange = (() => {
+    if (isBack || movesBalance(s, pair) !== false) return null;
+    return strings.entry.noBalanceChange(payerPerson.name);
+  })();
   const sum = sumWords(s);
   const yesterday = yesterdayOf(today);
   const otherDay = s.date !== today && s.date !== yesterday;
@@ -651,14 +671,18 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
               people={pair}
               value={s.payer}
               onChange={(payer) => {
-                // A split is each person's own share; only its wording follows the payer. Money back that is
-                // all one person's stays that person's (Q-U5: the meaning never flips).
-                if (isBack && (s.splitMode === 'treat' || s.splitMode === 'for_other')) {
-                  const holder = s.splitMode === 'treat' ? s.payer : other?.id;
-                  update({ ...s, payer, splitMode: holder === payer ? 'treat' : 'for_other' });
+                if (payer === s.payer) return;
+                // A split is each person's own share; only its wording follows the payer (Q-U5, S9a fix 8: the
+                // meaning never flips). "For Sam" that Sam now paid is Sam's own; a treat someone else paid is "for"
+                // the one whose treat it was (core/split splitForNewPayer).
+                setPayerMoved(true);
+                if ((s.splitMode === 'treat' || s.splitMode === 'for_other') && first && second) {
+                  const next = splitForNewPayer({ amount: parsedAmount(s) ?? pence(0), split: { mode: s.splitMode }, from: s.payer, to: payer, members: [first.id, second.id] });
+                  update({ ...s, payer, splitMode: next.mode });
                 } else update({ ...s, payer });
               }}
             />
+            {payerMoved && noChange ? <p aria-live="polite" className="text-secondary text-ink-2 m-0 mt-2">{noChange}</p> : null}
           </Group>
 
           <Group label={strings.entry.shared}>

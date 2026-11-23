@@ -4,12 +4,13 @@
  */
 export type Pence = number & { readonly __brand: 'Pence' };
 
-const MAX_PENCE = 100_000_000; // £1,000,000: anything larger is almost certainly a typo
-
 export function pence(n: number): Pence {
   if (!Number.isSafeInteger(n)) throw new RangeError(`not a whole number of pence: ${String(n)}`);
   return n as Pence;
 }
+
+/** The app's maximum amount, £1,000,000.00: anything larger is almost certainly a typo (S9a: one figure, named in words). */
+export const MAX_PENCE: Pence = pence(100_000_000);
 
 export function sumPence(xs: readonly Pence[]): Pence {
   let total = 0;
@@ -38,13 +39,30 @@ function parseTerm(term: string): number | null {
  * Zero, negatives, more than two decimals, junk and amounts above £1,000,000 give null.
  */
 export function parseAmount(text: string): Pence | null {
+  const total = termsTotal(text);
+  return total !== null && total > 0 && total <= MAX_PENCE ? pence(total) : null;
+}
+
+/** Every term read and added (no limit), or null when one doesn't read. */
+function termsTotal(text: string): number | null {
   let total = 0;
   for (const term of text.normalize('NFKC').split('+')) {
     const p = parseTerm(term);
     if (p === null) return null;
     total += p;
   }
-  return total > 0 && total <= MAX_PENCE ? pence(total) : null;
+  return total;
+}
+
+/**
+ * S9a (ADD-1, ADD-5): why an amount field's text is not an amount, the same for the sheet and quick add: null when
+ * parseAmount reads it; 'empty' for blank; 'tooLarge' for a well-formed amount (or sum) above MAX_PENCE; else 'unreadable'.
+ */
+export function amountProblem(text: string): 'empty' | 'unreadable' | 'tooLarge' | null {
+  if (text.trim() === '') return 'empty';
+  if (parseAmount(text) !== null) return null;
+  const total = termsTotal(text);
+  return total !== null && total > MAX_PENCE ? 'tooLarge' : 'unreadable';
 }
 
 const grouped = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0, useGrouping: true });

@@ -8,6 +8,7 @@ import type { LedgerEntry, LedgerSettlement } from '../core/balance';
 import type { Memory } from '../core/categorise';
 import { pence, type Pence } from '../core/money';
 import type { PenceMap, SplitParams } from '../core/split';
+import { normaliseKey } from '../core/text';
 import type { Database } from './database.types';
 
 type Tables = Database['public']['Tables'];
@@ -42,6 +43,9 @@ export function expenseToLedger(row: ExpenseRow): LedgerEntry {
     paid: toPenceMap(row.id, row.paid, row.amount_pence, 'paid'),
     shares: toPenceMap(row.id, row.shares, row.amount_pence, 'shares'),
     deleted: row.deleted_at !== null,
+    // MB-3 (S9a): money back whose original is deleted never counts.
+    id: row.id,
+    refundOf: row.refund_of,
   };
 }
 
@@ -72,9 +76,16 @@ export function memorySplit(row: Pick<CategoryMemoryRow, 'split_mode' | 'split_p
 /** The household's memory (CAT-2 step 1) keyed by normalised description, for core/categorise. */
 export function memoryMap(rows: readonly CategoryMemoryRow[]): Map<string, Memory> {
   const out = new Map<string, Memory>();
+  const when = new Map<string, string>();
   for (const r of rows) {
     const source = r.source === 'ai' || r.source === 'seed' ? r.source : 'user';
-    out.set(r.key, { categoryId: r.category_id, split: memorySplit(r), source });
+    // S9a (TXT-3): keys learned before apostrophes were folded are read as today's keys; of two that now meet
+    // ("sainsbury's", "sainsbury’s"), the one taught last wins.
+    const key = normaliseKey(r.key);
+    const seen = when.get(key);
+    if (seen !== undefined && seen > r.updated_at) continue;
+    when.set(key, r.updated_at);
+    out.set(key, { categoryId: r.category_id, split: memorySplit(r), source });
   }
   return out;
 }

@@ -349,8 +349,16 @@ describe('usual: the median of the previous 3–6 full everyday months (INS-3, C
 
 // ─────────────────────────────── pace ───────────────────────────────
 
-/** A usual of £3,000.00 (May–Oct, first entry in April); on 14 Nov the usual pace is 3000 × 14 ÷ 30 = £1,400.00. */
-const USUAL_3000 = monthly({ '2026-04': 100, '2026-05': 300000, '2026-06': 300000, '2026-07': 300000, '2026-08': 300000, '2026-09': 300000, '2026-10': 300000 });
+/**
+ * A usual of £3,000.00 (May–Oct, first entry in April); on 14 Nov the usual pace is £1,400.00. S9a (DECISIONS, pace):
+ * the usual pace by today is what usually lands by this day of the month, so each month's £3,000.00 is £1,400.00 by the
+ * 14th (on the 1st) and £1,600.00 after it (on the 20th): the same £1,400.00 the old pro-rata 3000 × 14 ÷ 30 gave.
+ */
+const byThe14th = (m: Month, before: number, after: number) => [e({ amount: before, date: `${m}-01`, categoryId: RENT }), e({ amount: after, date: `${m}-20`, categoryId: RENT })];
+const USUAL_3000 = [
+  ...monthly({ '2026-04': 100 }),
+  ...['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].flatMap((m) => byThe14th(m, 140000, 160000)),
+];
 const soFar = (amount: number, extra: InsightEntry[] = []) => core().pace([...USUAL_3000, e({ amount, date: '2026-11-10', categoryId: GROCERIES }), ...extra], TODAY);
 
 describe('pace: the month so far against the usual pace (INS-1, CHP-5)', () => {
@@ -380,8 +388,11 @@ describe('pace: the month so far against the usual pace (INS-1, CHP-5)', () => {
   });
 
   it('INS-1: the usual pace is worked exactly: £1,000.00 usual on 14 Nov is £466.666…; £400.00 so far is about £70 under', () => {
+    // S9a: by the 14th, £466.67 in four months and £466.66 in two: a mean of £466.666… (£2,800.00 ÷ 6), never rounded.
     const entries = [
-      ...monthly({ '2026-04': 100, '2026-05': 100000, '2026-06': 100000, '2026-07': 100000, '2026-08': 100000, '2026-09': 100000, '2026-10': 100000 }),
+      ...monthly({ '2026-04': 100 }),
+      ...byThe14th('2026-05', 46667, 53333), ...byThe14th('2026-06', 46667, 53333), ...byThe14th('2026-07', 46667, 53333),
+      ...byThe14th('2026-08', 46667, 53333), ...byThe14th('2026-09', 46666, 53334), ...byThe14th('2026-10', 46666, 53334),
       e({ amount: 40000, date: '2026-11-01' }),
     ];
     const p = core().pace(entries, TODAY);

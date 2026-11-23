@@ -602,6 +602,18 @@ export function dismissInboxItem(itemId: string, layer = activeDataLayer()): boo
   return true;
 }
 
+/** INB-2 (S9a): Undo of "Not ours": the item waits in the Inbox again. True when something changed. */
+export function reopenInboxItem(itemId: string, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const item = shown<InboxItemRow>(layer, 'inbox_items').find((i) => i.id === itemId);
+  if (!item) throw new EntryNotFoundError(itemId);
+  if (item.status !== 'dismissed') return false;
+  const payload = item.payload as { description?: unknown } | null;
+  const label = typeof payload?.description === 'string' ? payload.description : '';
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'inbox_items', op: 'patch', id: item.id, patch: { status: 'open', expense_id: null }, label });
+  return true;
+}
+
 function enqueueCategory(layer: DataLayer, uid: string, current: CategoryRow | undefined, next: CategoryRow): boolean {
   if (current && sameJson(categoryWrite(current), categoryWrite(next))) return false;
   layer.enqueue({ opId: newId(), by: uid, table: 'categories', op: 'upsert', isNew: current === undefined, row: next, input: null });

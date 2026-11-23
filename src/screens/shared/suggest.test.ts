@@ -38,7 +38,8 @@ describe('the quick-add reading', () => {
   });
 
   it('CAT-3 CAT-2: what the household chose beats the built-in list; then a close match in history', () => {
-    const memory = new Map<string, Memory>([['sainsbury\'s', { categoryId: id('Household'), split: null, source: 'user' }]]);
+    // S9a (TXT-3): memory is keyed by the normalised description, which now leaves apostrophes out (was "sainsbury's").
+    const memory = new Map<string, Memory>([['sainsburys', { categoryId: id('Household'), split: null, source: 'user' }]]);
     expect(read("5 Sainsbury's", { memory }).r?.categoryId).toBe(id('Household'));
     expect(read('5 tesco express', { entries: [row('Tesco', 'Household')] }).r?.categoryId).toBe(id('Household'));
   });

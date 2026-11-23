@@ -20,9 +20,13 @@
  *     "£3,900.00 in all · everyday £3,180.00, £915.00 less than the same stretch 3 months earlier".
  *   Trend: Dec 2025–Mar 2026 £0.00, Apr £100.00, May–Oct £1,365.00, Nov 2026 £1,170.00.
  *   Fairness: 3 months Jae 296000 / 390000 → 76%, Sam 24%; 12 months Jae 706000 / 946000 → 75%, Sam 25%; split 50/50.
- *   Usual (May–Oct, everyday) £1,365.00; on 14 Nov the usual pace is £637.00; £450.00 so far is £187 under → "£190".
+ *   Usual (May–Oct, everyday) £1,365.00. S9a (DECISIONS, pace): the usual pace by 14 Nov is what usually lands by the
+ *     14th: every month's £1,365.00 lands on the 10th, so £1,365.00; £450.00 so far is £915 under → "£920" (the rent,
+ *     due by the 10th, hasn't come this month). Before S9a the pace was pro rata, £637.00, and "£190 under".
  *   Notes: "Eating out is £85 over its usual (£210 so far, usually £125)".
- *   Month ends (Jae owed): Aug £120.00, Sep £137.50, Oct £155.00 → mean £137.50 → "about £130".
+ *   Month ends (Jae owed): Aug £120.00, Sep £137.50, Oct £155.00 → mean £137.50 → "about £130". S9a (fix 23): Sam
+ *     settles every month, so no standing-order hint; with August's settle-up missed: Aug £420.00, Sep £437.50,
+ *     Oct £455.00 → mean £437.50 → "about £430".
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -103,6 +107,8 @@ function newHousehold() {
 
 const EATING_NOTE = 'Eating out is £85 over its usual (£210 so far, usually £125)';
 const STANDING_ORDER = 'Sam has owed Jae at the end of each of the last 3 months, about £130 on average. A standing order of £130 a month would keep you about square.';
+/** S9a (fix 23): the hint when one of the three months had no settle-up (August's missed). */
+const STANDING_ORDER_430 = 'Sam has owed Jae at the end of each of the last 3 months, about £430 on average. A standing order of £430 a month would keep you about square.';
 
 // ───────── getting around ─────────
 async function goInsights() {
@@ -252,12 +258,23 @@ describe('Insights figures, This month (INS-4, CHP-5, PLC-7)', () => {
   });
 
   it('INS-3 INS-6: Notes lists each note in words, and the standing-order hint', async () => {
-    const { layer } = insightsHousehold();
+    // S9a (fix 23): a settle-up in each of the three months is a monthly rhythm, so no hint; with August's missed, it shows.
+    const { expenses, settlements } = seed();
+    const { layer } = insightsHousehold({ expenses, settlements: settlements.filter((x) => x.date !== '2026-08-28') });
     show(layer);
     await goInsights();
     await waitFor(() => { expect(shows(region('Notes'), EATING_NOTE)).toBe(true); });
     expect(within(region('Notes')).getAllByRole('listitem').length).toBeGreaterThanOrEqual(1);
-    expect(shows(region('Notes'), STANDING_ORDER)).toBe(true);
+    expect(shows(region('Notes'), STANDING_ORDER_430)).toBe(true);
+  });
+
+  it('INS-6 (S9a fix 23): Sam settles every month (though short of square): the rhythm covers it, no hint', async () => {
+    const { layer } = insightsHousehold();
+    show(layer);
+    await goInsights();
+    await waitFor(() => { expect(shows(region('Notes'), EATING_NOTE)).toBe(true); });
+    expect(shows(region('Notes'), STANDING_ORDER)).toBe(false);
+    expect(text(screen.getByRole('main'))).not.toContain('standing order');
   });
 
   it('INS-6: no standing-order hint when they settle up to square each month', async () => {
@@ -348,21 +365,23 @@ describe('"What\'s this?" (INS-4, DATA_MODEL §5)', () => {
 // ─────────────────────────────── INS-1: Home ───────────────────────────────
 
 describe('Home: the month so far (INS-1, CHP-5)', () => {
-  it('INS-1: "This month": "£450.00 so far · about £190 under your usual pace" (everyday only)', async () => {
+  it('INS-1: "This month": "£450.00 so far · about £920 under your usual pace" (everyday only)', async () => {
     const { layer } = insightsHousehold();
     show(layer);
     await settle(layer);
     await waitFor(() => { expect(text(region('This month'))).toContain('£450.00 so far'); });
-    expect(text(region('This month'))).toContain('· about £190 under your usual pace');
+    // S9a (DECISIONS, pace): against what usually lands by the 14th, £1,365.00 (was pro rata: "about £190 under").
+    expect(text(region('This month'))).toContain('· about £920 under your usual pace');
   });
 
   it('INS-1: over the usual pace says "over"', async () => {
     const { expenses, settlements } = seed();
-    // £1,000.00 more groceries on 12 Nov: £1,450.00 so far, £813 over → "£810".
+    // £1,000.00 more groceries on 12 Nov: £1,450.00 so far, £85 over the £1,365.00 that usually lands by the 14th → "£90"
+    // (S9a, DECISIONS: was pro rata, £813 over → "£810").
     const { layer } = insightsHousehold({ expenses: [...expenses, spent('Big shop', 100000, 'Groceries', JAE_ID, '2026-11-12')], settlements });
     show(layer);
     await waitFor(() => { expect(text(region('This month'))).toContain('£1,450.00 so far'); });
-    expect(text(region('This month'))).toContain('· about £810 over your usual pace');
+    expect(text(region('This month'))).toContain('· about £90 over your usual pace');
   });
 
   it('INS-1 INS-3: Home shows at most one note', async () => {

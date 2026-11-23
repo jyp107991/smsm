@@ -1,6 +1,6 @@
 /**
  * The recap (S5b; INS-2, DESIGN §4.7): one screen, five parts: the headline; one stacked bar of where it went;
- * up to three notes; between you (what each paid, today's balance, Settle up); one moment. Template wording; the
+ * up to three notes; between you (what each paid, the balance at the month's end, Settle up); one moment. Template wording; the
  * figures are the core's (core/recap). From settle day on, the current month's recap is "so far".
  */
 import { ArrowLeft } from 'lucide-react';
@@ -86,6 +86,9 @@ export function RecapPage({ month }: { month: string }) {
         <Part title={strings.recap.headline} hidden>
           <p className="text-sentence nums-list m-0">{spent ? (wording?.month === month ? wording.headline : recap.headline) : strings.recap.nothing}</p>
           {spent && wording?.month === month && wording.aside ? <p className="text-body text-ink-2 m-0">{wording.aside}</p> : null}
+          {spent && recap.comparison !== null && recap.total !== recap.everyday ? (
+            <p className="text-body text-ink-2 nums-list m-0">{strings.recap.chaptersLine(formatPence(pence(recap.total - recap.everyday)))}</p>
+          ) : null}
         </Part>
 
         {recap.bar.length > 0 ? (
@@ -114,8 +117,15 @@ export function RecapPage({ month }: { month: string }) {
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {spent ? people.list.map((p) => <li key={p.id} className="text-body nums-list">{strings.recap.paidLine(p.name, formatPence(recap.paid[p.id] ?? pence(0)))}</li>) : null}
           </ul>
-          {balance.status === 'ready' ? (
-            <p className="text-body m-0">{(() => { const w = balanceWords(balance.state, people.name); return `${w.words}${w.amount ?? ''}`; })()}</p>
+          {/* S9a (INS-2): the balance when the month ended, from the one balance function (core/recap), not today's. */}
+          {people.list.length === 2 ? (
+            <div className="flex flex-col gap-0.5">
+              <p className="text-secondary text-ink-2 m-0">{recap.soFar ? strings.recap.balanceToday : strings.recap.balanceAtEnd(strings.recap.shortName(month))}</p>
+              <p className="text-body nums-list m-0">{(() => {
+                const w = balanceWords(recap.balance ? { kind: 'owes', ...recap.balance } : { kind: 'square' }, people.name);
+                return `${w.words}${w.amount ?? ''}`;
+              })()}</p>
+            </div>
           ) : null}
           {owes ? <div><Button variant="plain" onClick={() => { sheets.openSettle({ mode: 'new' }); }}>{strings.home.settleUp}</Button></div> : null}
         </Part>

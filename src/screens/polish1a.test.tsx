@@ -156,14 +156,15 @@ describe('Q-F1 ADD-6 SET-1 MB-2: a double tap records once', () => {
     expect(controls.tables.expenses.filter((e) => e.description === 'Lamp')).toHaveLength(2);
   });
 
-  it('Q-F1 SET-1: Record it tapped twice records one settle-up', async () => {
+  it('Q-F1 SET-1: Record (Sam’s payment) tapped twice records one settle-up', async () => {
     const { layer, controls } = couple({ as: 'sam', expenses: [storedExpense()] });
     show(layer);
     const balance = await screen.findByRole('region', { name: 'Balance' });
     fireEvent.click(await within(balance).findByRole('button', { name: 'Settle up' }));
     const sheet = await screen.findByRole('dialog', { name: 'Settle up' });
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '5' } });
-    doubleTap(within(sheet).getByRole('button', { name: 'Record it' }));
+    // S9a (fix 15): the button names whoever pays (was "Record it").
+    doubleTap(within(sheet).getByRole('button', { name: 'Record Sam’s payment' }));
     await settle(layer);
     expect(controls.tables.settlements).toHaveLength(1);
     expect(layer.balance()[SAM_ID]).toBe(-1500);

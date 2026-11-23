@@ -162,6 +162,9 @@ export const strings = {
     quickAddHint: 'An amount, then anything: 12 lunch yesterday',
     /** S2 polish Q-U3: Enter in quick add with no amount it can read. */
     quickAddNeedsAmount: 'Start with an amount, like 12.50.',
+    /** S9a (fix 21): "31/02" in quick add. */
+    noSuchDate: (day: number, month: number) =>
+      `There’s no ${String(day)} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month - 1] ?? ''}.`,
     readingWords: 'Reading that…',
     checkReading: 'Some of that isn’t clear. Tap the line to check it.',
     addExpense: 'Add expense',
@@ -253,6 +256,12 @@ export const strings = {
     deleted: (label: string) => `Deleted ${label}`,
     restored: (label: string) => `Restored ${label}`,
     amountNeeded: 'Write an amount, like 12.50.',
+    /** S9a (fix 21): the same line in quick add and the sheet, naming the app's maximum (core MAX_PENCE). */
+    tooLarge: (max: string) => `That’s more than ${max}, the most one entry can be.`,
+    /** S9a (fix 8): after a change of payer, an entry that is all the payer's own. */
+    noBalanceChange: (name: string) => `${name} paid for ${name}, so this won’t change the balance.`,
+    /** S9a (MB-2): money back over what its original still has to come back. */
+    moreThanLeft: (left: string) => `That’s more than the ${left} still to come back.`,
     /** S2 polish Q-F2: the form refuses a date after the phone's today, as quick add does. */
     dateAfterToday: 'That date is after today.',
     summaryShares: (payer: string, amount: string, shares: string) => `${payer} paid ${amount} · ${shares}`,
@@ -321,6 +330,8 @@ export const strings = {
   },
   activity: {
     title: 'Activity',
+    /** S9a (PLC-7): above a filtered list, of every match. */
+    totalLine: (count: number, total: string) => `${String(count)} ${count === 1 ? 'entry' : 'entries'} · ${total}`,
     search: 'Search',
     searchPlaceholder: 'Descriptions, notes, tags',
     filters: 'Filters',
@@ -371,12 +382,13 @@ export const strings = {
     amount: 'Amount',
     note: 'Note',
     payWithMonzo: 'Pay with Monzo',
-    recordIt: 'Record it',
     save: 'Save',
     noMonzo: (name: string) => `If ${name} saves a monzo.me name in Settings, you can pay from Monzo with the amount filled in.`,
     asked: 'Did it go through?',
     askedLine: (from: string, to: string, amount: string) => `Once ${from}’s ${amount} to ${to} has gone through in Monzo, tap Yes to record it.`,
-    moreThanOwed: (from: string, to: string, owed: string) => `That’s more than the ${owed} ${from} owes ${to}.`,
+    /** SET-1 (S9a): refused, naming what is owed, with "Use £…". */
+    moreThanOwed: (from: string, owed: string) => `That’s more than ${from} owes (${owed}).`,
+    useOwed: (owed: string) => `Use ${owed}`,
     nothingOwed: (from: string, to: string) => `${from} doesn’t owe ${to} anything right now.`,
     yes: 'Yes',
     notYet: 'Not yet',
@@ -455,6 +467,8 @@ export const strings = {
     counter: (i: number, n: number) => `${String(i)} of ${String(n)}`,
     due: (description: string) => `${description} is due: how much was it?`,
     usual: (amount: string, day: string) => `Usually ${amount} · ${day}`,
+    /** S9a (REC-3): the one-tap answer for a bill that varies. */
+    usually: (amount: string) => `Usually ${amount}`,
     keep: 'Keep',
     notOurs: 'Not ours',
     nothing: 'Nothing waiting. Bills that vary land here on their day.',
@@ -609,14 +623,14 @@ export const strings = {
     uncategorised: 'No category',
     whatsThis: 'What’s this?',
     define: {
-      total: 'Shared spending: what the two of you spent together (split, exact or a treat), less money back. Paying for the other person and settling up don’t count.',
+      total: 'Shared spending: what the two of you spent together (split, exact or a treat), less money back. Paying for the other person and settling up don’t count. It is compared with the same stretch just before, everyday spending only, once your entries go back that far.',
       whereItWent: 'Shared spending by category, largest first. Money back counts against its own category.',
       trend: 'Shared spending in each of the last 12 months.',
       whoPaid: 'What each of you handed over for shared spending in this period, less money back each received.',
       fairness: 'Each person’s share of what was paid, beside the split you agreed. Over 3 and 12 months.',
       byCountry: 'Shared spending by the country each entry was in.',
       notes: 'Each note says its rule: a category at least 30% and £20 above its usual; an entry at least 3× its category’s usual size; a subscription’s new price; a new regular payment.',
-      thisMonth: 'Everyday spending so far this month (not chapters), against your usual: the middle of your previous 3 to 6 months.',
+      thisMonth: 'Everyday spending so far this month (not chapters), against what usually lands by this day: the average, over your previous 3 to 6 months, of everyday spending up to the same day of the month. A bill that usually comes on the 25th isn’t counted before the 25th.',
     },
     soFar: (amount: string) => `${amount} so far`,
     under: (amount: string) => ` · about ${amount} under your usual pace`,
@@ -698,6 +712,11 @@ export const strings = {
     noNotes: 'Nothing stood out.',
     betweenYou: 'Between you',
     paidLine: (name: string, amount: string) => `${name} paid ${amount}`,
+    /** S9a (INS-2): "Between you" is the balance when the month ended (or today, for the month so far). */
+    balanceAtEnd: (month: string) => `Balance at the end of ${month}`,
+    balanceToday: 'Balance today',
+    /** S9a (fix 6): the headline is everyday spending; a month's chapters are their own line. */
+    chaptersLine: (amount: string) => `Plus ${amount} in chapters (trips and projects).`,
     moment: 'One moment',
     momentLine: (description: string, amount: string, day: string) => `${description}, ${amount}, ${day}`,
     back: 'Insights',

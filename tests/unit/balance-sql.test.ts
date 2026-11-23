@@ -32,6 +32,8 @@ function psql(database: string, args: string[], input?: string): string {
 interface DbEntry extends LedgerEntry {
   mode: SplitMode;
   amount: Pence;
+  /** S9a (MB-3): money back that may be linked to an earlier entry (made into refundOf when the database allows it). */
+  link?: number;
 }
 interface Household {
   a: UserId;
@@ -61,13 +63,14 @@ function entryArb(a: UserId, b: UserId): fc.Arbitrary<DbEntry> {
       deleted: fc.boolean(),
       x: fc.double({ min: 0, max: 1, noNaN: true }),
       y: fc.double({ min: 0, max: 1, noNaN: true }),
+      link: fc.option(fc.nat({ max: 29 }), { nil: undefined }),
     })
-    .map(({ amount, kind, mode, payer, joint, dropZero, deleted, x, y }): DbEntry => {
+    .map(({ amount, kind, mode, payer, joint, dropZero, deleted, x, y, link }): DbEntry => {
       const other = payer === a ? b : a;
       const single: PenceMap = dropZero ? { [payer]: pence(amount) } : { [payer]: pence(amount), [other]: pence(0) };
       const jointPaid = split(amount, dropZero, Math.floor(x * amount));
       const anyShares = split(amount, dropZero, Math.floor(y * amount));
-      const base = { kind, deleted, mode, amount: pence(amount) };
+      const base = { kind, deleted, mode, amount: pence(amount), ...(kind === 'money_back' && link !== undefined ? { link } : {}) };
       switch (mode) {
         case 'for_other':
           return { ...base, paid: single, shares: dropZero ? { [other]: pence(amount) } : { [payer]: pence(0), [other]: pence(amount) } };
@@ -90,6 +93,23 @@ function settlementArb(a: UserId, b: UserId): fc.Arbitrary<LedgerSettlement> {
 
 const jsonb = (m: PenceMap): string => `'${JSON.stringify(m)}'::jsonb`;
 
+/**
+ * S9a (MB-2, MB-3): ids for every row, and money back linked to an earlier expense where the database allows it (no
+ * more than the original still has to come back). Originals are often deleted while their money back is live (rows
+ * inserted deleted cascade nothing), so the households hold orphaned money back, which neither side may count.
+ */
+function linked(h: Household, i: number): Household {
+  const entries = h.entries.map((e, j) => ({ ...e, id: `00000000-0000-4000-9000-${(i * 1000 + j).toString(16).padStart(12, '0')}`, refundOf: null as string | null }));
+  entries.forEach((e, j) => {
+    if (e.kind !== 'money_back' || e.link === undefined || j === 0) return;
+    const original = entries[e.link % j];
+    if (!original || original.kind !== 'expense') return;
+    const back = entries.filter((x) => x.kind === 'money_back' && !x.deleted && x.refundOf === original.id).reduce((t, x) => t + x.amount, 0);
+    if (e.deleted || e.amount <= original.amount - back) e.refundOf = original.id;
+  });
+  return { ...h, entries };
+}
+
 function householdSql(h: Household, i: number): string {
   const lines = [
     `-- household ${i}`,
@@ -102,8 +122,9 @@ function householdSql(h: Household, i: number): string {
   h.entries.forEach((e, j) => {
     lines.push(`set request.jwt.claim.sub = '${j % 2 === 0 ? h.a : h.b}';`);
     lines.push(
-      `insert into expenses(household_id, kind, description, amount_pence, paid, split_mode, shares, deleted_at) values ` +
-        `(:'hid', '${e.kind}', 'Row ${j}', ${e.amount}, ${jsonb(e.paid)}, '${e.mode}', ${jsonb(e.shares)}, ${e.deleted ? 'now()' : 'null'});`,
+      `insert into expenses(${e.id ? 'id, ' : ''}household_id, kind, description, amount_pence, paid, split_mode, shares, refund_of, deleted_at) values ` +
+        `(${e.id ? `'${e.id}', ` : ''}:'hid', '${e.kind}', 'Row ${j}', ${e.amount}, ${jsonb(e.paid)}, '${e.mode}', ${jsonb(e.shares)}, ` +
+        `${e.refundOf ? `'${e.refundOf}'` : 'null'}, ${e.deleted ? 'now()' : 'null'});`,
     );
   });
   h.settlements.forEach((s) => {
@@ -181,8 +202,12 @@ describe.skipIf(!process.env.PGHOST)('netPositions against the member_net view',
         { numRuns: 1, seed: 20261117 + i },
       );
       if (!h) throw new Error('no sample');
-      households.push({ a, b, ...h });
+      households.push(linked({ a, b, ...h }, i));
     }
+    // S9a: the property covers orphaned money back (a live refund whose original is deleted).
+    const orphans = households.flatMap((h) => h.entries.filter((e) => e.kind === 'money_back' && !e.deleted && e.refundOf != null
+      && h.entries.some((o) => o.id === e.refundOf && o.deleted)));
+    expect(orphans.length).toBeGreaterThan(0);
 
     const users = households.flatMap((h) => [h.a, h.b]);
     const script = [

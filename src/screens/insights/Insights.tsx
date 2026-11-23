@@ -6,7 +6,7 @@
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
 import { addMonths, startOfMonth, type IsoDate } from '../../core/dates';
 import {
-  byCategory, byCountry, fairness, monthlyTotals, notes, periodOf, previousPeriod, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
+  byCategory, byCountry, comparisonPeriod, fairness, monthlyTotals, notes, periodOf, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
   type PeriodChoice,
 } from '../../core/insights';
 import { formatPence, pence, type Pence } from '../../core/money';
@@ -61,7 +61,8 @@ export function Insights() {
   const { total, everydayNow, before, cats, countries, paid, trend } = useMemo(() => {
     const opts = { everydayOnly: !withChapters };
     // CHP-5: a comparison is always of everyday spending, so a trip or a wedding never makes a month look alarming.
-    const prev = previousPeriod(period);
+    // S9a (INS-4): and only with days the household was keeping its spending (never months before its first entry).
+    const prev = comparisonPeriod(entries, period);
     const two = pairKey === '' ? null : (pairKey.split(':') as [string, string]);
     return {
       total: sharedSpend(entries, period, opts),
@@ -157,7 +158,7 @@ export function Insights() {
 
       <RecapLists />
 
-      <NotesSection entries={entries} settlements={settlements} templates={templates} categories={categories} people={people.list} today={today} />
+      <NotesSection entries={entries} settlements={settlements} templates={templates} categories={categories} people={people.list} today={today} settleDay={household?.settle_day ?? null} />
     </div>
   );
 }
@@ -225,9 +226,10 @@ const Fairness = memo(function Fairness({ entries, people, today, split }: { ent
   );
 });
 
-function NotesSection({ entries, settlements, templates, categories, people, today }: {
+function NotesSection({ entries, settlements, templates, categories, people, today, settleDay }: {
   entries: readonly InsightEntry[]; settlements: readonly SettlementRow[] | undefined;
   templates: readonly RecurringRow[] | undefined; categories: readonly CategoryRow[]; people: readonly Person[]; today: IsoDate;
+  settleDay: number | null;
 }) {
   const list = useMemo(
     () => notes({ entries, templates: (templates ?? []).map(toTemplate), categories: categories.map((c) => ({ id: c.id, name: c.name })) }, today),
@@ -235,8 +237,9 @@ function NotesSection({ entries, settlements, templates, categories, people, tod
   );
   const [a, b] = people;
   const hint = useMemo(
-    () => (a && b && settlements ? standingOrder(entries, settlements.map(toSettle), [a.id, b.id], today) : null),
-    [a, b, settlements, entries, today],
+    // S9a (fix 23): none when the settle rhythm already covers it (a settle day, or a settle-up each month).
+    () => (a && b && settlements ? standingOrder(entries, settlements.map(toSettle), [a.id, b.id], today, { settleDay }) : null),
+    [a, b, settlements, entries, today, settleDay],
   );
   const name = (id: string) => people.find((p) => p.id === id)?.name ?? '';
   return (

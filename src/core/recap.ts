@@ -3,7 +3,7 @@
  * Insights (core/insights) and the one balance (core/balance), worked out on the phone, never stored. The shapes are
  * pinned by src/core/recap.test.ts. Pure: no I/O, no clock.
  */
-import { netPositions } from './balance';
+import { netPositions, withoutOrphans } from './balance';
 import { addMonths, daysInMonth, type IsoDate } from './dates';
 import {
   byCategory, notes, sharedSpend, usual, whoPaid, type InsightEntry, type InsightSettlement, type Month, type Note, type NoteTemplate,
@@ -58,7 +58,12 @@ export function recapOf(entries: readonly InsightEntry[], settlements: readonly 
   }
   const name = MONTH_NAMES[Number(month.slice(5, 7)) - 1] ?? '';
   const pounds = (p: number) => `£${(p / 100).toLocaleString('en-GB')}`;
-  const headline = `${name}${soFar ? ' so far' : ''} cost ${formatPence(total)} together`
+  // S9a (fix 6): the figure the headline names is the one its comparison is about: everyday spending (CHP-5), and
+  // with chapters in the month it says so (the chapters are a separate line on the screen). With no comparison, the
+  // month's whole total, chapters and all, as before.
+  const opening = comparison === null || total === everyday ? `${name}${soFar ? ' so far' : ''} cost ${formatPence(total)} together`
+    : `Everyday spending in ${name} was ${formatPence(everyday)}`;
+  const headline = opening
     + (comparison === null ? '.' : comparison.direction === 'same' ? ', about the same as usual.'
       : `, about ${pounds(comparison.amount)} ${comparison.direction} than usual.`);
 
@@ -70,10 +75,12 @@ export function recapOf(entries: readonly InsightEntry[], settlements: readonly 
       { categoryId: null, name: 'Everything else', total: pence(cats.slice(4).reduce((t, c) => t + c.total, 0)) }]
     : cats.map((c) => ({ categoryId: c.categoryId, name: catName(c.categoryId), total: c.total }));
 
+  // S9a (fix 1): "Between you" is the balance at the month's end (or today, for the month so far): the one balance
+  // function over every live entry and settle-up dated up to then, as the month's statement closes.
   const nets = netPositions(
     people,
-    entries.map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
-    settlements.map((s) => ({ from: s.from, to: s.to, amount: s.amount, deleted: s.deleted })),
+    withoutOrphans(entries).filter((e) => e.date <= to).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
+    settlements.filter((s) => s.date <= to).map((s) => ({ from: s.from, to: s.to, amount: s.amount, deleted: s.deleted })),
   );
   const [a, b] = people;
   const na = nets[a] ?? 0;

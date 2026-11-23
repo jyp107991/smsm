@@ -18,7 +18,8 @@
 import { Check, X } from 'lucide-react';
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, startTransition, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, type IsoDate } from '../../core/dates';
-import { applyFilter, type Filter, type FilterEntry } from '../../core/filters';
+import { applyFilter, filteredTotal, newestFirst, type Filter, type FilterEntry } from '../../core/filters';
+import { formatPence, pence } from '../../core/money';
 import {
   addExpense, deleteExpense, newId, restoreExpense, useCategories, useChapters, useDataLayer, useEntries, useSettlements, useSyncStatus,
   type CategoryRow, type ChapterRow, type ExpenseRow, type SettlementRow, useCommentCounts,
@@ -125,10 +126,22 @@ export function Activity() {
       ...(f.type === 'expense' || f.type === 'money_back' || f.type === 'settlement' ? { kinds: [f.type] } : {}),
     };
     const kept = new Set(applyFilter(items.map((i) => i.entry), filter));
+    // S9a (ACT-1): the one order, as Home and the statement: newest first, then the one added last, then by id.
     return items
       .filter((i) => kept.has(i.entry))
-      .sort((a, b) => (a.row.date !== b.row.date ? (a.row.date < b.row.date ? 1 : -1) : a.row.created_at < b.row.created_at ? 1 : -1));
+      .sort((a, b) => newestFirst({ date: a.row.date, createdAt: a.row.created_at, id: a.row.id }, { date: b.row.date, createdAt: b.row.created_at, id: b.row.id }));
   }, [items, shownFilters, today]);
+
+  // S9a (PLC-7, CHP-6): with a search or a filter on, "12 entries · £340.20" over every match (not only the rows drawn),
+  // by the core: money back subtracts, settle-ups are left out, and so is money back whose original is deleted (MB-3).
+  const total = useMemo(() => {
+    if (shownFilters.type === 'deleted' || (shownFilters.text.trim() === '' && !filtering(shownFilters))) return null;
+    const gone = new Set((entries ?? []).filter((e) => e.deleted_at !== null).map((e) => e.id));
+    return filteredTotal(shown.map((i) => ({
+      ...i.entry, amount: pence(i.row.amount_pence),
+      deleted: i.row.deleted_at !== null || (i.kind === 'expense' && i.row.kind === 'money_back' && i.row.refund_of !== null && gone.has(i.row.refund_of)),
+    })));
+  }, [shown, shownFilters, entries]);
 
   const loading = entries === undefined || settlements === undefined;
   // The countries and places that occur in the household's entries (PLC-7), by name.
@@ -193,6 +206,8 @@ export function Activity() {
           <Empty animal="cat" mood="sleepy" pose="curled" text={strings.activity.empty} />
         )
       ) : (
+        <>
+        {total !== null ? <p className="text-secondary text-ink-2 nums-list m-0">{strings.activity.totalLine(total.count, formatPence(total.total))}</p> : null}
         <ActivityList
           shown={shown}
           filters={shownFilters}
@@ -203,6 +218,7 @@ export function Activity() {
           commentCounts={commentCounts}
           readOnly={otherWindow}
         />
+        </>
       )}
     </div>
   );
