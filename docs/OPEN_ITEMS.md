@@ -1,46 +1,44 @@
 # smsm: open items
 
+What is still to do before v1.0, and why. Done items are taken off with where they were done (BUILD_LOG, DECISIONS).
+Last checked against the code and tests on 23 Nov 2026 (S9 data-safety pass).
+
 ## Slices
-- [ ] S0 pipeline and look
-- [ ] S1 money core
-- [ ] S2 daily loop → first real use
-- [ ] S3 recurring, bills, inbox
-- [ ] S4 chapters and places
-- [ ] S5 insights and recap
-- [ ] S6 smart features
-- [ ] S7 import and export
-- [ ] S8 notifications
-- [ ] S9 hardening → v1.0.0
+- [x] S0 pipeline and look
+- [x] S1 money core
+- [x] S2 daily loop → first real use
+- [x] S3 recurring, bills, inbox
+- [x] S4 chapters and places
+- [x] S5 insights and recap
+- [x] S6 smart features
+- [x] S7 import and export
+- [x] S8 notifications
+- [ ] S9 hardening → v1.0.0. Done: performance pass (live, `docs/qa/S9-performance.md`), acceptance pass and its fixes (S9a, S9b, PR #19), the data-safety pass (`tests/unit/data-safety.test.ts`). Still to do: the rest of release QA (ENGINEERING §9: the whole browser suite with the live AI eval, and the two-phone day below), the items under Known risks marked S9, then tag `v1.0.0`.
 
 ## Needs the owner
 - [ ] Skim the remaining proposals in `docs/DECISIONS.md` (the main ones are confirmed).
-- [x] Supabase project created.
-- [ ] Collect Supabase URL, publishable key, project ref, access token; Cloudflare token and account ID; add all to GitHub (`docs/DEPLOY.md` §1–3).
-- [ ] S2: approve Claude Code's proposal for how sign-in codes reach both of you.
-- [ ] S0: on the gallery, choose the logo variant and the type option; confirm the palette, including the fifth colour (read as `#D6D9C7`, partly hidden in the screenshot).
-- [ ] S2: both install; both save a monzo.me name in Settings.
-- [ ] S6: ten receipt photos for the eval (no key needed).
-- [ ] S7: a Monzo CSV.
+- [ ] Release QA on two real phones (ENGINEERING §9): both install, both save a monzo.me name in Settings, then the daily loop for a day, entries in airplane mode, a settle-up through Monzo, a notification tapped, an update applied.
+- [ ] Live AI eval: the Cloudflare token saved as `CLOUDFLARE_API_TOKEN` needs "Workers AI: Read" and "Workers AI: Edit", then run the `eval-ai` workflow (BUILD_LOG 18 Nov ~02:15; the app's own scanning works without it).
+- [ ] A real Monzo CSV when convenient, to confirm the columns (S7; another header already falls back to the mapping step).
+
+Done and taken off: Supabase project, account ids, tokens and GitHub secrets (DEPLOY §1–3, first deploy 16 Nov); how sign-in codes reach you both (Gmail, DECISIONS 17 Nov); logo C, type A and the fifth colour (DECISIONS 17 Nov); the eval receipts (found online at the owner's word, BUILD_LOG 18 Nov ~01:30).
 
 ## Known risks
-- **Keep-alive stops if the repo goes quiet.** GitHub disables scheduled workflows in public repos after 60 days without activity; Supabase would then pause 7 days later. S2 adds a second keep-alive that doesn't depend on GitHub (a Cloudflare Cron Trigger calling `health()`).
-- **Actions pinned by tag, not commit.** `actions/checkout@v5` etc. Pin to commit SHAs in S9 hardening.
-- **`service_role` grants.** When server-side code first writes money rows (S2 backup restore, S7 import), check it can run `check_money`'s helper and the tables it needs.
-- **`post_due_recurring` has no upper bound per call.** A template started years ago back-posts every occurrence. Decide in S3 (probably: confirm before back-posting more than a few).
-
-- **From the S0/S1 review, still open:** demo household: trip descriptions get random categories and the monthly settle date drifts (cosmetic). (Fixed in S2: the Sheet's history entry, through one history coordinator `src/ui/history.ts`; toasts through one persistent live region; `errors.ts` reports with an unserialisable reason.)
-- **A bank import notifies once per kept row** (S8). NOT-1 says each change is sent at once, so importing 40 rows sends the partner 40 notifications (each its own tag). If that is noisy in real use, group one import into a single "Sam imported 40 entries" notification.
+- **Keep-alive stops if the repo goes quiet** (S9). GitHub disables scheduled workflows in public repos after 60 days without activity; Supabase would then pause 7 days later. The second keep-alive that doesn't depend on GitHub (a Cloudflare Cron Trigger calling `health()`) was planned for S2 and not built: `wrangler.jsonc` has no cron trigger.
+- **Actions pinned by tag, not commit** (S9). `actions/checkout@v5`, `setup-node@v5`, `upload-artifact@v4`, `download-artifact@v4` in every workflow. Pin to commit SHAs.
+- **A regular payment started long ago back-posts every occurrence at once** (S9, needs a choice). A new template's start date can be years back; `post_due_recurring` then posts each occurrence since (a resumed one skips what fell due while paused: migration `recurring_guards`). Planned in S3 as "confirm before back-posting more than a few"; not decided yet.
+- **`service_role` grants, when Monzo arrives live (SPEC §9, Later).** No server-side code writes money rows in v1: restore and import run as the signed-in person, the nightly job as the database owner. Code that does later must be able to run `check_money`'s helper and reach the tables it needs.
+- **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour: the person always sees the reading before saving, and no one has reported it in real use. Revisit if the owner or partner does.
 - **Larger screens, the rest of L2 (S9b deferral).** From 900 px Activity is two panes; Bills (list | bill), Inbox (list | item) and Settings (sections | section) are still one centred column, their forms opening as centred dialogs. Also: mark the row whose entry is open in the Activity pane (`aria-current`).
-- **Quick add reads some ordinary words as categories** ("the other half" → Other, "house party" → Household). Pinned behaviour for now; revisit with real use in S2 (the person always sees the reading before saving).
+- **Demo only, cosmetic:** the seeded monthly settle-up date drifts when the demo starts after the 28th (`addMonths` chained from the start day). The trip's random categories were fixed in S9b (DECISIONS 23 Nov, "S9b: demo only").
+
+Done and taken off: one notification per imported row (a batch of 3 or more is now one notification: DECISIONS 18 Nov, "S8 fresh-review fixes" (2)).
 
 ## Deferred criteria
 Each line: ids, then where and why. `npm run trace` reads this list; remove an id once its tests exist.
-- TXT-6: grapheme truncation and wrapping are tested (S0) and the screens use them; the Hangul font fallback on real screens is checked by eye (screenshots), not yet by an automated test (S9 visual snapshots).
-- REC-2: the TypeScript and SQL schedules agree (S1); posting by the database arrives in S3.
-- REC-1, REC-3, REC-4, REC-5, REC-6, REC-7, REC-8, INB-1, INB-3, CAT-1: S3, recurring, bills, inbox, categories.
-- CHP-1, CHP-2, CHP-3, CHP-4, CHP-5, CHP-6, PLC-1, PLC-2, PLC-3, PLC-4, PLC-5, PLC-6, PLC-7: S4, chapters and places.
-- INS-1, INS-2, INS-3, INS-4, INS-5, INS-6, INS-7, INS-8, SET-4: S5, insights, recap, settle day, comments.
-- ADD-8, ADD-9, SCAN-1, SCAN-2, SCAN-3, SCAN-4, SCAN-5, INS-9, TXT-5: S6, smart features, share target and shortcuts.
+- TXT-6: whole-character truncation and wrapping (`src/ui/text.test.ts`) and the Korean face on a real page (`tests/unit/fonts-korean.test.ts`, `tests/e2e/s9-perf.spec.ts`) are tested; not yet automated: a script none of the app's fonts draw (Japanese on a trip) falling back to the phone's own font, and the order of non-Latin names in lists. Closes with the two-phone release QA (S9) or a browser check.
+
+Taken off on 23 Nov, each now tested under its own id: REC-1…REC-8, INB-1, INB-3, CAT-1 (S3: `src/core/bills.test.ts`, `src/data/bills.test.ts`, `src/screens/bills.test.tsx`, `tests/sql/recurring_test.sql`, `tests/e2e/bills.spec.ts`, `tests/e2e/recurring.spec.ts`); CHP-1…CHP-6, PLC-1…PLC-7 (S4: `src/{core,data,screens}/chapters.test.*`, `src/{data,screens}/places.test.*`, `tests/sql/chapters_test.sql`; PLC-5 by `src/screens/places.test.tsx` "regular payments abroad"); INS-1…INS-8, SET-4 (S5: `src/core/insights.test.ts`, `src/core/recap.test.ts`, `src/screens/insights.test.tsx`, `src/screens/recap.test.tsx`); ADD-8, ADD-9, SCAN-1…SCAN-5, INS-9, TXT-5 (S6: `src/core/itemise.test.ts`, `src/data/smart.test.ts`, `src/data/smart-s6b.test.ts`, `src/screens/smart.test.tsx`, `src/screens/smart-s6b.test.tsx`). INB-1's "later Monzo transactions" are SPEC §9, after v1 (BUILD_PLAN "Later"); a photo shared while offline reaches the Inbox through Sort it later (S6b brief, SCAN-4).
 
 ## Ideas (not in scope until promoted)
 - Joint account as a payer (data model ready).

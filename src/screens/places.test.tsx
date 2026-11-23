@@ -11,7 +11,7 @@
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { categoryId, couple, JAE_ID, SAM_ID, storedChapter, storedExpense, TODAY, type ChapterRow } from '../../tests/fixtures/couple';
+import { categoryId, couple, JAE_ID, SAM_ID, storedChapter, storedExpense, storedInboxItem, storedRecurring, TODAY, type ChapterRow } from '../../tests/fixtures/couple';
 import * as dataModule from '../data';
 import { DataProvider, type DataLayer } from '../data';
 import type { ExpenseRow } from '../data/api';
@@ -284,6 +284,46 @@ describe('"Paid in JPY" (PLC-6)', () => {
     fireEvent.change(rate, { target: { value: '0.0047475' } });
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '1200' } });
     await waitFor(() => { expect(within(sheet).getAllByText((_, el) => el?.textContent === '¥1,200 = £5.70')[0]).toBeTruthy(); });
+  });
+});
+
+// ─────────────────────────────── PLC-5: regular payments ignore all of this ───────────────────────────────
+
+describe('regular payments abroad (PLC-5, REC-4)', () => {
+  it('PLC-5 REC-4: in Kyoto, on a current trip, with location on: a payment due today posts at home with no trip and no place, and a bill kept today does too', async () => {
+    data.setUseLocation(true);
+    localStorage.setItem('smsm-current-country', 'JP');
+    const trip = storedChapter({ start_date: '2026-11-10', end_date: '2026-11-20' });
+    localStorage.setItem('smsm-current-chapter', trip.id);
+    const ENERGY = '00000000-0000-4000-8000-00000000d0e1';
+    const c = couple({
+      geo: geoAt(KYOTO), rates: rates(), chapters: [trip],
+      recurring: [
+        storedRecurring({ id: '00000000-0000-4000-8000-00000000d0d1', description: 'Netflix', amount_pence: 1099, paid: { [JAE_ID]: 1099 }, shares: { [JAE_ID]: 550, [SAM_ID]: 549 }, start_date: TODAY, posted_count: 0 }),
+        storedRecurring({ id: ENERGY, description: 'Energy', amount_varies: true, amount_pence: 9000, paid: { [SAM_ID]: 9000 }, shares: { [JAE_ID]: 4500, [SAM_ID]: 4500 }, start_date: '2026-10-14', posted_count: 1 }),
+      ],
+      inboxItems: [storedInboxItem({ recurring_id: ENERGY, occurrence_date: TODAY, payload: { description: 'Energy', estimate_pence: 9000, date: TODAY, category_id: categoryId('Utilities') } })],
+    });
+    show(c.layer);
+    // The phone is abroad and on the trip: a new entry would be there (PLC-2, PLC-3, CHP-2).
+    expect(await screen.findByRole('button', { name: /^Adding to Japan/ })).toBeTruthy();
+    await settle(c.layer);
+    const posted = c.controls.tables.expenses.find((e) => e.description === 'Netflix');
+    expect(posted).toMatchObject({ date: TODAY, source: 'recurring', country: 'GB', chapter_id: null, place: null, lat: null, lng: null });
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Inbox\W+\d+/ }));
+    await screen.findByRole('heading', { level: 1, name: 'Inbox' });
+    fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Keep' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add expense' });
+    // The bill is dated today, yet the sheet never picks up the town (it would for a new entry).
+    await settle(c.layer);
+    expect(within(sheet).queryByRole('button', { name: 'Kyoto' })).toBeNull();
+    fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '84.37' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Add expense' })).toBeNull(); });
+    await settle(c.layer);
+    const kept = c.controls.tables.expenses.find((e) => e.recurring_id === ENERGY);
+    expect(kept).toMatchObject({ amount_pence: 8437, occurrence_date: TODAY, country: 'GB', chapter_id: null, place: null, lat: null, lng: null, original_currency: null });
   });
 });
 
