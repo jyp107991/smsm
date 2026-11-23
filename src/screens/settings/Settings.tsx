@@ -8,7 +8,7 @@ import { rememberNotHome } from '../../ui/boot';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import {
-  build, ChangesWaitingError, monzoNameOf, requestChange, setMonzoMe, signOut, useChangeRequests,
+  build, ChangesWaitingError, monzoNameOf, reportProblem, requestChange, setMonzoMe, signOut, useChangeRequests,
   setSmartFeatures, useHousehold, useSmartFeatures, useSyncStatus,
 } from '../../data';
 import { holdEnterWhileComposing } from '../../ui/keys';
@@ -28,6 +28,7 @@ import { RATIO_PRESETS } from '../entry/form';
 import { savePending } from '../settle/monzo';
 import { Toggle } from '../entry/RecurringParts';
 import { WhereYouAre } from '../places/WhereYouAre';
+import { countryName } from '../chapters/model';
 import { NotificationsSection } from './Notifications';
 import { SettleDay } from './SettleDay';
 import { ExportSection, RestoreSection, StorageSection } from './Export';
@@ -154,6 +155,18 @@ export function Settings() {
           </a>
           <p className="text-secondary text-ink-2 m-0">{strings.chapters.linkLine}</p>
         </div>
+        {/* S9b (SPEC §6.4, REC-7): the regular payments are listed on Bills. */}
+        <div className="flex flex-col">
+          <a
+            href="/bills"
+            onClick={(e) => { e.preventDefault(); go({ name: 'bills' }); }}
+            className="text-ink text-body press flex min-h-12 items-center justify-between gap-3"
+          >
+            {strings.settings.regular}
+            <ChevronRight size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" className="text-ink-2" />
+          </a>
+          <p className="text-secondary text-ink-2 m-0">{strings.settings.regularLine}</p>
+        </div>
       </Section>
 
       {/* S7: bank statements in, entries out, backups back in, and what it all takes up (IMP-1, IMP-3, EXP-1, EXP-3). */}
@@ -179,6 +192,14 @@ export function Settings() {
       </Section>
 
       <Section title={strings.places.whereYouAre}>
+        {/* S9b (SPEC §6.4): the household's home country, shown (pounds only, so it isn't changed here). */}
+        <div className="flex flex-col gap-1">
+          <p className="m-0 flex flex-wrap items-baseline justify-between gap-x-4">
+            <span className="text-secondary text-ink-2 font-medium">{strings.settings.homeCountry}</span>
+            <span className="text-body">{countryName(household?.home_country ?? 'GB') ?? household?.home_country ?? ''}</span>
+          </p>
+          <p className="text-secondary text-ink-2 m-0">{strings.settings.homeCountryLine}</p>
+        </div>
         <WhereYouAre />
       </Section>
 
@@ -197,6 +218,7 @@ export function Settings() {
         {/* Quiet: for the two of you to quote if something goes wrong, not to read (Q-L11). */}
         <p className="text-caption text-ink-2 nums-list m-0 mt-2" data-testid="version">{strings.app.version(build.version, build.commit)}</p>
         <CheckForUpdates />
+        <ReportProblem />
       </Section>
 
       {partner ? <RequestSheet open={requesting} onClose={() => { setRequesting(false); }} /> : null}
@@ -271,6 +293,11 @@ function SignOut() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (discardWaiting: boolean) => {
+    // S9b (demo only): the demo has no sign-in to return to; signing out starts it again from its seeded household.
+    if (build.demo) {
+      location.replace('/');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -453,4 +480,57 @@ function CheckForUpdates() {
 function SmartSwitch() {
   const on = useSmartFeatures();
   return <Toggle label={strings.smart.switchLabel} hint={strings.smart.switchLine} on={on} onChange={setSmartFeatures} />;
+}
+
+/** S9b (SPEC §6.4): "Report a problem": the person's own words, sent with the app's error reports. */
+function ReportProblem() {
+  const [open, setOpen] = useState(false);
+  const [words, setWords] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const id = useId();
+  const send = async () => {
+    if (words.trim() === '') {
+      setError(strings.settings.reportEmpty);
+      return;
+    }
+    setBusy(true);
+    try {
+      const how = await reportProblem(words, location.pathname);
+      toast.show({ message: how === 'sent' ? strings.settings.reportSent : strings.settings.reportQueued });
+      setWords('');
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <Button variant="quiet" leading onClick={() => { setError(null); setOpen(true); }}>{strings.settings.report}</Button>
+      <Sheet
+        open={open}
+        onOpenChange={(next) => { if (!next) setOpen(false); }}
+        title={strings.settings.report}
+        description={strings.settings.reportLine}
+        dirty={words.trim() !== ''}
+        footer={<Button type="submit" form={`${id}-form`} block loading={busy}>{strings.settings.reportSend}</Button>}
+      >
+        <form id={`${id}-form`} onSubmit={(e) => { e.preventDefault(); void send(); }} className="flex flex-col gap-1.5">
+          <label htmlFor={`${id}-words`} className="text-secondary text-ink-2 font-medium">{strings.settings.reportWhat}</label>
+          <textarea
+            id={`${id}-words`}
+            value={words}
+            rows={5}
+            maxLength={2000}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
+            onChange={(e) => { setWords(e.target.value); setError(null); }}
+            className="bg-sunk text-ink text-body min-h-32 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
+          />
+          {error ? <p id={`${id}-error`} role="alert" className="text-secondary text-berry m-0">{error}</p> : null}
+        </form>
+      </Sheet>
+    </div>
+  );
 }

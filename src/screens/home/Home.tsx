@@ -30,6 +30,7 @@ import { TripBanner } from '../places/TripBanner';
 import { ThisMonth } from '../insights/ThisMonth';
 import { RecapBanners } from '../insights/RecapLinks';
 import { QuickAdd } from './QuickAdd';
+import { DemoNote } from './DemoNote';
 
 export function Home() {
   // S9: Home is drawn, so the static first paint (index.html) goes in this frame; and its shape is kept for the next one.
@@ -37,7 +38,8 @@ export function Home() {
   const column = useRef<HTMLDivElement>(null);
   useEffect(() => rememberHome(column.current?.querySelector('header') ?? null, column.current?.querySelector<HTMLElement>(`:scope > section[aria-label="${strings.home.balance}"]`) ?? null), []);
   return (
-    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10">
+    // S9b (finding 16): closer together on a short screen, so Quick add and Settle up are in view.
+    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10 [@media(max-height:699px)]:gap-2">
       <header className="flex min-h-12 items-center gap-2.5">
         <Logo size={30} />
         <h1 className="text-wordmark m-0 flex-1 text-[1.75rem] leading-none">{strings.app.name}</h1>
@@ -62,6 +64,7 @@ export function Home() {
       <ThisMonth />
       <SuggestRecurring />
       <RecentRows />
+      <DemoNote />
     </div>
   );
 }

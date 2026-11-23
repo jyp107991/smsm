@@ -48,7 +48,7 @@ export function Choices<T extends string>({ label, options, value, onValueChange
             className={cx(
               'relative inline-grid h-9 max-w-full min-w-11 place-items-center rounded-[12px] border-2 border-transparent px-3',
               'text-secondary press font-medium select-none active:scale-[0.97]',
-              'before:absolute before:inset-x-0 before:-inset-y-1 before:content-[""]',
+              'before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[""]',
               chosen ? 'bg-forest-tint text-forest' : 'bg-sunk text-ink',
             )}
           >

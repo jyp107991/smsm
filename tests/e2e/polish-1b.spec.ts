@@ -713,7 +713,7 @@ test.describe('Q-L11: leading text buttons, the "Other" category, the gallery', 
     });
   }
 
-  test('"Other" shows its colour dot, never "•": in the Today list, on the entry page and in the Category filter', async ({ page }) => {
+  test('"Other" shows its mark (its emoji since S9b), never "•": in the Today list, on the entry page and in the Category filter', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await home(page);
     await addExpense(page).click();
@@ -725,13 +725,11 @@ test.describe('Q-L11: leading text buttons, the "Other" category, the gallery', 
     await sheet.getByRole('button', { name: 'Save' }).click();
     await expect(sheet).toBeHidden();
 
-    const stone = await token(page, 'var(--cat-stone)');
     const row = page.getByRole('main').locator('a[href^="/entry/"]').filter({ hasText: 'Odd thing' }).first();
     await expect(row).toBeVisible();
     expect(await row.innerText(), 'the row shows "•"').not.toContain('•');
-    const dotColours = await row.evaluate((el) => [...el.querySelectorAll('*')].map((c) => getComputedStyle(c).backgroundColor));
-    const hasDot = (await Promise.all(dotColours.map((c) => rgba(page, c)))).some((c) => sameColour(c, stone));
-    expect(hasDot, 'the row shows the stone colour dot').toBe(true);
+    // S9b (finding 20): "Other" now has an emoji of its own (📦), shown as every category's is (it was a stone dot).
+    expect(await row.innerText(), 'the row shows Other’s emoji').toContain('📦');
 
     // S2 polish wave 2: Home's "Recent" (day headings, the reading's two lines) puts the new row within 48 px of
     // where Save was, and a second tap there within 0.5 s of a sheet closing is ignored on purpose (Q-F1). A

@@ -44,6 +44,7 @@ import { ChapterSheet, type ChapterEditing } from '../chapters/ChapterSheet';
 import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
 import { Itemise, PhotoButton, ReceiptPhoto, type ReadingState } from './ReceiptParts';
 import { RecurringHistory, Toggle } from './RecurringParts';
+import { TagsField } from './TagsField';
 import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
 import {
   blankForm, draftOf, followExact, formFromRow, movesBalance, parsedAmount, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, stillToComeBack, sumWords, summaryWords,
@@ -743,7 +744,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         />
       ) : (
       <Group label={strings.entry.date}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.entry.date}>
+        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.entry.date}>
           <Chip selected={s.date === today} onSelectedChange={() => { touched.current.date = true; update({ ...s, date: today }); }}>
             {strings.entry.today}
           </Chip>
@@ -795,6 +796,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
           />
         </div>
+        {/* ADD-4: tags, as chips (quick add's #tags land here too). A regular payment keeps none of its own. */}
+        {!rec ? (
+          <div className="mt-4">
+            <TagsField tags={s.tags} onChange={(tags) => { update({ ...s, tags }); }} />
+          </div>
+        ) : null}
         {/* CHP-1: with no chapter open yet, one can be started from here (it is chosen for this entry). */}
         {!rec && request.mode === 'add' && request.inboxItem === undefined && !(chapters ?? []).some((c) => !c.closed) ? (
           <div className="mt-4">
@@ -980,7 +987,7 @@ function ScheduleFields({ rec, today, startLocked, onChange, onPick }: {
       </Group>
 
       <Group label={strings.recurring.starts}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.starts}>
+        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.recurring.starts}>
           <Chip selected={rec.startDate === today} onSelectedChange={() => { onChange({ startDate: today }); }}>
             {strings.entry.today}
           </Chip>
@@ -1004,7 +1011,7 @@ function EndsAndSwitches({ rec, today, onChange, onPick }: {
   return (
     <>
       <Group label={strings.recurring.ends}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={strings.recurring.ends}>
+        <div className="flex flex-wrap gap-x-2 gap-y-3" role="group" aria-label={strings.recurring.ends}>
           <Chip selected={rec.endDate === null} onSelectedChange={() => { onChange({ endDate: null }); }}>
             {strings.recurring.never}
           </Chip>

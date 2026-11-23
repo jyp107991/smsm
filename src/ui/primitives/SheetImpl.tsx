@@ -7,6 +7,8 @@ import { strings } from '../strings';
 import { Button } from './Button';
 import { cx, ICON } from './util';
 import { swallowRepeatTap, watchTaps } from '../taps';
+import { useWide } from '../wide';
+import { inToastLayer } from './Toast';
 
 import type { SheetProps } from './Sheet';
 
@@ -43,6 +45,9 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
 }) {
   const ownId = useId();
   const id = layerId ?? ownId;
+  // S9b (DESIGN §4.11, L3): from 900 px wide a sheet is a dialog in the middle of the screen (a picker small, the add
+  // form taller), not a drawer along the bottom far from what opened it; it isn't dragged there.
+  const wide = useWide();
   const [confirming, setConfirming] = useState(false);
   const active = useRef(false);
   const opener = useRef<HTMLElement | null>(null);
@@ -145,6 +150,7 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
       }}
       dismissible={!dirty}
       repositionInputs={false}
+      handleOnly={wide}
     >
       <Drawer.Portal>
         {/* The scrim (Q-L3): warm ink by day, black by night, so the sheet reads as lifted off a dimmed page. */}
@@ -173,20 +179,31 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
             opener.current = null;
           }}
           onPointerDownOutside={(event) => {
+            // S9b (ADD-6): Undo on the toast is not a tap outside the sheet.
+            if (inToastLayer(event.target)) {
+              event.preventDefault();
+              return;
+            }
             if (dirty) {
               event.preventDefault();
               setConfirming(true);
             }
           }}
           style={{ zIndex: 50 + 10 * depth }}
+          data-sheet={full ? 'full' : 'fit'}
           className={cx(
             'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
             'max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
             full && 'h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',
+            // From 900 px: centred over the whole screen (the rail under its dim too), all corners rounded.
+            'min-[900px]:top-0 min-[900px]:my-auto min-[900px]:w-[calc(100%-4rem)] min-[900px]:rounded-[28px]',
+            full
+              ? 'min-[900px]:h-[min(calc(100dvh-4rem),52rem)] min-[900px]:max-h-[calc(100dvh-4rem)] min-[900px]:max-w-[36rem]'
+              : 'min-[900px]:h-fit min-[900px]:max-h-[min(80dvh,44rem)] min-[900px]:max-w-[28rem]',
           )}
         >
           {/* The drag handle: decoration only (the whole sheet drags; Close and back are the accessible ways out). */}
-          <div aria-hidden="true" className="bg-line mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full" />
+          <div aria-hidden="true" className="bg-line mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full min-[900px]:invisible min-[900px]:h-0 min-[900px]:mt-1" />
           <header className="flex shrink-0 items-start gap-2 pt-2 pr-2 pl-5">
             <div className="min-w-0 flex-1 pt-2">
               <Drawer.Title className="text-title break-words">{title}</Drawer.Title>

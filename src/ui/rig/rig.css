@@ -218,6 +218,20 @@
   height: 0.75rem;
   transform: translateX(-50%);
 }
+/*
+ * S9b (finding 16): on a short screen (below about 700 px tall, a 320 × 640 phone) the plank and the animals are
+ * drawn smaller, so Quick add and Settle up are on screen without scrolling. The same drawing, scaled: shorter
+ * fulcrum, the beam lower, the animals at 56 px; room kept for the steepest tilt.
+ */
+@media (max-height: 699px) {
+  .rig-plank { height: 7.25rem; }
+  .rig-plank-pivot { width: 2.5rem; height: 1.75rem; }
+  .rig-plank-beam { bottom: calc(1.75rem + 0.375rem); height: 0.75rem; }
+  .rig-plank-seat svg.rig { width: 3.5rem; height: 3.5rem; }
+  .rig-plank-seat-left.rig-plank-together { left: calc(50% - 3.75rem); }
+  .rig-plank-seat-right.rig-plank-together { right: calc(50% - 3.75rem); }
+  .rig-plank-ground { width: 8rem; }
+}
 .rig-plank-earth { fill: var(--sunk); }
 .rig-plank-peg { fill: var(--walnut); stroke: var(--rig-ink); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .rig-plank-wood { fill: var(--walnut); }

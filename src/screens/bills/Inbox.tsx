@@ -18,6 +18,7 @@ import {
   useImportQueue, useInbox, useRecurring, type ImportCard, type InboxItemRow, type RecurringRow,
 } from '../../data';
 import { Button, ICON, useToast } from '../../ui/primitives';
+import { Animal } from '../../ui/rig/Animal';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
 import { draftOf, type FormState } from '../entry/form';
@@ -146,7 +147,11 @@ export function Inbox() {
       ) : cards?.[0] ? (
         <ImportCardView key={cards[0].id} card={cards[0]} count={total} today={today} />
       ) : cards === undefined ? null : (
-        <p className="text-note text-ink-2 m-0">{strings.inbox.nothing}</p>
+        // S9b (INB-2): nothing waiting, and the cat asleep on it (as Activity's empty list).
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <span aria-hidden="true"><Animal kind="cat" mood="sleepy" pose="curled" size={96} /></span>
+          <p className="text-note text-ink-2 m-0 max-w-[30ch]">{strings.inbox.nothing}</p>
+        </div>
       )}
     </div>
   );

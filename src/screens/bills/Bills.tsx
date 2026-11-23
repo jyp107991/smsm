@@ -54,7 +54,7 @@ export function Bills() {
             value={view}
             onValueChange={setView}
           />
-          {view === 'month' ? <ThisMonth templates={templates} today={today} /> : null}
+          {view === 'month' ? <ThisMonth templates={templates} today={today} onOpen={open} /> : null}
           {view === 'next' ? <Next30 templates={templates} today={today} onOpen={open} /> : null}
           {view === 'subs' ? <Subscriptions templates={templates} today={today} onOpen={open} /> : null}
         </>
@@ -99,10 +99,13 @@ function Row({ label, detail, amount, onClick }: { label: string; detail: string
   );
 }
 
-function ThisMonth({ templates, today }: { templates: readonly RecurringRow[]; today: IsoDate }) {
+function ThisMonth({ templates, today, onOpen }: { templates: readonly RecurringRow[]; today: IsoDate; onOpen: (id: string) => void }) {
   const entries = useEntries().data ?? NO_ENTRIES;
   const view = useMemo(() => monthView(templates, entries, today), [templates, entries, today]);
   const titleId = useId();
+  // S9b (REC-7): the day tapped, whose bills are listed under the calendar.
+  const [picked, setPicked] = useState<IsoDate | null>(null);
+  const pickedBills = picked ? (view.days.get(picked)?.bills ?? []) : [];
   const [year, month] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
   const title = strings.datePicker.month(strings.datePicker.months[month - 1] ?? '', year);
   const names = (xs: string[]) => [...new Set(xs)].join(', ');
@@ -128,23 +131,26 @@ function ThisMonth({ templates, today }: { templates: readonly RecurringRow[]; t
               const what = posted && due ? strings.bills.dayBoth(posted, due) : posted ? strings.bills.dayPosted(posted) : due ? strings.bills.dayDue(due) : null;
               const name = formatDate(day, today);
               return (
-                <span
-                  key={day}
-                  role="gridcell"
-                  aria-label={what ? strings.bills.dayLabel(name, what) : name}
-                  aria-current={day === today ? 'date' : undefined}
-                  className="flex h-12 flex-col items-center justify-center gap-0.5"
-                >
-                  <span aria-hidden="true" className={cx(
-                      'text-body nums-list inline-flex size-8 items-center justify-center rounded-full leading-none',
-                      day === today ? 'bg-forest-tint text-forest font-semibold' : day < today ? 'text-ink-2' : 'text-ink',
-                    )}>
-                    {Number(day.slice(8, 10))}
-                  </span>
-                  <span aria-hidden="true" className="flex h-1.5 items-center gap-0.5">
-                    {posted ? <span className="bg-forest size-1.5 rounded-full" /> : null}
-                    {due ? <span className="border-forest size-1.5 rounded-full border" /> : null}
-                  </span>
+                <span key={day} role="gridcell" aria-current={day === today ? 'date' : undefined} className="flex h-12">
+                  <button
+                    type="button"
+                    aria-label={what ? strings.bills.dayLabel(name, what) : name}
+                    aria-pressed={picked === day}
+                    onClick={() => { setPicked(picked === day ? null : day); }}
+                    className="group press flex h-12 w-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-[12px]"
+                  >
+                    <span aria-hidden="true" className={cx(
+                        'text-body nums-list inline-flex size-8 items-center justify-center rounded-full leading-none',
+                        day === today ? 'bg-forest-tint text-forest font-semibold' : day < today ? 'text-ink-2' : 'text-ink',
+                        'group-aria-pressed:outline-forest group-aria-pressed:outline-2 group-aria-pressed:outline-solid',
+                      )}>
+                      {Number(day.slice(8, 10))}
+                    </span>
+                    <span aria-hidden="true" className="flex h-1.5 items-center gap-0.5">
+                      {posted ? <span className="bg-forest size-1.5 rounded-full" /> : null}
+                      {due ? <span className="border-forest size-1.5 rounded-full border" /> : null}
+                    </span>
+                  </button>
                 </span>
               );
             })}
@@ -152,6 +158,28 @@ function ThisMonth({ templates, today }: { templates: readonly RecurringRow[]; t
         ))}
       </div>
       <p className="text-body nums-list m-0">{strings.bills.monthTotal(formatPence(view.total))}</p>
+      {picked ? (
+        <section aria-labelledby={`${titleId}-day`} className="flex flex-col">
+          <h3 id={`${titleId}-day`} className="text-subtitle text-ink-2 m-0">{formatDate(picked, today)}</h3>
+          {pickedBills.length === 0 ? <p className="text-secondary text-ink-2 mt-2 mb-0">{strings.bills.dayNothing}</p> : (
+            <ul aria-labelledby={`${titleId}-day`} className="m-0 list-none p-0">
+              {pickedBills.map((b) => {
+                const amount = formatPence(b.amount);
+                return (
+                  <li key={`${b.id}:${String(b.posted)}`} className="border-line border-b last:border-b-0">
+                    <Row
+                      label={b.description}
+                      detail={b.posted ? strings.bills.postedTag : strings.bills.dueTag}
+                      amount={b.varies ? strings.bills.about(amount) : amount}
+                      onClick={() => { onOpen(b.id); }}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }

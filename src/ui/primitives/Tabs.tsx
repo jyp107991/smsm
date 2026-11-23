@@ -3,6 +3,7 @@ import * as RadixTabs from '@radix-ui/react-tabs';
 import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { CalendarDays, ChartNoAxesColumn, House, List, type LucideIcon } from 'lucide-react';
 import { useKeyboardOpen } from '../keyboard';
+import { useWide } from '../wide';
 import { strings } from '../strings';
 import { cx, ICON } from './util';
 
@@ -32,15 +33,18 @@ export interface BottomTabsProps<T extends string> {
 }
 
 /**
- * The app's bottom navigation (Radix Tabs). The bar has a 3 px walnut top edge, sits in thumb reach,
+ * The app's bottom navigation (Radix Tabs); from 900 px wide the same tabs stacked in a left side rail (S9b, L1). The bar has a 3 px walnut top edge, sits in thumb reach,
  * respects the home indicator, and hides while the keyboard is open. The tabs sit together in the middle
  * (Q-L4), each at most 7 rem wide, rather than spread to the screen's edges. A tap shows no focus box; the
  * keyboard's focus is a rounded ring on the tab's pill.
  */
 export function BottomTabs<T extends string>({ items, value, onValueChange, children, className }: BottomTabsProps<T>) {
   const keyboard = useKeyboardOpen();
+  // S9b (DESIGN §4.11, L1): from 900 px the same tabs are a left side rail, read and moved through top to bottom.
+  const wide = useWide();
   return (
     <RadixTabs.Root
+      orientation={wide ? 'vertical' : 'horizontal'}
       value={value}
       onValueChange={(next) => {
         const item = items.find((i) => i.value === next);
@@ -50,15 +54,20 @@ export function BottomTabs<T extends string>({ items, value, onValueChange, chil
       className={cx('flex min-h-dvh flex-col', className)}
     >
       {/* The page's main landmark: screens inside a tab panel do not add their own <main>. */}
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="min-w-0 flex-1 min-[900px]:ml-[calc(5.5rem+3px)]">{children}</main>
       <nav
         aria-label={strings.tabs.label}
-        hidden={keyboard}
+        hidden={keyboard && !wide}
         // Toasts sit above the bar, never on it.
         data-toast-avoid=""
-        className="border-walnut bg-paper sticky bottom-0 z-30 border-t-[3px] pb-[env(safe-area-inset-bottom)]"
+        className={cx(
+          'border-walnut bg-paper sticky bottom-0 z-30 border-t-[3px] pb-[env(safe-area-inset-bottom)]',
+          // The rail: down the left edge, its walnut edge on the right (the bar's top edge, turned).
+          'min-[900px]:fixed min-[900px]:inset-y-0 min-[900px]:left-0 min-[900px]:w-[calc(5.5rem+3px)] min-[900px]:border-t-0 min-[900px]:border-r-[3px]',
+          'min-[900px]:pt-[max(1rem,env(safe-area-inset-top))] min-[900px]:pb-4 min-[900px]:pl-[env(safe-area-inset-left)]',
+        )}
       >
-        <RadixTabs.List className="flex justify-center px-2">
+        <RadixTabs.List className="flex justify-center px-2 min-[900px]:flex-col min-[900px]:justify-start min-[900px]:gap-1 min-[900px]:px-1.5">
           {items.map(({ value: v, label, icon: Icon }) => (
             <RadixTabs.Trigger
               key={v}
@@ -70,6 +79,7 @@ export function BottomTabs<T extends string>({ items, value, onValueChange, chil
               onClick={() => { onValueChange(v); }}
               className={cx(
                 'group text-ink-2 flex min-h-16 max-w-28 min-w-0 flex-1 basis-0 flex-col items-center justify-center gap-0.5 px-1 pt-2 pb-1.5',
+                'min-[900px]:max-w-none min-[900px]:flex-none min-[900px]:basis-auto min-[900px]:py-2',
                 'transition-colors duration-150 hover:text-ink data-[state=active]:text-forest',
                 // The ring goes on the pill, not round the whole tab.
                 'outline-none focus-visible:outline-none',

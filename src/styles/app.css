@@ -62,6 +62,43 @@
     outline-offset: 2px;
   }
 }
+/*
+ * S9b (DESIGN §4.11, L3): from 900 px wide a sheet is a centred dialog (SheetImpl.tsx). It doesn't slide up from the
+ * bottom edge; it fades in with a short rise (180–260 ms, DESIGN §3.4), and vaul's strip of sheet colour drawn below
+ * a bottom drawer (its ::after, for an over-dragged sheet) is not drawn under a dialog. `:root` outranks vaul's own
+ * rules, which it adds to the page after ours.
+ */
+@media (min-width: 900px) {
+  :root [data-vaul-drawer][data-vaul-snap-points='false'][data-vaul-drawer-direction='bottom'][data-state='open'] {
+    animation-name: sheet-dialog-in;
+    animation-duration: 240ms;
+  }
+  :root [data-vaul-drawer][data-vaul-snap-points='false'][data-vaul-drawer-direction='bottom'][data-state='closed'] {
+    animation-name: sheet-dialog-out;
+    animation-duration: 180ms;
+  }
+  :root [data-vaul-drawer]::after {
+    display: none;
+  }
+}
+@keyframes sheet-dialog-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes sheet-dialog-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(0, 8px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes sheet-dialog-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes sheet-dialog-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

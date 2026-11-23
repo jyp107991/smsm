@@ -41,6 +41,18 @@ export interface Recap {
 }
 
 /** INS-2: a month's recap; on or before its last day (settle day) it is "so far": the 1st to today, no comparison. */
+/**
+ * S9b (INS-4): a month's card on Insights: the recap's own total (the same period, chapters and all) and the category
+ * most was spent on, which the card names in its one line. Null for a month with nothing spent together.
+ */
+export function monthCard(entries: readonly InsightEntry[], month: Month, today: IsoDate): { total: Pence; topCategoryId: string | null } | null {
+  const last = lastOf(month);
+  const period: Period = { kind: 'month', from: `${month}-01`, to: today <= last ? today : last, chapterId: null };
+  const total = sharedSpend(entries, period);
+  if (total <= 0) return null;
+  return { total, topCategoryId: byCategory(entries, period).find((c) => c.total > 0)?.categoryId ?? null };
+}
+
 export function recapOf(entries: readonly InsightEntry[], settlements: readonly InsightSettlement[], people: readonly [UserId, UserId], month: Month, opts: RecapOptions): Recap {
   const last = lastOf(month);
   const soFar = opts.today <= last;

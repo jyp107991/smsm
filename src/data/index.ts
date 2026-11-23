@@ -44,4 +44,5 @@ export {
   type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow, type ImportRuleRow, type RestoreCounts,
 } from './api';
 export { REFUSAL_MESSAGES, type WriteProblem, type RefusalReason } from './problems';
+export { reportProblem } from './feedback';
 export { browserGeo, frankfurterRates, type GeoService, type RatesService, type Located } from './places';

@@ -147,6 +147,8 @@ export const strings = {
     done: 'Done',
   },
   home: {
+    /** S9b: the demo's one note, at the foot of Home. */
+    demoNote: 'This is a demo: what you add here goes when you reload.',
     settings: 'Settings',
     balance: 'Balance',
     square: 'All square',
@@ -244,6 +246,10 @@ export const strings = {
     pickDate: 'Pick a date',
     moreDetails: 'More details',
     notes: 'Notes',
+    /** S9b (ADD-4): tags, as chips, typed one at a time. */
+    tags: 'Tags',
+    addTag: 'Add a tag',
+    removeTag: (tag: string) => `Remove ${tag}`,
     save: 'Save',
     saved: 'Saved',
     /** S2 polish Q-U8: toasts say what happened. */
@@ -334,6 +340,9 @@ export const strings = {
     totalLine: (count: number, total: string) => `${String(count)} ${count === 1 ? 'entry' : 'entries'} · ${total}`,
     search: 'Search',
     searchPlaceholder: 'Descriptions, notes, tags',
+    /** S9b (DESIGN §4.11): the right-hand pane on a larger screen, and what it says before an entry is picked. */
+    details: 'Details',
+    pickOne: 'Tap an entry to see it here.',
     filters: 'Filters',
     whoPaid: 'Who paid',
     category: 'Category',
@@ -342,6 +351,9 @@ export const strings = {
     chosen: (filter: string, value: string) => `${filter}: ${value}`,
     anyone: 'Either of you',
     anyCategory: 'Any category',
+    /** S9b (ACT-1): the Tag filter. */
+    tag: 'Tag',
+    anyTag: 'Any tag',
     anyChapter: 'Any chapter',
     anyTime: 'Any time',
     thisMonth: 'This month',
@@ -414,6 +426,10 @@ export const strings = {
     dayDue: (names: string) => `${names} due`,
     dayBoth: (posted: string, due: string) => `${posted} posted, ${due} due`,
     dayLabel: (day: string, what: string) => `${day}: ${what}`,
+    /** S9b (REC-7): a tapped day of the calendar. */
+    dayNothing: 'Nothing regular on this day.',
+    postedTag: 'Posted',
+    dueTag: 'Due',
     about: (amount: string) => `about ${amount}`,
     nothingSoon: 'Nothing due in the next 30 days.',
     noSubscriptions: 'No subscriptions yet. Tick “Subscription” on a regular payment to see it here.',
@@ -540,6 +556,9 @@ export const strings = {
     soFar: (total: string) => `${total} so far`,
     inAll: (total: string) => `${total} in all`,
     byCategory: 'By category',
+    /** S9b (CHP-3): the places as a line of names, and the receipt photos as a strip. */
+    places: 'Places',
+    photos: 'Photos',
     whoPaid: 'Who paid',
     entries: 'Entries',
     noEntries: 'Nothing in this chapter yet. While it’s the one you’re adding to, new entries go here.',
@@ -599,7 +618,9 @@ export const strings = {
     chapter: 'Chapter',
     noChapter: 'No chapter (the periods above)',
     includeChapters: 'Include chapters',
-    includeChaptersHint: 'Off: everyday spending only, without trips and projects.',
+    /** S9b (INS-4): the switch's line says what it does as it is now. */
+    includeChaptersOn: 'Trips and projects are counted in the figures.',
+    includeChaptersOff: 'Everyday spending only, without trips and projects.',
     total: 'Total',
     totalIn: (amount: string) => `${amount} in all`,
     comparison: (amount: string, diff: string, more: boolean, before: string) => `${amount}, ${diff} ${more ? 'more' : 'less'} than ${before}`,
@@ -721,6 +742,9 @@ export const strings = {
     momentLine: (description: string, amount: string, day: string) => `${description}, ${amount}, ${day}`,
     back: 'Insights',
     recaps: 'Recaps',
+    /** S9b (INS-4): a month card's one line. */
+    cardMostly: (category: string) => `Most on ${category}`,
+    cardNothing: 'Nothing spent together',
     years: 'Years',
     ready: (month: string) => `The recap for ${month} is ready`,
     settleDay: (month: string) => `It’s settle day: the recap for ${month} so far`,
@@ -903,6 +927,18 @@ export const strings = {
   },
   settings: {
     title: 'Settings',
+    /** S9b (SPEC §6.4): the household's home country (pounds), the regular payments, and Report a problem. */
+    homeCountry: 'Home country',
+    homeCountryLine: 'Everything is kept in pounds. Entries made abroad keep their own currency too.',
+    regular: 'Regular payments',
+    regularLine: 'Rent, bills and subscriptions: they live on the Bills tab.',
+    report: 'Report a problem',
+    reportLine: 'Say what happened. The app’s version and the page you were on go with it.',
+    reportWhat: 'What happened?',
+    reportSend: 'Send',
+    reportEmpty: 'Write a few words about what happened.',
+    reportSent: 'Sent. Thank you.',
+    reportQueued: 'Kept on this phone; it goes when there’s a connection.',
     back: 'Home',
     us: 'The two of you',
     animalOf: (animal: 'cat' | 'dog') => `the ${animal}`,

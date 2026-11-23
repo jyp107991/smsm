@@ -6,23 +6,28 @@ import { useState } from 'react';
 import { formatPence, type Pence } from '../../core/money';
 import { cx } from '../../ui/primitives/util';
 
-/** Horizontal bars, each labelled on the bar ("Eating out £420.00"), largest first, as a list. */
+/**
+ * Horizontal bars, largest first, as a list. S9b (INS-4): each bar's name and amount sit on the line just above it, so a
+ * label never runs across the end of a short bar or gets cut off at 320 px; long names wrap.
+ */
 export function Bars({ label, items }: { label: string; items: readonly { key: string; name: string; amount: Pence; colour?: string }[] }) {
   const max = Math.max(1, ...items.map((i) => i.amount));
   return (
-    <ul aria-label={label} className="m-0 flex list-none flex-col gap-2 p-0">
+    <ul aria-label={label} className="m-0 flex list-none flex-col gap-3 p-0">
       {items.map((i) => {
         const pct = Math.max(2, Math.round((Math.max(0, i.amount) / max) * 100));
         return (
-          <li key={i.key} className="relative flex min-h-11 items-center overflow-hidden rounded-[8px]">
-            <span
-              aria-hidden="true"
-              className="bg-forest-tint absolute inset-y-0 left-0 rounded-[8px]"
-              style={{ width: `${String(pct)}%`, ...(i.colour ? { background: `color-mix(in oklch, var(--cat-${i.colour}) 35%, transparent)` } : {}) }}
-            />
-            <span className="text-body relative flex w-full min-w-0 items-baseline justify-between gap-3 px-3">
-              <span className="min-w-0 truncate">{i.name}</span>{' '}
+          <li key={i.key} className="flex flex-col gap-1">
+            <span className="text-body flex min-w-0 items-baseline justify-between gap-3">
+              <span className="min-w-0 break-words">{i.name}</span>{' '}
               <span className="nums-list shrink-0">{formatPence(i.amount)}</span>
+            </span>
+            <span className="bg-sunk flex h-2.5 w-full overflow-hidden rounded-full">
+              <span
+                aria-hidden="true"
+                className="bg-forest block h-full rounded-full"
+                style={{ width: `${String(pct)}%`, ...(i.colour ? { background: `var(--cat-${i.colour})` } : {}) }}
+              />
             </span>
           </li>
         );

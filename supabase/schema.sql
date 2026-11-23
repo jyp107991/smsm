@@ -160,7 +160,7 @@ begin
     (hid, 'Travel',        '✈️', 'lake',   9),
     (hid, 'Gifts',         '🎁', 'clay',   10),
     (hid, 'Health',        '💊', 'fern',   11),
-    (hid, 'Other',         '•',  'stone',  12);
+    (hid, 'Other',         '📦', 'stone',  12);
   return hid;
 end $$;
 

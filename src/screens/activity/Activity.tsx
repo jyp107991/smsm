@@ -58,16 +58,18 @@ interface Filters {
   /** PLC-7, CHP-6: a country ('' any) and a place ('' any). */
   country: string;
   place: string;
+  /** S9b (ACT-1): a tag ('' any). */
+  tag: string;
   dates: DatesChoice;
   /** Q-U10: the days picked under "Pick dates". */
   range: DayRange | null;
   type: TypeChoice;
 }
 
-const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', dates: 'any', range: null, type: 'any' };
+const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', tag: '', dates: 'any', range: null, type: 'any' };
 
 /** Q-U10: a filter is on (search has its own clear button). */
-const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.dates !== 'any' || f.type !== 'any';
+const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.tag !== '' || f.dates !== 'any' || f.type !== 'any';
 
 export function Activity() {
   const layer = useDataLayer();
@@ -122,6 +124,7 @@ export function Activity() {
       ...(f.chapter !== '' ? { chapters: [f.chapter === EVERYDAY ? null : f.chapter] } : {}),
       ...(f.country !== '' ? { countries: [f.country] } : {}),
       ...(f.place !== '' ? { places: [f.place] } : {}),
+      ...(f.tag !== '' ? { tags: [f.tag] } : {}),
       ...datesRange(f.dates, today, f.range),
       ...(f.type === 'expense' || f.type === 'money_back' || f.type === 'settlement' ? { kinds: [f.type] } : {}),
     };
@@ -149,6 +152,18 @@ export function Activity() {
     .sort((a, b) => (countryName(a) ?? a).localeCompare(countryName(b) ?? b)), [entries]);
   const places = useMemo(() => [...new Set((entries ?? []).filter((e) => e.deleted_at === null && e.place).map((e) => e.place ?? ''))]
     .sort((a, b) => a.localeCompare(b)), [entries]);
+  // S9b (ACT-1): the tags in use, once each (in any case), by name.
+  const tags = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const e of entries ?? []) {
+      if (e.deleted_at !== null) continue;
+      for (const t of e.tags) {
+        const key = t.normalize('NFKC').toLowerCase();
+        if (!seen.has(key)) seen.set(key, t);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-16">
@@ -194,6 +209,7 @@ export function Activity() {
         chapters={chapters ?? NO_ROWS}
         countries={countries}
         places={places}
+        tags={tags}
         today={today}
       />
 
@@ -493,7 +509,7 @@ function springEasing(stiffness: number, damping: number, mass: number, seconds:
 }
 
 /** The search's chips and their sheets. Which sheet is open lives here, so opening one never redraws the list. */
-function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, today }: {
+function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, tags, today }: {
   filters: Filters;
   onChange: (patch: Partial<Filters>) => void;
   onClear: () => void;
@@ -503,10 +519,11 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
   chapters: readonly ChapterRow[];
   countries: readonly string[];
   places: readonly string[];
+  tags: readonly string[];
   today: IsoDate;
 }) {
-  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'dates' | 'type' | null>(null);
-  const { payer, category, chapter, country, place, dates, range, type } = filters;
+  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'tag' | 'dates' | 'type' | null>(null);
+  const { payer, category, chapter, country, place, tag, dates, range, type } = filters;
   const live = categories.filter((c) => !c.archived);
   const chapterLabel = chapter === '' ? null : chapter === EVERYDAY ? strings.chapters.everyday : (chapters.find((c) => c.id === chapter)?.name ?? null);
   const payerLabel = payer ? nameOf(payer) : null;
@@ -537,6 +554,9 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
         ) : null}
         {places.length > 0 ? (
           <FilterButton label={strings.places.place} value={place === '' ? null : place} onClick={() => { setPicker('place'); }} />
+        ) : null}
+        {tags.length > 0 || tag !== '' ? (
+          <FilterButton label={strings.activity.tag} value={tag === '' ? null : tag} onClick={() => { setPicker('tag'); }} />
         ) : null}
         <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : (dates === 'custom' ? rangeLabel : datesLabels[dates])} onClick={() => { setPicker('dates'); }} />
         <FilterButton label={strings.activity.type} value={type === 'any' ? null : typeLabels[type]} onClick={() => { setPicker('type'); }} />
@@ -598,6 +618,14 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
         value={place}
         options={[{ value: '', label: strings.places.anyPlace }, ...places.map((p) => ({ value: p, label: p }))]}
         onPick={(v) => { onChange({ place: v }); }}
+      />
+      <Picker
+        open={picker === 'tag'}
+        title={strings.activity.tag}
+        onClose={close}
+        value={tag}
+        options={[{ value: '', label: strings.activity.anyTag }, ...tags.map((t) => ({ value: t, label: t }))]}
+        onPick={(v) => { onChange({ tag: v }); }}
       />
       <DatesPicker
         open={picker === 'dates'}

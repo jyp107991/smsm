@@ -102,8 +102,14 @@ export function Insights() {
       <h1 className="text-title m-0 flex min-h-12 items-center">{strings.insights.title}</h1>
       {/* S6b (INS-9): only with smart features on and a connection. */}
       <AskSmsm />
+      <Choices label={strings.insights.period} options={options} value={chapter ? ('' as Choice) : choice} onValueChange={setChoice} />
+
+      {/* S9b (finding 16): the first figure straight after the period, so a small phone shows it without scrolling. */}
+      <Figure title={strings.insights.total} define={strings.insights.define.total} hideTitle>
+        <p className="text-sentence nums-list m-0">{sentence}</p>
+      </Figure>
+
       <div className="flex flex-col gap-3">
-        <Choices label={strings.insights.period} options={options} value={chapter ? ('' as Choice) : choice} onValueChange={setChoice} />
         {chapters.length > 0 ? (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="insights-chapter" className="text-secondary text-ink-2 font-medium">{strings.insights.chapter}</label>
@@ -118,12 +124,8 @@ export function Insights() {
             </select>
           </div>
         ) : null}
-        <Toggle label={strings.insights.includeChapters} hint={strings.insights.includeChaptersHint} on={withChapters} onChange={setWithChapters} />
+        <Toggle label={strings.insights.includeChapters} hint={withChapters ? strings.insights.includeChaptersOn : strings.insights.includeChaptersOff} on={withChapters} onChange={setWithChapters} />
       </div>
-
-      <Figure title={strings.insights.total} define={strings.insights.define.total} hideTitle>
-        <p className="text-sentence nums-list m-0">{sentence}</p>
-      </Figure>
 
       <Figure title={strings.insights.whereItWent} define={strings.insights.define.whereItWent}>
         {cats.length === 0 ? <Empty /> : (
