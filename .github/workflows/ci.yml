@@ -16,7 +16,7 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -42,8 +42,6 @@ jobs:
         run: npm run lint
       - name: Unit and property tests
         run: npm test
-      - name: Mutation tests on the money core (score at least 85%)
-        run: npm run test:mutation -- --reporters clear-text
       - name: Trace (every criterion tested or deferred)
         run: npm run trace
       - name: Database tests (PostgreSQL 16)
@@ -83,6 +81,34 @@ jobs:
           name: dist-demo
           path: dist-demo
           retention-days: 7
+
+  # Mutation tests on the money core (docs/ENGINEERING.md §4.3, score at least 85%), in parallel with checks:
+  # they take most of 40 minutes on a runner and need nothing the checks job builds.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The same PostgreSQL as checks, so the database parity tests still count against mutants.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Mutation tests on the money core (score at least 85%)
+        run: npm run test:mutation -- --reporters clear-text
 
   # The two-user end-to-end suite (docs/slices/S2-ci.md): the production build against the Supabase local
   # stack, two phones with fixed clocks, sign-in codes from the local mail catcher. Nothing here is deployed.
