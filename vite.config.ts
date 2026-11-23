@@ -55,16 +55,16 @@ export default defineConfig(({ mode }) => ({
         background_color: '#DCDFCD',
         theme_color: '#DCDFCD',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-          { src: '/icons/icon-monochrome-512.png', sizes: '512x512', type: 'image/png', purpose: 'monochrome' },
+          { src: '/icons/app-c-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/app-c-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/app-c-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/app-c-monochrome-512.png', sizes: '512x512', type: 'image/png', purpose: 'monochrome' },
         ],
         // S6b (ADD-8, NOT-3): long-press the app's icon; each opens its sheet once (src/screens/shell/FromOutside.tsx).
         shortcuts: [
-          { name: 'Add expense', short_name: 'Add', url: '/?do=add', icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }] },
-          { name: 'Scan receipt', short_name: 'Scan', url: '/?do=scan', icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }] },
-          { name: 'Settle up', short_name: 'Settle', url: '/?do=settle', icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Add expense', short_name: 'Add', url: '/?do=add', icons: [{ src: '/icons/app-c-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Scan receipt', short_name: 'Scan', url: '/?do=scan', icons: [{ src: '/icons/app-c-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Settle up', short_name: 'Settle', url: '/?do=settle', icons: [{ src: '/icons/app-c-192.png', sizes: '192x192', type: 'image/png' }] },
         ],
         // S6b (ADD-8, SPEC 5.3): smsm in Android's share sheet. The service worker keeps what was shared
         // (public/share-target.js) and opens /?do=shared.

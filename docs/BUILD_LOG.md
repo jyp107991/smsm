@@ -290,3 +290,9 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - **Owner decision:** notifications show full detail on the lock screen.
 - **If this session stops here, next steps:** finish the 9 fixes on branch `ccr-d34ab85d-b429dn` (uncommitted work in `src/data/notifications.ts`, `src/data/queryClient.ts`, `src/data/push.ts` is the builder's, partial), `npm run verify`, commit, PR to main, merge on green, confirm deploy (`version.json`, `health()` shows `push: true`). Then S9 (hardening → v1.0).
 - **S8 review fixes done** (all 9, each with tests; three existing S8 tests updated where a fix changed the behaviour they encoded, noted in DECISIONS). Verify green: 2326 tests, 406 SQL checks, 114 refusals; S8 e2e 5/5; full e2e 149. Next: PR, merge on green, confirm deploy (`health()` shows `push: true`).
+- **S8 merged** (PR #16, `ef201e9`); deploying. CI fixes on the way: the restore drill now lets the backup's push setup row replace the empty one the migrations make; e2e runs in full Chromium (the headless shell has no notification permission). Next: confirm the deploy (`version.json`, `health()` has `push: true`), then S9 (hardening → v1.0).
+
+## 2026-11-18 ~08:50 UTC: S8 LIVE
+- **S8 live** (PR #16, `ef201e9`, deploy run 44266710730 green): migration applied, push function deployed and initialised ("Push function ready"), smoke test passed (it checks `health()` reports push set up). Settings → Notifications → "Allow notifications on this phone".
+- **To check on two real phones:** allow on both; one person adds an entry; the other should see "⟨name⟩ added ⟨thing⟩ £x · ⟨balance⟩" within seconds, and tapping it opens the entry.
+- **Next:** S9 (hardening → v1.0): release QA (ENGINEERING §9), performance on a mid-range phone profile, larger-screen layout, fix everything found, tag v1.0.0.

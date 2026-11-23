@@ -59,7 +59,7 @@ const BATCH = 100;
 const TTL = 24 * 60 * 60;
 /** The VAPID token's life (RFC 8292: at most 24 hours). */
 const VAPID_LIFE = 12 * 60 * 60;
-const APP_ICON = '/icons/icon-192.png';
+const APP_ICON = '/icons/app-c-192.png';
 /** How long one push service may take to answer (ms). */
 const PUSH_TIMEOUT = 10_000;
 
