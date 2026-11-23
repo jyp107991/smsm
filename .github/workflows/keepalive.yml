@@ -1,5 +1,6 @@
 # Free Supabase projects pause after 7 days without activity (DEPLOY §1). This touches the project
-# every 2 days with the same public health check the app uses, so it never goes quiet.
+# every 2 days with the same public health check the app uses, so it never goes quiet. The app's Worker does the
+# same once a day (wrangler.jsonc triggers.crons), so the project stays awake even if GitHub turns this off.
 name: keepalive
 on:
   schedule:

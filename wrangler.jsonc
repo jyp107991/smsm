@@ -9,6 +9,10 @@
   "workers_dev": true,
   "preview_urls": false,
   "ai": { "binding": "AI" },
+  // S9: the second keep-alive. Once a day (05:37 UTC, an odd minute away from the other jobs) the scheduled handler
+  // in worker/index.ts calls health() so the free Supabase project never pauses, even if GitHub's scheduled
+  // workflows stop. `wrangler deploy` sends this list (it replaces the Worker's schedules).
+  "triggers": { "crons": ["37 5 * * *"] },
   // The prompts are text files bundled with the Worker (worker/prompts/*.md).
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": false }],
   "assets": {
