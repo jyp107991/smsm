@@ -50,7 +50,7 @@ test('SET-1 SET-2 SET-5: settle up prefilled; Monzo with the amount filled in; "
   // SET-1: prefilled with the full balance.
   let dialog = await openSettleUp(sam.page);
   await expect(dialog.getByRole('textbox', { name: 'Amount' })).toHaveValue(/^£?21\.25$/);
-  await expect(dialog.getByRole('button', { name: 'Record it' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Record Sam’s payment' })).toBeVisible();
 
   // SET-2: Monzo opens with the amount and "smsm"; on return, "Not yet" records nothing.
   const url = await payWithMonzo(sam, dialog);
@@ -77,10 +77,10 @@ test('SET-1 SET-2 SET-5: settle up prefilled; Monzo with the amount filled in; "
   await expectSentence(sam.page, 'Sam owes Jae £11.25');
   await expectSentence(jae.page, 'Sam owes Jae £11.25');
 
-  // Without Monzo: "Record it". SET-5: the balance reaches zero: the all-square moment on both phones.
+  // Without Monzo: "Record Sam’s payment" (S9a: the button names the payer on either phone). SET-5: the balance reaches zero: the all-square moment on both phones.
   dialog = await openSettleUp(sam.page);
   await expect(dialog.getByRole('textbox', { name: 'Amount' })).toHaveValue(/^£?11\.25$/);
-  await dialog.getByRole('button', { name: 'Record it' }).click();
+  await dialog.getByRole('button', { name: 'Record Sam’s payment' }).click();
   await expect(dialog).toBeHidden();
   await settlementsWhen(household.id, (rows) => rows.length === 2 && rows.some((r) => r.amount_pence === 1125 && r.method === 'other'), 'recorded');
   await expectSentence(sam.page, 'All square');
@@ -98,7 +98,7 @@ test('SET-2: no monzo.me name, no Monzo button; SET-1 the debtor can settle from
   const dialog = await openSettleUp(jae.page);
   await expect(dialog.getByRole('button', { name: 'Pay with Monzo' })).toHaveCount(0);
   await expect(dialog.getByRole('textbox', { name: 'Amount' })).toHaveValue(/^£?15\.00$/);
-  await dialog.getByRole('button', { name: 'Record it' }).click();
+  await dialog.getByRole('button', { name: 'Record Jae’s payment' }).click();
   const [J, S] = household.people.map((p) => p.userId) as [string, string];
   const [row] = await settlementsWhen(household.id, (rows) => rows.length === 1, 'recorded');
   expect(row).toMatchObject({ from_user: J, to_user: S, amount_pence: 1500 });
@@ -111,7 +111,7 @@ test('SET-3: settle-ups appear in Activity, are editable and soft-deletable, and
   await quickAdd(jae.page, '42.50 Tesco');
   const dialog = await openSettleUp(sam.page);
   await dialog.getByRole('textbox', { name: 'Amount' }).fill('20');
-  await dialog.getByRole('button', { name: 'Record it' }).click();
+  await dialog.getByRole('button', { name: 'Record Sam’s payment' }).click();
   const [settle] = await settlementsWhen(household.id, (rows) => rows.length === 1, 'recorded');
   if (!settle) throw new Error('unreachable');
 
@@ -127,7 +127,7 @@ test('SET-3: settle-ups appear in Activity, are editable and soft-deletable, and
   await jae.page.getByRole('button', { name: 'Edit' }).click();
   const edit = jae.page.getByRole('dialog', { name: 'Edit settle-up' }); // Q-U11 (was "Settle up")
   await edit.getByRole('textbox', { name: 'Amount' }).fill('21.25');
-  await control(edit, /^(Save|Record it)$/).click();
+  await control(edit, /^(Save|Record \S+’s payment)$/).click();
   await settlementsWhen(household.id, (rows) => rows[0]?.amount_pence === 2125, 'edited');
   await expectSentence(sam.page, 'All square');
 

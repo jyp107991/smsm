@@ -96,7 +96,8 @@ const jsonb = (m: PenceMap): string => `'${JSON.stringify(m)}'::jsonb`;
 /**
  * S9a (MB-2, MB-3): ids for every row, and money back linked to an earlier expense where the database allows it (no
  * more than the original still has to come back). Originals are often deleted while their money back is live (rows
- * inserted deleted cascade nothing), so the households hold orphaned money back, which neither side may count.
+ * inserted deleted cascade nothing; the live refund goes in as a restored backup row), so the households hold orphaned
+ * money back, which neither side may count.
  */
 function linked(h: Household, i: number): Household {
   const entries = h.entries.map((e, j) => ({ ...e, id: `00000000-0000-4000-9000-${(i * 1000 + j).toString(16).padStart(12, '0')}`, refundOf: null as string | null }));
@@ -119,13 +120,19 @@ function householdSql(h: Household, i: number): string {
     `set request.jwt.claim.sub = '${h.b}';`,
     `select join_household(:'code') as joined \\gset`,
   ];
+  // Money back for an original that is already deleted is refused from the app (S9a review); such orphans only arise
+  // from a backup restored as it was, so those rows go in the way restore_backup writes them (smsm.restoring).
+  const deletedIds = new Set(h.entries.filter((e) => e.deleted && e.id).map((e) => e.id));
   h.entries.forEach((e, j) => {
+    const orphan = e.kind === 'money_back' && !e.deleted && e.refundOf != null && deletedIds.has(e.refundOf);
     lines.push(`set request.jwt.claim.sub = '${j % 2 === 0 ? h.a : h.b}';`);
+    if (orphan) lines.push(`set smsm.restoring = 'on';`);
     lines.push(
       `insert into expenses(${e.id ? 'id, ' : ''}household_id, kind, description, amount_pence, paid, split_mode, shares, refund_of, deleted_at) values ` +
         `(${e.id ? `'${e.id}', ` : ''}:'hid', '${e.kind}', 'Row ${j}', ${e.amount}, ${jsonb(e.paid)}, '${e.mode}', ${jsonb(e.shares)}, ` +
         `${e.refundOf ? `'${e.refundOf}'` : 'null'}, ${e.deleted ? 'now()' : 'null'});`,
     );
+    if (orphan) lines.push(`reset smsm.restoring;`);
   });
   h.settlements.forEach((s) => {
     lines.push(
