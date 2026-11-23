@@ -8,7 +8,7 @@ import { Button } from './Button';
 import { cx, ICON } from './util';
 import { swallowRepeatTap, watchTaps } from '../taps';
 import { useWide } from '../wide';
-import { inToastLayer } from './Toast';
+import { inToastLayer, pressBeganInToastLayer } from './Toast';
 
 import type { SheetProps } from './Sheet';
 
@@ -54,8 +54,10 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
 
   // Before the content mounts (the portal renders a beat later), so this is still the opener.
   // A sheet opened over another (the date grid over the Add sheet) stacks above it, scrim and all.
-  const [stacked, setStacked] = useState({ open: false, depth: 0 });
-  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth });
+  // S9b review 8: how it moves is chosen as it opens (a dialog's fade from 900 px, else the drawer's rise), so a window
+  // resized across 900 px while it is open doesn't play its entrance again.
+  const [stacked, setStacked] = useState({ open: false, depth: 0, wide });
+  if (open !== stacked.open) setStacked({ open, depth: open ? openSheets.length : stacked.depth, wide: open ? wide : stacked.wide });
   const depth = stacked.depth;
   useLayoutEffect(() => {
     if (open) opener.current = focusedElement();
@@ -179,8 +181,9 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
             opener.current = null;
           }}
           onPointerDownOutside={(event) => {
-            // S9b (ADD-6): Undo on the toast is not a tap outside the sheet.
-            if (inToastLayer(event.target)) {
+            // S9b (ADD-6): Undo on the toast is not a tap outside the sheet (S9b review: nor when the sheet hears of the
+            // tap only after Undo has replaced the toast, as it does on a touch screen).
+            if (inToastLayer(event.target) || pressBeganInToastLayer()) {
               event.preventDefault();
               return;
             }
@@ -191,6 +194,7 @@ export default function SheetImpl({ open, onOpenChange, title, description, dirt
           }}
           style={{ zIndex: 50 + 10 * depth }}
           data-sheet={full ? 'full' : 'fit'}
+          data-sheet-motion={stacked.wide ? 'dialog' : 'drawer'}
           className={cx(
             'bg-surface text-ink shadow-float fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-lg flex-col rounded-t-[28px] outline-none',
             'max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)]',

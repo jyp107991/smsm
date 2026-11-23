@@ -598,6 +598,9 @@ test.describe('S9b demo', () => {
     await home(page);
     const note = page.getByText(/reload/i);
     await expect(note.first()).toBeVisible({ timeout: 8000 });
+    // (S9b review 4: it counts as said once it has been on screen, so it is scrolled to, as a person reading would.)
+    await note.first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
     await page.reload();
     await expect(balance(page)).toBeVisible();
     await page.waitForTimeout(2000);

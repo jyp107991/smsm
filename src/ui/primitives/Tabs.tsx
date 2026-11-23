@@ -54,7 +54,7 @@ export function BottomTabs<T extends string>({ items, value, onValueChange, chil
       className={cx('flex min-h-dvh flex-col', className)}
     >
       {/* The page's main landmark: screens inside a tab panel do not add their own <main>. */}
-      <main className="min-w-0 flex-1 min-[900px]:ml-[calc(5.5rem+3px)]">{children}</main>
+      <main className="min-w-0 flex-1 min-[900px]:ml-[calc(5.5rem+3px)] print:ml-0">{children}</main>
       <nav
         aria-label={strings.tabs.label}
         hidden={keyboard && !wide}

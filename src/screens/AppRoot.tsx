@@ -95,11 +95,37 @@ function tabOf(route: Route, last: MainTab): MainTab {
  */
 function Panes({ list, detail, detailKey }: { list: ReactNode; detail: ReactNode; detailKey: string | null }) {
   const pane = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const shown = useRef(detailKey);
   // Another entry starts at its own top.
   useEffect(() => { pane.current?.scrollTo(0, 0); }, [detailKey]);
+  // S9b review: focus follows the pick. An entry opened from the list takes focus at its heading (so the keyboard and
+  // a screen reader go on from there, not from the top of the list); closing the pane gives focus back to its row.
+  useEffect(() => {
+    const was = shown.current;
+    shown.current = detailKey;
+    if (was === detailKey) return;
+    let frame = 0;
+    let tries = 0;
+    if (detailKey !== null) {
+      const toHeading = () => {
+        const heading = pane.current?.querySelector<HTMLElement>('h1');
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+        } else if (tries++ < 60) frame = requestAnimationFrame(toHeading);
+      };
+      toHeading();
+    } else if (was !== null) {
+      const row = listRef.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(was)}"]`);
+      row?.focus();
+    }
+    return () => { cancelAnimationFrame(frame); };
+  }, [detailKey]);
   return (
     <div className="mx-auto grid max-w-[76rem] grid-cols-[minmax(20rem,28rem)_minmax(0,40rem)] justify-center gap-x-10">
-      <div className="min-w-0">{list}</div>
+      {/* data-panes-list: a pick here replaces the entry the pane shows (rows.tsx), so Back closes the pane. */}
+      <div ref={listRef} data-panes-list="" className="min-w-0">{list}</div>
       <section
         ref={pane}
         aria-label={strings.activity.details}

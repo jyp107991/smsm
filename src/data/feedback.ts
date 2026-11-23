@@ -5,8 +5,7 @@
  */
 import { reporter } from './reporting';
 
-export async function reportProblem(words: string, route: string): Promise<'sent' | 'queued'> {
-  const before = reporter.pending();
-  await reporter.report(new Error(`Reported by a person: ${words.trim().slice(0, 2000)}`), route, { what: 'report a problem' });
-  return reporter.pending() > before ? 'queued' : 'sent';
+/** 'sent' once the server has this very report; 'queued' while it waits on the phone (S9b review 6). */
+export function reportProblem(words: string, route: string): Promise<'sent' | 'queued'> {
+  return reporter.send(new Error(`Reported by a person: ${words.trim().slice(0, 2000)}`), route, { what: 'report a problem' });
 }

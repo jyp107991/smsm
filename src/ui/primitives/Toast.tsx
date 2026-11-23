@@ -113,6 +113,7 @@ function OwnToasts({ children }: { children: ReactNode }) {
  */
 export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDismiss: (id: number) => void }) {
   const current = showing(toasts);
+  useEffect(() => watchPresses(), []);
   // S9 (performance audit P4): the slot comes and goes with CSS animations (toast.css), not a JS animation
   // library measuring the card: the last toast stays for its short exit, inert, then goes.
   const [leaving, setLeaving] = useState<ToastEntry | null>(null);
@@ -153,6 +154,23 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
 /** Taps and focus in the toast layer are not "outside" an open sheet: pressing Undo never closes the sheet. */
 export function inToastLayer(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-toast-layer]') !== null;
+}
+
+/**
+ * S9b review: whether the press now going on began in the toast layer. A sheet hears about a tap outside it late (on a
+ * touch screen, at the click), by when Undo has already done its work and its toast (and the button) has been
+ * replaced, so the tap's own target no longer says where it began. Recorded at every pointer-down, before anything
+ * else sees it.
+ */
+let pressInToast = false;
+let listening = 0;
+const notePress = (e: PointerEvent) => { pressInToast = inToastLayer(e.target); };
+function watchPresses(): () => void {
+  if (listening++ === 0) document.addEventListener('pointerdown', notePress, { capture: true });
+  return () => { if (--listening === 0) document.removeEventListener('pointerdown', notePress, { capture: true }); };
+}
+export function pressBeganInToastLayer(): boolean {
+  return pressInToast;
 }
 
 /** The exit's length (toast.css), in ms. */

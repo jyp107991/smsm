@@ -255,6 +255,28 @@ begin
 end $$;
 
 --
+-- Name: give_other_its_emoji(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.give_other_its_emoji() RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare n int;
+begin
+  update categories c set emoji = '📦'
+  where c.name = 'Other' and c.emoji = '•' and c.colour = 'stone' and not c.archived
+    and not exists (
+      select 1 from activity a join households h on h.id = c.household_id
+      where a.entity = 'category' and a.entity_id = c.id and a.action = 'created' and a.at <> h.created_at)
+    and not exists (
+      select 1 from activity a
+      where a.entity = 'category' and a.entity_id = c.id and a.action = 'edited' and a.actor is not null
+        and (a.summary ? 'name' or a.summary ? 'emoji' or a.summary ? 'colour' or a.summary ? 'archived'));
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+--
 -- Name: guard_household(); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.guard_household() RETURNS trigger
@@ -1608,7 +1630,8 @@ CREATE TABLE public.client_errors (
     route text,
     message text NOT NULL,
     stack text,
-    context jsonb
+    context jsonb,
+    CONSTRAINT client_errors_message_length CHECK ((length(message) <= 4100))
 );
 
 --
@@ -2959,6 +2982,11 @@ GRANT ALL ON FUNCTION public.decide_change(p_id uuid, p_approve boolean) TO serv
 -- Name: FUNCTION follow_original(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.follow_original() FROM PUBLIC;
+
+--
+-- Name: FUNCTION give_other_its_emoji(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.give_other_its_emoji() FROM PUBLIC;
 
 --
 -- Name: FUNCTION guard_household(); Type: ACL; Schema: public; Owner: -

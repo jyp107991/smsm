@@ -68,15 +68,16 @@
  * a bottom drawer (its ::after, for an over-dragged sheet) is not drawn under a dialog. `:root` outranks vaul's own
  * rules, which it adds to the page after ours.
  */
+/* (S9b review 8: by the motion chosen when the sheet opened, not by the window's width now.) */
+:root [data-vaul-drawer][data-sheet-motion='dialog'][data-vaul-snap-points='false'][data-vaul-drawer-direction='bottom'][data-state='open'] {
+  animation-name: sheet-dialog-in;
+  animation-duration: 240ms;
+}
+:root [data-vaul-drawer][data-sheet-motion='dialog'][data-vaul-snap-points='false'][data-vaul-drawer-direction='bottom'][data-state='closed'] {
+  animation-name: sheet-dialog-out;
+  animation-duration: 180ms;
+}
 @media (min-width: 900px) {
-  :root [data-vaul-drawer][data-vaul-snap-points='false'][data-vaul-drawer-direction='bottom'][data-state='open'] {
-    animation-name: sheet-dialog-in;
-    animation-duration: 240ms;
-  }
-  :root [data-vaul-drawer][data-vaul-snap-points='false'][data-vaul-drawer-direction='bottom'][data-state='closed'] {
-    animation-name: sheet-dialog-out;
-    animation-duration: 180ms;
-  }
   :root [data-vaul-drawer]::after {
     display: none;
   }

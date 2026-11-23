@@ -18,6 +18,9 @@
       // S9 (performance audit P2): before the first paint, this phone's theme (src/ui/theme.ts) and the shape of
       // its Home as last shown (src/ui/boot.ts), so the static first paint below matches what replaces it.
       (function () {
+        // S9b review 3: a short screen draws Home closer together (src/ui/short.ts; the same limits).
+        var h = window.innerHeight;
+        if (h < 760) document.documentElement.dataset.short = h < 600 ? '2' : '1';
         try {
           var root = document.documentElement;
           var theme = localStorage.getItem('smsm-theme');
@@ -59,15 +62,13 @@
       #boot .b-tab { flex: 1 1 0; max-width: 7rem; display: flex; justify-content: center; }
       #boot .b-tab::before { content: ''; width: 3.5rem; height: 2rem; border-radius: 999px; background: var(--sunk); opacity: 0.6; }
       #boot .b-tab:first-child::before { opacity: 1; }
-      /* S9b: a short screen draws Home closer together and the plank smaller (Home.tsx, rig.css). */
-      @media (max-height: 699px) {
-        #boot .b-col { gap: 0.5rem; }
-        #boot .b-bal { margin-top: max(0px, calc(var(--boot-above, 0.5rem) - 0.5rem)); }
-        #boot .b-plank { height: 7.25rem; }
-        #boot .b-beam { top: 4.375rem; height: 0.75rem; }
-        #boot .b-pivot { top: 5.125rem; width: 2.5rem; height: 1.75rem; }
-        #boot .b-ground { top: 6.5rem; }
-      }
+      /* S9b: a short screen draws Home closer together and the plank smaller (Home.tsx, rig.css, src/ui/short.ts). */
+      [data-short] #boot .b-col { gap: 0.5rem; }
+      [data-short] #boot .b-bal { margin-top: max(0px, calc(var(--boot-above, 0.5rem) - 0.5rem)); }
+      [data-short] #boot .b-plank { height: 7.25rem; }
+      [data-short] #boot .b-beam { top: 4.375rem; height: 0.75rem; }
+      [data-short] #boot .b-pivot { top: 5.125rem; width: 2.5rem; height: 1.75rem; }
+      [data-short] #boot .b-ground { top: 6.5rem; }
       /* S9b (DESIGN §4.11): from 900 px the tabs are a rail down the left, and the column sits beside it. */
       @media (min-width: 900px) {
         #boot .b-col { margin-left: calc(5.5rem + 3px + max(0px, (100% - 5.5rem - 3px - 32rem) / 2)); margin-right: auto; }

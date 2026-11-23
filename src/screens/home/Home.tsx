@@ -31,15 +31,29 @@ import { ThisMonth } from '../insights/ThisMonth';
 import { RecapBanners } from '../insights/RecapLinks';
 import { QuickAdd } from './QuickAdd';
 import { DemoNote } from './DemoNote';
+import { useShortTier } from '../../ui/short';
 
 export function Home() {
   // S9: Home is drawn, so the static first paint (index.html) goes in this frame; and its shape is kept for the next one.
   useBootDone();
   const column = useRef<HTMLDivElement>(null);
   useEffect(() => rememberHome(column.current?.querySelector('header') ?? null, column.current?.querySelector<HTMLElement>(`:scope > section[aria-label="${strings.home.balance}"]`) ?? null), []);
+  // S9b (finding 16, review 3): on a very short screen the banners come after Quick add (in the page's order too, so
+  // reading and Tab follow what is seen), keeping the balance, Settle up and Quick add above the tab bar.
+  const tiny = useShortTier() === 2;
+  const banners = (
+    <>
+      <ApprovalBanners />
+      <MonzoBanner />
+      <Problems />
+      <InboxButton />
+      <TripBanner />
+      <RecapBanners />
+    </>
+  );
   return (
-    // S9b (finding 16): closer together on a short screen, so Quick add and Settle up are in view.
-    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10 [@media(max-height:699px)]:gap-2">
+    // S9b (finding 16): closer together on a short screen (src/ui/short.ts), so Quick add and Settle up are in view.
+    <div ref={column} className="mx-auto flex max-w-lg flex-col gap-6 px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-10 [[data-short]_&]:gap-2">
       <header className="flex min-h-12 items-center gap-2.5">
         <Logo size={30} />
         <h1 className="text-wordmark m-0 flex-1 text-[1.75rem] leading-none">{strings.app.name}</h1>
@@ -52,15 +66,11 @@ export function Home() {
           <Gear size={ICON.size} strokeWidth={ICON.stroke} aria-hidden="true" />
         </button>
       </header>
-      <ApprovalBanners />
-      <MonzoBanner />
-      <Problems />
-      <InboxButton />
-      <TripBanner />
-      <RecapBanners />
+      {tiny ? null : banners}
       <BalanceRegion />
       <CurrentChips />
       <QuickAdd />
+      {tiny ? banners : null}
       <ThisMonth />
       <SuggestRecurring />
       <RecentRows />

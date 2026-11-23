@@ -248,3 +248,54 @@ describe('createErrorReporter', () => {
     expect(r.pending()).toBe(1);
   });
 });
+
+/** S9b review 6: "Report a problem" gets its own report's outcome, and the person's report is never trimmed away. */
+describe('createErrorReporter: a person’s report (S9b review 6)', () => {
+  it('offline with a full queue: "queued", and the report is in the queue (never "sent")', async () => {
+    const storage = new MemoryStorage();
+    const r = createErrorReporter(storage, () => null);
+    for (let i = 0; i < 20; i += 1) await r.report(new Error(`crash ${String(i)}`), '/');
+    expect(r.pending()).toBe(20);
+    expect(await r.send(new Error('Reported by a person: it froze'), '/settings')).toBe('queued');
+    const queued = JSON.parse(storage.getItem('smsm.pendingErrors') ?? '[]') as ClientError[];
+    expect(queued.map((q) => q.message)).toContain('Reported by a person: it froze');
+  });
+
+  it('later crash reports never push the person’s report out of a full queue', async () => {
+    const storage = new MemoryStorage();
+    const r = createErrorReporter(storage, () => null);
+    await r.send(new Error('Reported by a person: mine'), '/settings');
+    for (let i = 0; i < 30; i += 1) await r.report(new Error(`crash ${String(i)}`), '/');
+    const queued = JSON.parse(storage.getItem('smsm.pendingErrors') ?? '[]') as ClientError[];
+    expect(queued.length).toBeLessThanOrEqual(20);
+    expect(queued.map((q) => q.message)).toContain('Reported by a person: mine');
+    expect(queued.at(-1)?.message).toBe('crash 29');
+  });
+
+  it('with a send already in flight, it waits for it and then sends its own: "sent"', async () => {
+    const storage = new MemoryStorage();
+    const gate = deferred<boolean>();
+    const calls: Row[][] = [];
+    let first = true;
+    const sink: ErrorSink = (rows) => {
+      calls.push(rows);
+      if (first) { first = false; return gate.promise; }
+      return Promise.resolve(true);
+    };
+    const r = createErrorReporter(storage, () => sink);
+    const crash = r.report(new Error('crash'), '/');
+    await Promise.resolve();
+    const mine = r.send(new Error('Reported by a person: hello'), '/settings');
+    gate.resolve(true);
+    await crash;
+    expect(await mine).toBe('sent');
+    expect(calls.flat().map((x) => x.message)).toContain('Reported by a person: hello');
+    expect(r.pending()).toBe(0);
+    for (const row of calls.flat()) expect(Object.keys(row).sort()).toEqual(['app_version', 'context', 'message', 'route', 'stack']);
+  });
+
+  it('refused by the server: "queued"', async () => {
+    const r = createErrorReporter(new MemoryStorage(), () => () => Promise.resolve(false));
+    expect(await r.send(new Error('Reported by a person: x'), '/')).toBe('queued');
+  });
+});
