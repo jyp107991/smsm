@@ -174,6 +174,7 @@ export function addExpense(input: ExpenseDraft & { id?: string }, layer = active
   // PLC-3: and this phone's current country (an entry can always be set to another).
   if (draft.country === undefined) draft = { ...draft, country: currentCountry(layer) };
   if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
+  refuseForDeletedOriginal(layer, draft.kind === 'money_back' ? draft.refundOf : null);
   const built = expenseRowFor(ctx, draft);
   const row = id === undefined ? built.row : { ...built.row, id };
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
@@ -226,6 +227,16 @@ export function editExpense(id: string, patch: Partial<ExpenseDraft>, layer = ac
   layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...read.draft, split, ...patch }, current.row) });
 }
 
+/**
+ * MB-3 (S9a review): money back is never saved for (or restored onto) an original that was deleted; the database
+ * refuses it too (check_refund_limit). Restoring the original brings back what was deleted with it.
+ */
+function refuseForDeletedOriginal(layer: DataLayer, refundOf: string | null | undefined): void {
+  if (refundOf == null) return;
+  const original = layer.entries().find((e) => e.id === refundOf);
+  if (original && original.deleted_at !== null) throw new EntryInvalidError(['originalDeleted']);
+}
+
 /** A refused new entry that never reached the server: deleting it (or Undo) just lets the problem go. */
 function dropRefusedNew(layer: DataLayer, table: 'expenses' | 'settlements', id: string, onServer: boolean): boolean {
   if (onServer || latestUpsert(layer, table, id) || !kept(layer, table, id)) return false;
@@ -266,6 +277,7 @@ export function restoreExpense(id: string, layer = activeDataLayer()): boolean {
   const { row } = currentExpense(layer, id);
   // Q-F4: not deleted: nothing to restore.
   if (row.deleted_at === null) return false;
+  refuseForDeletedOriginal(layer, row.kind === 'money_back' ? row.refund_of : null);
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id, patch: { deleted_at: null }, label: expenseLabel(row) });
   return true;
 }
@@ -329,6 +341,20 @@ function splitForMemory(split: SplitParams): { split_mode: string; split_params:
 }
 
 /**
+ * TXT-3, CAT-4 (S9a review): what the household taught the app for these words (a normalised key), keys learned before
+ * apostrophes were folded ("sainsbury’s") read as today's ("sainsburys"); of two that now meet, the one taught last
+ * (as memoryMap reads them).
+ */
+export function learned<M extends { key: string; updated_at: string }>(memory: readonly M[], key: string): M | undefined {
+  let best: M | undefined;
+  for (const m of memory) {
+    if (normaliseKey(m.key) !== key) continue;
+    if (best === undefined || m.updated_at >= best.updated_at) best = m;
+  }
+  return best;
+}
+
+/**
  * CAT-3, CAT-4: the person picked a category or a split for this description, so next time the app
  * offers their choice. Only what was chosen is changed; a person's choice always overwrites a guess.
  * Queued like a money write (works offline), so it never delays a save.
@@ -337,7 +363,7 @@ export function rememberChoice(description: string, choice: { categoryId?: strin
   const key = normaliseKey(description);
   if (key === '' || (choice.categoryId === undefined && choice.split === undefined)) return;
   const ctx = context(layer);
-  const before = layer.memory().find((m) => m.key === key);
+  const before = learned(layer.memory(), key);
   const split = choice.split && ctx.pair ? splitForMemory(choice.split) : null;
   const row = {
     household_id: ctx.hid,
@@ -576,18 +602,38 @@ export function keepInboxItem(itemId: string, input: ExpenseDraft & { id?: strin
   if (!item) throw new EntryNotFoundError(itemId);
   if (item.status !== 'open') return item.expense_id ?? id ?? '';
   if (id !== undefined && knownRow(layer, 'expenses', id)) return id;
+  // S9a review (INB-2): a bill kept and then taken back (Undo) left its entry deleted, still holding the bill's
+  // occurrence (one entry per occurrence, deleted ones too): keeping it again brings that entry back, as now kept.
+  const earlier = item.expense_id === null ? undefined : layer.entries().find((e) => e.id === item.expense_id && e.deleted_at !== null);
   const built = expenseRowFor(ctx, draft);
   const home = layer.household()?.home_country ?? 'GB';
   // A regular bill is at home and in no chapter (REC-4, PLC-5); a receipt sorted later (SCAN-4) keeps what was chosen.
   const bill = item.source !== 'scan';
   const row: ExpenseRow = {
-    ...built.row, id: id ?? built.row.id, source: item.recurring_id ? 'recurring' : item.source === 'scan' ? 'scan' : built.row.source,
+    ...built.row, id: earlier?.id ?? id ?? built.row.id, source: item.recurring_id ? 'recurring' : item.source === 'scan' ? 'scan' : built.row.source,
     recurring_id: item.recurring_id, occurrence_date: item.occurrence_date,
     ...(bill ? { country: home, chapter_id: null } : {}),
   };
-  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: true, ...built, row });
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: earlier === undefined, ...built, row });
+  if (earlier) layer.enqueue({ opId: newId(), by: ctx.uid, table: 'expenses', op: 'patch', id: row.id, patch: { deleted_at: null }, label: expenseLabel(row) });
   layer.enqueue({ opId: newId(), by: ctx.uid, table: 'inbox_items', op: 'patch', id: item.id, patch: { status: 'kept', expense_id: row.id }, label: row.description });
   return row.id;
+}
+
+/**
+ * INB-2, REC-3 (S9a review): Undo of a bill kept in one tap ("Usually £90.00"): its entry is deleted (soft, logged) and
+ * the bill waits in the Inbox again, still knowing that entry (a second Keep brings it back). True when something changed.
+ */
+export function unkeepInboxItem(itemId: string, layer = activeDataLayer()): boolean {
+  const ctx = context(layer);
+  const item = shown<InboxItemRow>(layer, 'inbox_items').find((i) => i.id === itemId);
+  if (!item) throw new EntryNotFoundError(itemId);
+  if (item.status !== 'kept' || item.expense_id === null) return false;
+  deleteExpense(item.expense_id, layer);
+  const payload = item.payload as { description?: unknown } | null;
+  const label = typeof payload?.description === 'string' ? payload.description : '';
+  layer.enqueue({ opId: newId(), by: ctx.uid, table: 'inbox_items', op: 'patch', id: item.id, patch: { status: 'open', expense_id: item.expense_id }, label });
+  return true;
 }
 
 /** INB-2 Not ours: dismissed, no entry. True when something changed. */

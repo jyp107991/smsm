@@ -6,7 +6,7 @@
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
 import { addMonths, startOfMonth, type IsoDate } from '../../core/dates';
 import {
-  byCategory, byCountry, comparisonPeriod, fairness, monthlyTotals, notes, periodOf, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
+  byCategory, byCountry, comparisonPeriod, fairness, monthlyTotals, notes, pace, periodOf, sharedSpend, standingOrder, whoPaid, type InsightEntry, type Period,
   type PeriodChoice,
 } from '../../core/insights';
 import { formatPence, pence, type Pence } from '../../core/money';
@@ -24,7 +24,7 @@ import { usePeople } from '../shared/people';
 import { ratioWords, type Person } from '../shared/words';
 import { Bars, Columns } from './Charts';
 import { RecapLists } from './RecapLinks';
-import { toInsight, toSettle, toTemplate } from './model';
+import { paceTail, toInsight, toSettle, toTemplate } from './model';
 
 type Choice = Exclude<PeriodChoice, 'chapter'> | `chapter:${string}`;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -58,16 +58,19 @@ export function Insights() {
   // S9 (performance audit P4): the totals are worked out once per period and data, not on every render.
   const periodKey = `${period.kind}:${String(period.from)}:${String(period.to)}:${String(period.chapterId)}`;
   const pairKey = pair ? `${pair[0]}:${pair[1]}` : '';
-  const { total, everydayNow, before, cats, countries, paid, trend } = useMemo(() => {
+  const { total, everydayNow, before, monthPace, cats, countries, paid, trend } = useMemo(() => {
     const opts = { everydayOnly: !withChapters };
     // CHP-5: a comparison is always of everyday spending, so a trip or a wedding never makes a month look alarming.
     // S9a (INS-4): and only with days the household was keeping its spending (never months before its first entry).
-    const prev = comparisonPeriod(entries, period);
+    // S9a review (INS-1): this month so far is compared as Home compares it: the one pace (core/insights pace).
+    const month = period.kind === 'month';
+    const prev = month ? null : comparisonPeriod(entries, period);
     const two = pairKey === '' ? null : (pairKey.split(':') as [string, string]);
     return {
       total: sharedSpend(entries, period, opts),
       everydayNow: sharedSpend(entries, period, { everydayOnly: true }),
       before: prev ? sharedSpend(entries, prev, { everydayOnly: true }) : null,
+      monthPace: month ? pace(entries, today) : null,
       cats: byCategory(entries, period, opts),
       countries: byCountry(entries, period, opts),
       paid: two ? whoPaid(entries, period, two, opts) : {},
@@ -79,9 +82,11 @@ export function Insights() {
 
   const fairnessEntries = useMemo(() => (withChapters ? entries : entries.filter((e) => e.chapterId === null)), [entries, withChapters]);
 
-  const beforeWords = choice === 'month' ? strings.insights.beforeMonth : choice === '3months' ? strings.insights.before3
+  const beforeWords = choice === '3months' ? strings.insights.before3
     : choice === '12months' ? strings.insights.before12 : strings.insights.beforeYear;
-  const compared = before === null ? null
+  const paceWords = monthPace ? paceTail(monthPace) : '';
+  const compared = monthPace ? (paceWords === '' ? null : `${formatPence(monthPace.soFar)}${paceWords}`)
+    : before === null ? null
     : before === everydayNow ? strings.insights.same(formatPence(everydayNow), beforeWords)
     : strings.insights.comparison(formatPence(everydayNow), formatPence(pence(Math.abs(everydayNow - before))), everydayNow > before, beforeWords);
   const sentence = compared === null ? strings.insights.totalIn(formatPence(total))

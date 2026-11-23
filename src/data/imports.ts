@@ -274,9 +274,13 @@ function usable(categories: readonly CategoryRow[], id: string | null): string |
   return id !== null && categories.some((c) => c.id === id && !c.archived) ? id : null;
 }
 
+/**
+ * The rule for these words. TXT-3 (S9a review): a rule's words are folded as they are read, so one made before
+ * apostrophes were folded ("sainsbury’s") still matches today's key ("sainsburys").
+ */
 function ruleFor(rules: readonly ImportRuleRow[], description: string): ImportRuleRow | undefined {
   const key = normaliseKey(description);
-  return rules.find((r) => r.match_text === key);
+  return rules.find((r) => normaliseKey(r.match_text) === key);
 }
 
 /** The card's category (IMP-3): a keep rule's, else learned memory, else the bank's category by name, else none. */
@@ -434,8 +438,9 @@ function removeShared(ctx: Ctx, rule: Pick<ImportRuleRow, 'id' | 'match_text'>):
 function makeRule(ctx: Ctx, description: string, decision: 'keep' | 'skip', categoryId: string | null, split: SplitParams | null): string | null {
   const match = normaliseKey(description);
   if (match === '') return null;
-  const shared = sharedRules(ctx.layer, ctx.uid).find((r) => r.match_text === match);
-  const onPhone = ctx.st.data.skipRules.find((r) => r.match_text === match);
+  // TXT-3 (S9a review): a rule made before apostrophes were folded is the same rule.
+  const shared = sharedRules(ctx.layer, ctx.uid).find((r) => normaliseKey(r.match_text) === match);
+  const onPhone = ctx.st.data.skipRules.find((r) => normaliseKey(r.match_text) === match);
   if (decision === 'skip') {
     if (shared) removeShared(ctx, shared);
     if (onPhone) return onPhone.id;
@@ -445,7 +450,8 @@ function makeRule(ctx: Ctx, description: string, decision: 'keep' | 'skip', cate
   }
   if (onPhone) void change(ctx.st, { skipRules: ctx.st.data.skipRules.filter((r) => r.id !== onPhone.id) });
   const row: ImportRuleRow = {
-    id: shared?.id ?? newId(), household_id: ctx.hid, match_text: match, decision: 'keep', category_id: categoryId,
+    // An existing rule keeps its stored words (the household's rules are one per words: the same row is changed).
+    id: shared?.id ?? newId(), household_id: ctx.hid, match_text: shared?.match_text ?? match, decision: 'keep', category_id: categoryId,
     ...(split ? splitRule(split) : { split_mode: null, split_params: null }),
     created_at: shared?.created_at ?? ctx.layer.now().toISOString(),
   };

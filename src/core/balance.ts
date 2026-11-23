@@ -71,11 +71,19 @@ export interface RefundRow { id: string; kind: 'expense' | 'money_back'; amount:
  * `exceptId` leaves one money back out (editing that refund: its own amount isn't "already back").
  */
 export function unrefunded(original: { id: string; amount: Pence }, entries: readonly RefundRow[], exceptId?: string): Pence {
+  return pence(Math.max(0, original.amount - cameBack(original.id, entries, exceptId)));
+}
+
+/**
+ * MB-2 (S9a review): what has come back on an original so far: its live linked money back (`exceptId` left out). An
+ * original's amount may not be edited below it.
+ */
+export function cameBack(originalId: string, entries: readonly RefundRow[], exceptId?: string): Pence {
   let back = 0;
   for (const e of entries) {
-    if (e.kind === 'money_back' && !e.deleted && e.refundOf === original.id && e.id !== exceptId) back += e.amount;
+    if (e.kind === 'money_back' && !e.deleted && e.refundOf === originalId && e.id !== exceptId) back += e.amount;
   }
-  return pence(Math.max(0, original.amount - back));
+  return pence(back);
 }
 
 /** S9a (fix 8): whether an entry moves the balance at all ("Sam paid for Sam" doesn't). */

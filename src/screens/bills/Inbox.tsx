@@ -14,7 +14,7 @@ import { useId, useState } from 'react';
 import { formatDate, isIsoDate, type IsoDate } from '../../core/dates';
 import { formatPence, formatPlainPounds, pence } from '../../core/money';
 import {
-  dismissInboxItem, keepImportNow, keepInboxItem, reopenInboxItem, skipImportNow, stopReviewing, undoKeep, undoSkip, useCategories, useDataLayer, useHousehold,
+  dismissInboxItem, keepImportNow, keepInboxItem, reopenInboxItem, skipImportNow, stopReviewing, undoKeep, undoSkip, unkeepInboxItem, useCategories, useDataLayer, useHousehold,
   useImportQueue, useInbox, useRecurring, type ImportCard, type InboxItemRow, type RecurringRow,
 } from '../../data';
 import { Button, ICON, useToast } from '../../ui/primitives';
@@ -81,7 +81,21 @@ export function Inbox() {
     try {
       keepInboxItem(it.id, built.draft);
       setDecided((d) => new Set([...d, it.id]));
-      toast.show({ message: strings.entry.savedWhat(built.draft.description, formatPence(built.draft.amount)) });
+      // INB-2 (S9a review): Undo takes the entry away (deleted, logged) and puts the bill back in the Inbox.
+      const undo = () => {
+        try {
+          unkeepInboxItem(it.id);
+        } catch (err) {
+          toast.show({ message: plainError(err) });
+          return;
+        }
+        setDecided((d) => new Set([...d].filter((x) => x !== it.id)));
+      };
+      toast.show({
+        message: strings.entry.savedWhat(built.draft.description, formatPence(built.draft.amount)),
+        action: { label: strings.entry.undo, onAction: undo },
+        duration: 5000,
+      });
     } catch (err) {
       toast.show({ message: plainError(err) });
     }

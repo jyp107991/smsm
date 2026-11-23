@@ -62,7 +62,7 @@ One pure function, `src/core/balance.ts`, computes this for the UI and exports; 
 
 **Shared spending** (all analytics): live `expense` rows with `split_mode` in (`ratio`, `exact`, `treat`), at full `amount_pence` on `date`, minus live `money_back` rows in the same category and period. Excludes `for_other` and settle-ups.
 
-**Money back and its original** (S9a, MB-2, MB-3). A money back with `refund_of` is never more than its original still has to come back (the original's amount less its other live linked money back): the phone and the database (`check_refund_limit`) refuse more. Deleting the original soft-deletes its live linked money back in the same statement (same `deleted_at`, same person, one notification); restoring the original restores those rows (the same `deleted_at`) and no others. A money back whose original is deleted never counts, however it came about: `netPositions` (and so every figure built on it), Insights and `member_net`/`member_net_on` all leave it out.
+**Money back and its original** (S9a, MB-2, MB-3). A money back with `refund_of` is for one of the household's own expenses, never one that was deleted, and never more than it still has to come back (the original's amount less its other live linked money back); an original is never edited below its live linked money back. The phone and the database (`check_refund_limit`, which checks the phone's upsert as the edit it is) refuse otherwise. Deleting the original soft-deletes its live linked money back in the same statement (same `deleted_at`, same person, one notification); restoring the original restores those rows (the same `deleted_at`) as they were, and no others. A row deleted again keeps its first `deleted_at`. A money back whose original is deleted never counts, however it came about: `netPositions` (and so every figure built on it), Insights and `member_net`/`member_net_on` all leave it out.
 
 **Everyday vs chapters.** "Usual", comparisons and notes use rows with `chapter_id is null`. Totals may include chapters when the person asks.
 
@@ -79,7 +79,7 @@ One pure function, `src/core/balance.ts`, computes this for the UI and exports; 
 |---|---|
 | Shared spend | as §3, for the period |
 | Usual | median of the previous 3–6 full months of everyday shared spend (fewer than 3 months of history: not shown) |
-| Pace | this month's everyday spend to date against the usual by today: the mean, over the usual's months (the previous 3–6 full months), of each month's everyday spend dated on or before today's day of the month (clamped to that month's length); within £10 is "on" (S9a; was usual × days elapsed ÷ days in month) |
+| Pace | this month's everyday spend to date against the usual by today: the mean, over the usual's months (the previous 3–6 full months), of each month's everyday spend dated on or before today's day of the month (on the month's last day each month in full; after the 28th the same distance from that month's end); within £10 is "on" (S9a; was usual × days elapsed ÷ days in month) |
 | Comparison period | the same stretch just before (the previous month, 3 or 12 months); none when it starts before the household's first live entry (S9a) |
 | Who paid | Σ `paid[person]` over shared spending |
 | Fairness | person's paid ÷ total paid, beside the default ratio |

@@ -22,6 +22,7 @@ import { countryName } from '../chapters/model';
 import { formatForeign } from '../../core/fx';
 import { Head } from '../shared/Head';
 import { useTapAction } from '../shared/once';
+import { plainError } from '../shared/plain';
 import { usePeople } from '../shared/people';
 import { entrySentence, historyLine, owesForThis, payerOf } from '../shared/words';
 import { useSheets } from '../sheets';
@@ -167,8 +168,13 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         {deleted ? (
           <Button
             onClick={() => {
-              // Q-F4: a second tap restores nothing, and says nothing.
-              if (restoreExpense(row.id)) toast.show({ message: strings.entry.restored(label) });
+              // Q-F4: a second tap restores nothing, and says nothing. MB-3 (S9a review): money back whose original
+              // was deleted can't be restored on its own (the line says why).
+              try {
+                if (restoreExpense(row.id)) toast.show({ message: strings.entry.restored(label) });
+              } catch (err) {
+                toast.show({ message: plainError(err) });
+              }
             }}
           >
             {strings.entry.restore}
@@ -187,7 +193,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
                 if (!deleteExpense(row.id)) return;
                 toast.show({
                   message: strings.entry.deleted(label),
-                  action: { label: strings.entry.undo, onAction: () => { restoreExpense(row.id); } },
+                  action: { label: strings.entry.undo, onAction: () => { try { restoreExpense(row.id); } catch (err) { toast.show({ message: plainError(err) }); } } },
                   duration: 5000,
                 });
               }}

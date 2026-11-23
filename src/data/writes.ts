@@ -95,7 +95,7 @@ export interface SettlementDraft {
 export type InvalidReason =
   | EntryIssue
   | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100'
-  | 'schedule' | 'colour' | 'chapterName' | 'chapterDates' | 'comment' | 'notYours' | 'settleDay';
+  | 'schedule' | 'colour' | 'chapterName' | 'chapterDates' | 'comment' | 'notYours' | 'settleDay' | 'originalDeleted';
 
 /** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
