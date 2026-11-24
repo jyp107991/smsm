@@ -16,8 +16,8 @@
  *
  *   MODELS: Record<Task, string[]>       ordered fallbacks (first tried first):
  *     scan       '@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'
- *     parse      '@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'
- *     categorise '@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'
+ *     parse      '@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'          (24 Nov: qwen3-30b-a3b-fp8 retired, worker/ai-models.test.ts)
+ *     categorise '@cf/openai/gpt-oss-20b', '@cf/qwen/qwen3.8-27b'
  *   capFor(task): number                 per household per UK day: scan 30, parse 100, categorise 100
  *   timeoutFor(task): number             ms, in total across the fallbacks: scan 25000, parse 8000, categorise 8000
  *   isDailyLimit(message: string): boolean   true for /4006|daily free allocation|neurons/i (Workers AI's free allocation)
@@ -124,10 +124,12 @@ const userText = (req: AiRequest): string => {
 
 describe('models, caps and time (SCAN-5; AI.md §2)', () => {
   it('SCAN-5: the models, in the order they are tried', () => {
-    expect(core().MODELS).toMatchObject({ // S6b adds recap and ask; these three are unchanged
+    // S6b adds recap and ask. 24 Nov: qwen3-30b-a3b-fp8 was retired on 20 Nov (HTTP 410) and replaced by qwen3.8-27b
+    // (worker/ai-models.test.ts; DECISIONS).
+    expect(core().MODELS).toMatchObject({
       scan: ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'],
-      parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
-      categorise: ['@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'],
+      parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'],
+      categorise: ['@cf/openai/gpt-oss-20b', '@cf/qwen/qwen3.8-27b'],
     });
   });
 
@@ -161,7 +163,10 @@ describe('prompts and requests (SCAN-1, ADD-9, CAT-2; AI.md §1, §2)', () => {
       const schema = JSON.parse(readFileSync(promptPath(task, 'schema.json'), 'utf8')) as { type?: string; properties?: Record<string, unknown> };
       expect(schema.type).toBe('object');
       // S6b (18 Nov): the scan schema gains tax_pence, so a model can report tax on top of the lines (src/core/itemise-tax.test.ts).
-      const want = { scan: [...SCAN_KEYS, 'tax_pence'].sort(), parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
+      // Live eval (24 Nov): the model copies each amount as printed (*_text, items' price_text) and code works out the
+      // hundredths (worker/ai-eval-misses.test.ts); what validate gives the phone still has SCAN_KEYS (tests below).
+      const SCAN_ASKED = ['category', 'confidence', 'currency', 'date', 'discount_text', 'items', 'merchant', 'service_text', 'tax_text', 'total_text'];
+      const want = { scan: SCAN_ASKED, parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
       expect(Object.keys(schema.properties ?? {}).sort()).toEqual(want);
     });
   }

@@ -1,24 +1,90 @@
 {
   "type": "object",
   "properties": {
-    "measure": { "type": "string", "enum": ["total", "count", "average", "largest"] },
+    "measure": {
+      "type": "string",
+      "enum": [
+        "total",
+        "count",
+        "average",
+        "largest"
+      ]
+    },
     "filters": {
       "type": "object",
       "properties": {
-        "categories": { "type": "array", "items": { "type": "string" } },
-        "chapters": { "type": "array", "items": { "type": "string" } },
-        "countries": { "type": "array", "items": { "type": "string" } },
-        "payer": { "type": "string", "enum": ["A", "B"] },
-        "from": { "type": "string" },
-        "to": { "type": "string" },
-        "text": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "mode": { "type": "array", "items": { "type": "string", "enum": ["ratio", "exact", "for_other", "treat"] } }
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "payer": {
+          "type": "string",
+          "enum": [
+            "A",
+            "B"
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ratio",
+              "exact",
+              "for_other",
+              "treat"
+            ]
+          }
+        }
       },
       "additionalProperties": false
     },
-    "group_by": { "type": "string", "enum": ["category", "month", "country", "payer", "chapter"] },
-    "unsupported": { "type": "boolean" }
+    "group_by": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "category",
+        "month",
+        "country",
+        "payer",
+        "chapter",
+        null
+      ]
+    },
+    "unsupported": {
+      "type": "boolean"
+    }
   },
   "additionalProperties": false
 }

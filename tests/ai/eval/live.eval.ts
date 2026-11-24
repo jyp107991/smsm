@@ -4,10 +4,16 @@
  * Run by hand (`npm run eval:ai`, with CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID set) or by the manual
  * "eval-ai" workflow. Prints the pass marks; writes them to tests/ai/eval/last-run.md and the job summary.
  * Pass marks: total exactly right ≥ 95%; date ≥ 90%; merchant ≥ 90%; item-level F1 ≥ 0.85; parse ≥ 90%; ask ≥ 90%.
+ * What is scored is what the app would apply (24 Nov): a scan after the Worker's validation (printed amounts read by
+ * code) and the phone's guards (src/core/itemise scanGuards: a low-confidence reply fills nothing); loose wording after
+ * the phone's checks (src/core/loose readLoose: the amount the words give wins).
  */
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { ParseReply, ScanReply } from '../../../src/core/aiReplies';
+import { scanGuards } from '../../../src/core/itemise';
+import { readLoose } from '../../../src/core/loose';
 import { buildRequest, extractText, MODELS, validate, type TaskInput } from '../../../worker/ai-core';
 
 const TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? '';
@@ -52,28 +58,33 @@ describe.skipIf(TOKEN === '' || ACCOUNT === '')('live eval (AI.md §5)', () => {
     const names = readdirSync(join(DIR, 'receipts')).filter((f) => f.endsWith('.json')).sort();
     let totals = 0; let dates = 0; let dated = 0; let merchants = 0; let named = 0; let tp = 0; let fp = 0; let fn = 0;
     const misses: string[] = [];
+    const itemMisses: string[] = [];
     for (const name of names) {
       const want = JSON.parse(readFileSync(join(DIR, 'receipts', name), 'utf8')) as {
         merchant?: string; date?: string; total_pence: number; items: { label: string; pence: number }[];
       };
       const image = readFileSync(join(DIR, 'receipts', name.replace('.json', '.jpg'))).toString('base64');
-      const got = (await run({ task: 'scan', image, categories: CATEGORIES, today: TODAY, country: 'GB' })) as {
-        merchant: string | null; date: string | null; total_pence: number | null; items: { label: string; pence: number }[];
-      } | null;
-      if (got?.total_pence === want.total_pence) totals += 1; else misses.push(`${name}: total ${String(got?.total_pence)} ≠ ${String(want.total_pence)}`);
+      const reply = (await run({ task: 'scan', image, categories: CATEGORIES, today: TODAY, country: 'GB' })) as ScanReply | null;
+      const got = reply === null ? null : scanGuards(reply, TODAY, CATEGORIES);
+      if (got?.total_pence === want.total_pence) totals += 1; else misses.push(`${name}: total ${got === null ? (reply === null ? 'no valid reply' : 'nothing filled (low confidence)') : String(got.total_pence)} ≠ ${String(want.total_pence)}`);
       if (want.date) { dated += 1; if (got?.date === want.date) dates += 1; }
       if (want.merchant) { named += 1; if (got?.merchant && norm(got.merchant).includes(norm(want.merchant).split(' ')[0] ?? '')) merchants += 1; }
       const left = [...(got?.items ?? [])];
+      const missed: string[] = [];
       for (const w of want.items) {
         const i = left.findIndex((g) => g.pence === w.pence && (norm(g.label).includes(norm(w.label).split(' ')[0] ?? '') || norm(w.label).includes(norm(g.label).split(' ')[0] ?? '')));
-        if (i >= 0) { tp += 1; left.splice(i, 1); } else fn += 1;
+        if (i >= 0) { tp += 1; left.splice(i, 1); } else { fn += 1; missed.push(`${w.label} ${String(w.pence)}`); }
       }
       fp += left.length;
+      if (missed.length > 0 || left.length > 0) {
+        itemMisses.push(`${name}: missed [${missed.join('; ')}], extra [${left.map((g) => `${g.label} ${String(g.pence)}`).join('; ')}]`);
+      }
     }
     const f1 = tp === 0 ? 0 : (2 * tp) / (2 * tp + fp + fn);
     report.push('## Receipts', '', `- ${String(names.length)} receipts`, `- Total exactly right: ${String(pct(totals, names.length))}% (pass ≥ 95%)`,
       `- Date: ${String(pct(dates, dated))}% of ${String(dated)} (pass ≥ 90%)`, `- Merchant: ${String(pct(merchants, named))}% of ${String(named)} (pass ≥ 90%)`,
-      `- Item F1: ${String(Math.round(f1 * 100) / 100)} (pass ≥ 0.85)`, '', ...misses.map((m) => `  - ${m}`), '');
+      `- Item F1: ${String(Math.round(f1 * 100) / 100)} (pass ≥ 0.85)`, '', ...misses.map((m) => `  - ${m}`), '',
+      'Items not matched (label and hundredths):', '', ...itemMisses.map((m) => `  - ${m}`), '');
     expect.soft(pct(totals, names.length)).toBeGreaterThanOrEqual(95);
     expect.soft(pct(dates, dated)).toBeGreaterThanOrEqual(90);
     expect.soft(pct(merchants, named)).toBeGreaterThanOrEqual(90);
@@ -85,7 +96,8 @@ describe.skipIf(TOKEN === '' || ACCOUNT === '')('live eval (AI.md §5)', () => {
     let right = 0;
     const misses: string[] = [];
     for (const c of cases) {
-      const got = (await run({ task: 'parse', text: c.text, categories: CATEGORIES, chapters: CHAPTERS, today: TODAY })) as { amount_pence: number | null; category: string | null; payer: string | null } | null;
+      const reply = (await run({ task: 'parse', text: c.text, categories: CATEGORIES, chapters: CHAPTERS, today: TODAY })) as ParseReply | null;
+      const got = reply === null ? null : readLoose(reply, c.text).reply;
       const ok = got?.amount_pence === c.amount_pence && got.category === c.category && (got.payer ?? 'A') === c.payer;
       if (ok) right += 1; else misses.push(`"${c.text}": ${JSON.stringify(got)}`);
     }

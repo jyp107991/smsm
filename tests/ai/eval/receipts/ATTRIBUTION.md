@@ -8,4 +8,10 @@ long side and saved as JPEG (as the app does before reading); the expected answe
 (`gt_parse`: menu lines and total) converted to whole hundredths of the receipt's currency (Indonesian rupiah). The
 shops' names and addresses are blurred in the dataset itself; no personal data.
 
+Corrected 24 Nov 2026 (docs/DECISIONS.md): the first conversion kept only CORD's top-level menu lines and dropped the
+priced sub-lines (toppings and add-ons) printed under them, although the scan prompt counts every priced line and
+cord-16 keeps its £0 lines. Added from the photos: cord-03 "COCONUT JELLY ( L )" 4,000; cord-08 "ADD CHICKEN BOX" 909;
+cord-09 "COOKIE DOH SAUCES" 0 and "NATA DE COCO" 0; cord-15 "LONGAN", "ROASTED ALMOND" and "MANGGO", each 0. Totals
+are unchanged.
+
 Chosen instead of the owner's own receipts (owner, 18 Nov: "find receipts online"): this repository is public.
