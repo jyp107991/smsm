@@ -100,11 +100,18 @@
     to { opacity: 0; }
   }
 }
+/*
+ * Reduced motion: animations end at once (0.01 ms, so their end events still fire for whatever waits on them);
+ * transitions don't happen at all (0s). A 0.01 ms transition was a transition of every property of every element
+ * (none is named, so all are), and a transition only starts at the next frame: for that frame each change still
+ * showed its old value, so a new toast stood at its old place over Quick add and the tab bar (CI run 45387654645)
+ * and "All square" kept its old colour. Nothing in the app or its libraries waits for a transition's end.
+ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }
 

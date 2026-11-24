@@ -8,7 +8,7 @@ import { Inbox as InboxIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { formatPlainPounds, pence } from '../../core/money';
 import { suggestRecurring, type RecurringSuggestion } from '../../core/recurring';
-import { useDataLayer, useEntries, useImportQueue, useInbox, useRecurring } from '../../data';
+import { isDeleted, useDataLayer, useEntries, useImportQueue, useInbox, useRecurring } from '../../data';
 import { Button, ICON } from '../../ui/primitives';
 import { go } from '../../ui/router';
 import { strings } from '../../ui/strings';
@@ -69,7 +69,8 @@ export function SuggestRecurring() {
     const history = entries
       .filter((e) => e.deleted_at === null && e.kind === 'expense' && e.recurring_id === null)
       .map((e) => ({ description: e.description, amount: pence(e.amount_pence), date: e.date }));
-    const exclude = new Set([...no, ...templates.map((t) => t.description)]);
+    // S10: a deleted regular payment no longer counts as one (entered by hand again, it may be suggested again).
+    const exclude = new Set([...no, ...templates.filter((t) => !isDeleted(t)).map((t) => t.description)]);
     return suggestRecurring(history, today, exclude)[0];
   }, [entries, templates, today, no]);
   if (!suggestion) return null;

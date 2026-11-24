@@ -471,6 +471,40 @@ test.describe('Q-L4: one way to add — the Add expense button lives in the Quic
       });
     }
   }
+
+  // CI run 45387654645: under reduced motion app.css gave every element a 0.01 ms transition (of every property, as
+  // none was named), so the toast layer's new place only took effect at the next frame; until then the new toast stood
+  // at the screen's foot, over Quick add and the tab bar. CI read it inside that frame. Here it is read in the same
+  // task that shows it (a MutationObserver's callback, before any frame), so the check never depends on timing.
+  for (const phone of PHONES) {
+    for (const motion of ['reduce', 'no-preference'] as const) {
+      test(`${String(phone.width)}×${String(phone.height)}, reduced motion ${motion}: the toast is clear of Quick add and the tab bar in the very frame it appears`, async ({ page }) => {
+        await page.setViewportSize(phone);
+        await page.emulateMedia({ reducedMotion: motion });
+        await home(page);
+        await quickAdd(page).fill('5 gum');
+        const seen = await page.evaluate(() => new Promise<{ toast: Box; field: Box; bar: Box } | null>((resolve) => {
+          const layer = document.querySelector('[data-toast-layer]');
+          const field = document.querySelector('[data-quick-add]');
+          const bar = document.querySelector('nav');
+          if (!layer || !field || !bar) { resolve(null); return; }
+          const at = (el: Element): Box => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+          const watch = new MutationObserver(() => {
+            const button = [...layer.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
+            const card = button?.closest('.bg-surface');
+            if (!card) return;
+            watch.disconnect();
+            resolve({ toast: at(card), field: at(field), bar: at(bar) });
+          });
+          watch.observe(layer, { childList: true, subtree: true });
+          field.closest('form')?.requestSubmit();
+        }));
+        expect(seen, 'the Saved toast appeared').not.toBeNull();
+        expect(overlaps(seen!.toast, seen!.field), `the Saved toast ${JSON.stringify(seen!.toast)} covers Quick add ${JSON.stringify(seen!.field)} as it appears`).toBe(false);
+        expect(overlaps(seen!.toast, seen!.bar), `the Saved toast ${JSON.stringify(seen!.toast)} covers the tab bar ${JSON.stringify(seen!.bar)} as it appears`).toBe(false);
+      });
+    }
+  }
 });
 
 // ─────────────────────────────── Q-U4 ───────────────────────────────

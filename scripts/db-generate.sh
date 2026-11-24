@@ -25,7 +25,8 @@ OUT=$(mktemp -d)
     | grep -v -E 'ALTER COLUMN .* SET \(pg_attver=' \
     | sed -E 's/FOR ROLE [a-z_]+ IN SCHEMA/FOR ROLE <owner> IN SCHEMA/' \
     | cat -s \
-    | awk 'prev == "--" && $0 == "" { prev = $0; next } { print; prev = $0 }'
+    | awk 'prev == "--" && $0 == "" { prev = $0; next } { print; prev = $0 }' \
+    | awk '$0 == "" { blank = 1; next } { if (blank && $0 != "--") print ""; blank = 0; print }'
 } > "$OUT/schema.sql"
 
 HOST=${PGHOST:-127.0.0.1}; case "$HOST" in /*) HOST=127.0.0.1;; esac

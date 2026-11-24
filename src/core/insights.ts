@@ -264,8 +264,9 @@ export function notes(
         out.push({ kind: 'price', text: `${t.description} went from ${formatPence(before.amount)} to ${formatPence(last.amount)}`, weight: pence(Math.abs(last.amount - before.amount)) });
       }
     }
-    // A regular payment started this month.
-    if (t.active && t.startDate >= firstOf(m) && t.startDate <= today) {
+    // A regular payment started this month (S10: not an older one whose start was moved into it: it posted before the 1st).
+    const postedBefore = entries.some((e) => !e.deleted && e.recurringId === t.id && e.date < firstOf(m));
+    if (t.active && t.startDate >= firstOf(m) && t.startDate <= today && !postedBefore) {
       const perMonth = monthlyCost({ frequency: t.frequency, every: t.every }, t.amount);
       out.push({ kind: 'new-regular', text: `New regular payment: ${t.description} ${formatPence(perMonth)} a month`, weight: t.amount });
     }
