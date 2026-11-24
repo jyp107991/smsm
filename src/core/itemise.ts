@@ -6,7 +6,7 @@
  * service, exactly.
  */
 import type { IsoDate } from './dates';
-import { pence, type Pence } from './money';
+import { parsePrinted, pence, type Pence } from './money';
 
 export interface ReceiptLine { label: string; pence: Pence }
 
@@ -65,6 +65,64 @@ export interface ScanRaw {
 }
 
 const isPence = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+
+/**
+ * The most a scanned amount may be, in whole hundredths of the receipt's own currency (£12.34 is 1234; Rp 1.250.000
+ * is 125000000): 10 billion units, so a bill in rupiah, dong or won reads too (the pounds it comes to are held to the
+ * app's maximum by the form).
+ */
+export const MAX_RECEIPT_HUNDREDTHS = 1_000_000_000_000;
+
+/** A scan as a model answers it (core/aiReplies scanModelSchema): amounts as printed text, or as whole hundredths. */
+export interface ScanPrinted {
+  merchant: string | null;
+  date: string | null;
+  currency: string | null;
+  total_pence?: number | null | undefined;
+  total_text?: string | null | undefined;
+  items: readonly { label: string; pence?: number | undefined; price_text?: string | null | undefined }[];
+  discount_pence?: number | undefined;
+  discount_text?: string | null | undefined;
+  service_pence?: number | undefined;
+  service_text?: string | null | undefined;
+  tax_pence?: number | undefined;
+  tax_text?: string | null | undefined;
+  category: string | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Live eval, 24 Nov (docs/AI.md §3.1): a scan's amounts worked out by code. Each amount the model copied as printed
+ * is read with the receipt's currency (money parsePrinted: "60.000" rupiah is 6000000 hundredths, not 6000) and wins
+ * over any integer the model gave; printed text that isn't one amount gives no figure (a total of null, a line
+ * dropped, no discount), never the model's integer instead. With no printed text, the model's integer is kept (an
+ * older prompt). The result has exactly the scan reply's keys (tax only when the model gave it).
+ */
+export function printedScan(raw: ScanPrinted): ScanRaw {
+  const read = (text: string | null | undefined, whole: number | null | undefined): number | null => {
+    const p = typeof text === 'string' && text.trim() !== '' ? parsePrinted(text, raw.currency) : whole;
+    return isPence(p) && p <= MAX_RECEIPT_HUNDREDTHS ? p : null;
+  };
+  const items: { label: string; pence: number }[] = [];
+  for (const l of raw.items) {
+    const p = read(l.price_text, l.pence);
+    if (p !== null) items.push({ label: l.label, pence: p });
+  }
+  const taxed = raw.tax_pence !== undefined || raw.tax_text !== undefined;
+  return {
+    merchant: raw.merchant,
+    date: raw.date,
+    currency: raw.currency,
+    total_pence: read(raw.total_text, raw.total_pence),
+    items,
+    discount_pence: read(raw.discount_text, raw.discount_pence) ?? 0,
+    service_pence: read(raw.service_text, raw.service_pence) ?? 0,
+    ...(taxed ? { tax_pence: read(raw.tax_text, raw.tax_pence) ?? 0 } : {}),
+    category: raw.category,
+    confidence: raw.confidence,
+  };
+}
+
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 function twoYearsBefore(d: IsoDate): IsoDate {

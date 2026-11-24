@@ -1,0 +1,40 @@
+{
+  "source": "Live eval run 45367987613 on main c6b7c69 (24 Nov 2026), '## Loose wording': the seven replies it marked wrong, exactly as validated. 'want' is the case in tests/ai/eval/parse.json; 'split' is what the app should apply (null: the household default).",
+  "cases": [
+    {
+      "text": "birthday present for B's sister 35",
+      "reply": {"amount_pence":null,"description":"birthday present for B's sister 35","category":"Gifts","payer":"A","split":{"mode":"for_other","ratio":null},"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 3500, "category": "Gifts", "payer": "A", "split": {"mode": "for_other", "ratio": null}}
+    },
+    {
+      "text": "B paid for the hotel in bath, 189",
+      "reply": {"amount_pence":189,"description":"hotel in bath","category":"Travel","payer":"B","split":{"mode":"treat","ratio":null},"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 18900, "category": "Travel", "payer": "B", "split": null}
+    },
+    {
+      "text": "vet for the cat, 72 pounds, B paid",
+      "reply": {"amount_pence":7200,"description":"vet for the cat","category":"Health","payer":"B","split":{"mode":"treat","ratio":null},"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 7200, "category": "Other", "payer": "B", "split": null}
+    },
+    {
+      "text": "B got wine and cheese for friday, 22.40",
+      "reply": {"amount_pence":2240,"description":"wine and cheese for friday","category":"Eating out","payer":"B","split":{"mode":"treat","ratio":null},"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 2240, "category": "Groceries", "payer": "B", "split": null}
+    },
+    {
+      "text": "haircut for B, twenty five quid",
+      "reply": {"amount_pence":2500,"description":"haircut for B","category":"Health","payer":"A","split":{"mode":"for_other","ratio":null},"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 2500, "category": "Other", "payer": "A", "split": {"mode": "for_other", "ratio": null}}
+    },
+    {
+      "text": "new kettle 29.99",
+      "reply": {"amount_pence":2999,"description":"new kettle","category":null,"payer":"A","split":null,"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 2999, "category": "Household", "payer": "A", "split": null}
+    },
+    {
+      "text": "tv licence 169.50",
+      "reply": {"amount_pence":16950,"description":"tv licence","category":null,"payer":"A","split":null,"date":"2026-11-18","tags":null,"chapter":null},
+      "want": {"amount_pence": 16950, "category": "Rent & bills", "payer": "A", "split": null}
+    }
+  ]
+}

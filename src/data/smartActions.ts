@@ -14,6 +14,7 @@ import { toInsight, toSettle, toTemplate } from './insightRows';
 import { suggest } from '../core/categorise';
 import type { IsoDate } from '../core/dates';
 import { scanGuards } from '../core/itemise';
+import { readLoose } from '../core/loose';
 import { pence, type Pence } from '../core/money';
 import type { UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
@@ -203,8 +204,12 @@ export async function parseLoose(text: string, layer = activeDataLayer()): Promi
   try {
     const res = await layer.ai.parse(words, { categories: categories.map((c) => c.name), chapters: chapters.map((c) => c.name), today: layer.today() });
     if (!res.ok) return res;
-    const r = checkReply('parse', res.data);
-    if (!r) return { ok: false, reason: 'invalid' };
+    const checked = checkReply('parse', res.data);
+    if (!checked) return { ok: false, reason: 'invalid' };
+    // AI.md §3.2: the amount the words give wins over the AI's; a split needs words that say so (core/loose).
+    const { reply: r, amountDisagreed } = readLoose(checked, words);
+    // Seen in real use, so the AI's reading can be judged: no words, no amounts, nothing that identifies anyone.
+    if (amountDisagreed) layer.report?.(new Error('loose wording: ai amount disagreed with the words'), { what: 'ai amount disagreed', task: 'parse' });
     const today = layer.today();
     const amount = r.amount_pence !== null && Number.isSafeInteger(r.amount_pence) && r.amount_pence > 0 ? pence(r.amount_pence) : null;
     const date = r.date !== null && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date <= today ? r.date : null;

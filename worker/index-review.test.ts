@@ -47,9 +47,16 @@ describe('limits (review 11)', () => {
 });
 
 describe('the scan prompt (review 4)', () => {
-  it('TXT-5: amounts are hundredths of every currency, yen included', () => {
+  // Live eval, 24 Nov: the model now copies amounts as printed and code works out the hundredths (docs/AI.md §3.1),
+  // so this guarantee is checked on the reading itself rather than on the prompt's wording (DECISIONS, 24 Nov).
+  it('TXT-5: amounts are hundredths of every currency, yen included', async () => {
     const prompt = readFileSync(new URL('./prompts/scan.md', import.meta.url), 'utf8');
-    expect(prompt).toMatch(/hundredths/);
-    expect(prompt).toMatch(/¥648 is 64800/);
+    expect(prompt).toMatch(/exactly as printed/);
+    const yen = { merchant: 'ローソン', date: '2026-11-05', currency: 'JPY', total_text: '¥648', items: [{ label: 'おにぎり', price_text: '648' }], discount_text: null, service_text: null, category: null, confidence: 'high' };
+    const run = vi.fn(() => Promise.resolve({ response: JSON.stringify(yen) }));
+    const out = (await (await handleAi(request(SCAN), env({ run }), counted)).json()) as { ok: boolean; data: { total_pence: number; items: { pence: number }[] } };
+    expect(out.ok).toBe(true);
+    expect(out.data.total_pence).toBe(64800);
+    expect(out.data.items[0]?.pence).toBe(64800);
   });
 });

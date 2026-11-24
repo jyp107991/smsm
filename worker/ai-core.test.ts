@@ -161,7 +161,10 @@ describe('prompts and requests (SCAN-1, ADD-9, CAT-2; AI.md §1, §2)', () => {
       const schema = JSON.parse(readFileSync(promptPath(task, 'schema.json'), 'utf8')) as { type?: string; properties?: Record<string, unknown> };
       expect(schema.type).toBe('object');
       // S6b (18 Nov): the scan schema gains tax_pence, so a model can report tax on top of the lines (src/core/itemise-tax.test.ts).
-      const want = { scan: [...SCAN_KEYS, 'tax_pence'].sort(), parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
+      // Live eval (24 Nov): the model copies each amount as printed (*_text, items' price_text) and code works out the
+      // hundredths (worker/ai-eval-misses.test.ts); what validate gives the phone still has SCAN_KEYS (tests below).
+      const SCAN_ASKED = ['category', 'confidence', 'currency', 'date', 'discount_text', 'items', 'merchant', 'service_text', 'tax_text', 'total_text'];
+      const want = { scan: SCAN_ASKED, parse: ['amount_pence', 'category', 'chapter', 'date', 'description', 'payer', 'split', 'tags'], categorise: ['category'] }[task];
       expect(Object.keys(schema.properties ?? {}).sort()).toEqual(want);
     });
   }

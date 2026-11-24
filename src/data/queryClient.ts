@@ -163,6 +163,8 @@ export interface DataLayer {
   prefsWaiting(): PrefsOp[];
   /** Write the cache and queue to storage now. */
   flush(): Promise<void>;
+  /** Report something worth seeing from real use to client_errors (src/data/errors.ts); none in tests unless given. */
+  report?: (err: unknown, context: Record<string, unknown>) => void;
   /** Sign out and clear everything stored for the person on this phone. Needs a connection. */
   signOut(): Promise<void>;
 }
@@ -947,6 +949,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
 
   const self: DataLayer = {
     client,
+    report,
     geo: opts.geo ?? browserGeo(),
     rates: opts.rates ?? frankfurterRates(),
     ai: opts.ai ?? offAi,

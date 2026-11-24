@@ -19,9 +19,9 @@
         "null"
       ]
     },
-    "total_pence": {
+    "total_text": {
       "type": [
-        "integer",
+        "string",
         "null"
       ]
     },
@@ -33,25 +33,34 @@
           "label": {
             "type": "string"
           },
-          "pence": {
-            "type": "integer",
-            "minimum": 0
+          "price_text": {
+            "type": "string"
           }
         },
         "required": [
           "label",
-          "pence"
+          "price_text"
         ],
         "additionalProperties": false
       }
     },
-    "discount_pence": {
-      "type": "integer",
-      "minimum": 0
+    "discount_text": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
-    "service_pence": {
-      "type": "integer",
-      "minimum": 0
+    "service_text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tax_text": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "category": {
       "type": [
@@ -66,20 +75,16 @@
         "medium",
         "low"
       ]
-    },
-    "tax_pence": {
-      "type": "integer",
-      "minimum": 0
     }
   },
   "required": [
     "merchant",
     "date",
     "currency",
-    "total_pence",
+    "total_text",
     "items",
-    "discount_pence",
-    "service_pence",
+    "discount_text",
+    "service_text",
     "category",
     "confidence"
   ],

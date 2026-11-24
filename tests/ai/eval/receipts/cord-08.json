@@ -6,6 +6,10 @@
   {
    "label": "Kupon 15",
    "pence": 10000000
+  },
+  {
+   "label": "ADD CHICKEN BOX",
+   "pence": 90900
   }
  ]
 }

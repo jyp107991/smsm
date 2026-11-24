@@ -5,7 +5,7 @@
  * the same validation (AI.md rule 3: validated on the server and again on the phone).
  */
 import { z } from 'zod';
-import { askSchema, categoriseSchema, parseSchema, recapSchema, scanSchema, type AskReply, type CategoriseReply, type ParseReply, type RecapReply, type ScanReply } from '../src/core/aiReplies';
+import { checkReply, type AskReply, type CategoriseReply, type ParseReply, type RecapReply, type ScanReply } from '../src/core/aiReplies';
 import askText from './prompts/ask.md';
 import askSchemaJson from './prompts/ask.schema.json';
 import recapText from './prompts/recap.md';
@@ -61,8 +61,6 @@ export function capFor(task: Task): number {
 export function timeoutFor(task: Task): number {
   return task === 'scan' ? 25_000 : 8_000;
 }
-
-const SCHEMAS = { scan: scanSchema, parse: parseSchema, categorise: categoriseSchema, recap: recapSchema, ask: askSchema } as const;
 
 /** S6b: the month's figures as the phone sends them (core/wording recapStats); exactly these keys. */
 const shown = z.string().max(40);
@@ -161,12 +159,10 @@ export function validate(task: 'recap', json: unknown): Outcome<RecapReply>;
 export function validate(task: 'ask', json: unknown): Outcome<AskReply>;
 export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseReply | CategoriseReply | RecapReply | AskReply>;
 export function validate(task: Task, json: unknown): Outcome<ScanReply | ParseReply | CategoriseReply | RecapReply | AskReply> {
-  let value = json;
-  if (typeof json === 'string') {
-    try { value = JSON.parse(json); } catch { return { ok: false, reason: 'invalid' }; }
-  }
-  const parsed = SCHEMAS[task].safeParse(value);
-  return parsed.success ? { ok: true, data: parsed.data } : { ok: false, reason: 'invalid' };
+  // The phone's own reading (src/core/aiReplies checkReply): a scan's printed amounts are worked out by code there, so
+  // what the phone is sent is a ScanReply in whole hundredths, the shape it has always checked.
+  const data = checkReply(task, json);
+  return data === null ? { ok: false, reason: 'invalid' } : { ok: true, data };
 }
 
 /** The whole reading of a Gemini reply for a task: completed, text, JSON, schema; else `invalid`. */

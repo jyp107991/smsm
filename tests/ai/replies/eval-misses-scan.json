@@ -1,0 +1,40 @@
+{
+  "source": "Live eval run 45367987613 on main c6b7c69 (24 Nov 2026), '## Receipts': CORD receipts whose total came back wrong by a power of ten. The integer fields are the totals the run logged (the run kept no item figures: item integers are scaled the same way as the logged total). The *_text fields are the amounts as printed on each photo in tests/ai/eval/receipts/, which the scan prompt (version 6) asks for. 'want' is the receipt's label.",
+  "cases": [
+    {
+      "receipt": "cord-01",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":6000,"total_text":"60.000","items":[{"label":"-TICKET CP","pence":6000,"price_text":"60.000"}],"discount_pence":0,"discount_text":null,"service_pence":0,"service_text":null,"category":"Going out","confidence":"medium"},
+      "want": {"total_pence": 6000000, "items": [{"label":"-TICKET CP","pence":6000000}]}
+    },
+    {
+      "receipt": "cord-03",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":280000,"total_text":"28,000","items":[{"label":"JASMINE MT ( L )","pence":240000,"price_text":"24,000"},{"label":"COCONUT JELLY ( L )","pence":40000,"price_text":"4,000"}],"discount_pence":0,"discount_text":null,"service_pence":0,"service_text":null,"category":"Eating out","confidence":"high"},
+      "want": {"total_pence": 2800000, "items": [{"label":"JASMINE MT ( L )","pence":2400000},{"label":"COCONUT JELLY ( L )","pence":400000}]}
+    },
+    {
+      "receipt": "cord-08",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":1110000,"total_text":"111,000","items":[{"label":"Kupon 15","pence":1000000,"price_text":"100,000"},{"label":"ADD CHICKEN BOX","pence":9090,"price_text":"909"}],"discount_pence":0,"discount_text":null,"service_pence":0,"service_text":null,"tax_pence":100910,"tax_text":"10,091","category":"Eating out","confidence":"high"},
+      "want": {"total_pence": 11100000, "items": [{"label":"Kupon 15","pence":10000000},{"label":"ADD CHICKEN BOX","pence":90900}]}
+    },
+    {
+      "receipt": "cord-18",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":17600,"total_text":"176000","items":[{"label":"AMBUSH DBL CHS","pence":6000,"price_text":"60000"},{"label":"AMBUSH CHS BUR","pence":10000,"price_text":"100000"}],"discount_pence":0,"discount_text":null,"service_pence":0,"service_text":null,"tax_pence":1600,"tax_text":"16000","category":"Eating out","confidence":"medium"},
+      "want": {"total_pence": 17600000, "items": [{"label":"AMBUSH DBL CHS","pence":6000000},{"label":"AMBUSH CHS BUR","pence":10000000}]}
+    },
+    {
+      "receipt": "cord-19",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":377859,"total_text":"377,859","items":[{"label":"cashew nuts chkn","pence":64500,"price_text":"64,500"},{"label":"garlic pepper beef","pence":79500,"price_text":"79,500"},{"label":"red curry beef","pence":69500,"price_text":"69,500"},{"label":"phad thai","pence":64500,"price_text":"64,500"},{"label":"steamed rice","pence":47600,"price_text":"47,600"}],"discount_pence":0,"discount_text":null,"service_pence":17908,"service_text":"17,908","tax_pence":34351,"tax_text":"34,351","category":"Eating out","confidence":"high"},
+      "want": {"total_pence": 37785900, "items": [{"label":"cashew nuts chkn","pence":6450000},{"label":"garlic pepper beef","pence":7950000},{"label":"red curry beef","pence":6950000},{"label":"phad thai","pence":6450000},{"label":"steamed rice","pence":4760000}]}
+    },
+    {
+      "receipt": "cord-20",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":3800,"total_text":"Rp38.000","items":[{"label":"NASI GOR SFD TLR","pence":3500,"price_text":"Rp35.000"},{"label":"ES TEH TAWAR","pence":300,"price_text":"Rp3.000"}],"discount_pence":0,"discount_text":null,"service_pence":0,"service_text":null,"category":"Eating out","confidence":"high"},
+      "want": {"total_pence": 3800000, "items": [{"label":"NASI GOR SFD TLR","pence":3500000},{"label":"ES TEH TAWAR","pence":300000}]}
+    },
+    {
+      "receipt": "cord-05",
+      "reply": {"merchant":null,"date":null,"currency":"IDR","total_pence":17460,"total_text":"174,600","items":[{"label":"ICE BLACKCOFFE","pence":8200,"price_text":"82,000"},{"label":"AVOCADO COFFEE","pence":6100,"price_text":"61,000"},{"label":"CHIKEN KATSU FF","pence":5100,"price_text":"51,000"}],"discount_pence":1940,"discount_text":"19,400","service_pence":0,"service_text":null,"category":"Eating out","confidence":"high"},
+      "want": {"total_pence": 17460000, "items": [{"label":"ICE BLACKCOFFE","pence":8200000},{"label":"AVOCADO COFFEE","pence":6100000},{"label":"CHIKEN KATSU FF","pence":5100000}]}
+    }
+  ]
+}

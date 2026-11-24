@@ -153,6 +153,8 @@ export function couple(
     defaultRatio?: Record<string, number> | null;
     /** The phone's storage and network, to restart the app over the same storage or start offline. */
     storage?: AsyncStorage; online?: boolean;
+    /** What the data layer reports to client_errors (data layer option `report`). */
+    report?: (err: unknown, context: Record<string, unknown>) => void;
   } = {},
 ): Couple {
   const stamp = '2026-11-01T12:00:00.000Z';
@@ -188,7 +190,8 @@ export function couple(
     ...(opts.geo === undefined ? {} : { geo: opts.geo }), ...(opts.rates === undefined ? {} : { rates: opts.rates }),
     ...(opts.ai === undefined ? {} : { ai: opts.ai }), ...(opts.photos === undefined ? {} : { photos: opts.photos }),
     ...(opts.downscale === undefined ? {} : { downscale: opts.downscale }),
-  } as Pick<DataLayerOptions, 'geo' | 'rates'>;
+    ...(opts.report === undefined ? {} : { report: opts.report }),
+  } as Pick<DataLayerOptions, 'geo' | 'rates' | 'report'>;
   const layer = createDataLayer(Object.assign({ api, storage: opts.storage ?? memoryStorage(), network, session: fixedSession(me), today: () => today }, services));
   return { layer, controls, network };
 }

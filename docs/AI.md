@@ -21,20 +21,32 @@ Free: the Cloudflare account's daily Workers AI allowance (10,000 Neurons; a rec
 
 ### 3.1 `scan`: receipt or screenshot → form
 Input: one image, the category names, today's date, the home country.
-Output schema:
+What the model is asked for (`worker/prompts/scan.md`, version 6): every amount **copied as printed**, as text, never converted:
 ```
 { merchant: string|null, date: "YYYY-MM-DD"|null, currency: "GBP"|string|null,
-  total_pence: int|null,
-  items: [{ label: string, pence: int }],          // may be empty
-  discount_pence: int,                              // offers and vouchers taken off, 0 if none
-  service_pence: int,                               // service charge or tip shown on the bill, 0 if none
+  total_text: string|null,                          // "377,859", "60.000", "12.34", "1.234,56"
+  items: [{ label: string, price_text: string }],   // may be empty
+  discount_text, service_text, tax_text: string|null,
   category: one of the given names | null,
   confidence: "high"|"medium"|"low" }
 ```
+**Code works out the figures** (live eval, 24 Nov: 17 of 20 Indonesian receipts were wrong by a power of ten when the model did it). `core/money` `parsePrinted(text, currency)` reads each printed amount into whole hundredths of the receipt's currency (£12.34 is 1234, ¥648 is 64800, Rp 60.000 is 6000000): with both "." and "," the last is the decimal point; one mark before exactly three digits groups thousands (except in a three-decimal currency such as KWD, or "0.500"); before one or two digits it is the decimal point; spaces and apostrophes only group; groups after the first must be three digits. Text that isn't one readable amount gives no figure (no total, the line left out), never the model's own integer instead. `core/itemise` `printedScan` applies this to the whole reply; the Worker (`validate`) and the phone (`checkReply`) read a scan the same way, and what the phone is sent is the reply below, in whole hundredths, with no printed text. A model's integers (an older prompt) are still accepted and used only where no printed text came with them.
+The reply the phone gets:
+```
+{ merchant, date, currency, total_pence: int|null,
+  items: [{ label: string, pence: int }],
+  discount_pence: int, service_pence: int, tax_pence?: int,   // 0 if none
+  category, confidence }
+```
+Amounts are at most 10¹² hundredths (10 billion units, so a bill in rupiah, dong or won reads); a printed amount above that gives no figure.
 Guards in code: amounts are non-negative integers; the date is not in the future and within two years; if `items` are present and `sum(items) − discount_pence + service_pence` differs from `total_pence`, the form shows both figures and asks the person to set the amount (SCAN-3); when lines are unticked, discount and service are shared out in proportion; a non-GBP currency switches the form to "paid in another currency" (PLC-6); `low` confidence fills nothing but the photo.
 
 ### 3.2 `parse`: loose wording → form
 Used only when the rule-based quick-add grammar can't read the text with confidence. Input: the text, category names, the two labels A/B and which is the speaker, today's date, current chapter names. Output: the same fields the grammar produces (`amount_pence`, `description`, `category`, `payer: A|B`, `split: {mode, ratio?}`, `date`, `tags`, `chapter`), each nullable. The form opens prefilled; nothing saves by itself.
+Checks in code before the form fills (`core/loose` `readLoose`, live eval 24 Nov):
+- **The amount comes from the words when they give one.** If exactly one word of the note is an amount as quick add reads amounts (`parseAmount`: "189", "22.40", "£64", "1,200"), that amount is used; the AI's is used only when the words give none ("twenty five quid") or several ("2 x 38"). When the two differ, the phone reports "ai amount disagreed" to `client_errors` (no words, no amounts).
+- **The split needs words that say so.** "B paid", "B got", "B bought" only name the payer. A treat is kept only with words such as "treat", "on me", "on B", "my shout"; paid for the other only with "for B", "for me", "for them", "B's"; a percentage only with "60/40", "70%", "half". Otherwise the split is the household's usual one. The words are English, as quick add's command words are (TXT-4): in another language the person picks a split that isn't the usual one.
+- The prompt (`worker/prompts/parse.md`, version 4) says the same, and describes the app's default category names in a few words each (a kettle is Household, a TV licence Rent & bills, the vet and haircuts Other); a household's own or renamed categories go by their names alone.
 
 ### 3.3 `categorise`: description → category
 Called after a save, only when steps 1–3 of CAT-2 found nothing. Input: the description and the category names. Output: `{category: name|null}`. If the person has not changed the category in the meantime, the entry's category is updated and marked as a guess; the result is stored in `category_memory` with `source = 'ai'` so the same description never costs a second call. A person's later choice overwrites it.
@@ -64,5 +76,5 @@ The phone runs the filter with the same code as Activity and Insights, shows the
 
 ## 5. Testing
 - **Contract tests (CI, no network):** recorded Workers AI replies, good and bad (wrong types, extra fields, prompt-injection text on a receipt, totals that don't add up, a future date), run through validation and guards. Every row of §4 has a test.
-- **Live eval (`npm run eval:ai`, against the deployed `/api/ai`, run by hand before S6 is called done and before each release):** at least 30 receipts in `tests/ai/receipts/` with expected JSON: 10 real photos supplied by the owner (card digits covered) and 20 generated by a script that renders realistic UK receipts (supermarket, restaurant with service charge, pharmacy, a crumpled low-light photo, a long receipt, a foreign-currency one). Pass marks: total exactly right ≥ 95%; date ≥ 90%; merchant ≥ 90%; item-level F1 ≥ 0.85. Also 40 `parse` phrases and 30 `ask` questions with expected output, ≥ 90% each. Results are written to `docs/BUILD_LOG.md`. If a pass mark is missed, try another model order for that task before changing prompts.
+- **Live eval (`npm run eval:ai`, against the deployed `/api/ai`, run by hand before S6 is called done and before each release):** at least 30 receipts in `tests/ai/receipts/` with expected JSON: 10 real photos supplied by the owner (card digits covered) and 20 generated by a script that renders realistic UK receipts (supermarket, restaurant with service charge, pharmacy, a crumpled low-light photo, a long receipt, a foreign-currency one). Pass marks: total exactly right ≥ 95%; date ≥ 90%; merchant ≥ 90%; item-level F1 ≥ 0.85. Also 40 `parse` phrases and 30 `ask` questions with expected output, ≥ 90% each. Results are written to `docs/BUILD_LOG.md`. If a pass mark is missed, try another model order for that task before changing prompts. What is scored is what the app would apply: a scan after the Worker's validation and the phone's guards (a low-confidence reply fills nothing, so it scores nothing), loose wording after `readLoose`. The report lists each receipt's unmatched lines.
 - Prompts live in `worker/prompts/` as modules, versioned, each stating its JSON shape; the zod schemas are in `worker/ai-core.ts`.
