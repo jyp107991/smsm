@@ -545,6 +545,14 @@ export function isDeleted(row: Pick<RecurringRow, 'deleted_at'>): boolean {
   return typeof row.deleted_at === 'string';
 }
 
+/**
+ * S10 (review 1): whether a regular payment has posted (or counted a day done): the server's ever_posted, never
+ * posted_count (a start moved into the future sets that to 0). A row kept on the phone from before the column: its count.
+ */
+export function hasStarted(row: Pick<RecurringRow, 'ever_posted' | 'posted_count'>): boolean {
+  return typeof row.ever_posted === 'boolean' ? row.ever_posted : row.posted_count > 0;
+}
+
 export function recurringWrite(row: RecurringRow): RecurringWrite {
   // A row kept on the phone from before S10 has no deleted_at: it is not deleted.
   return Object.fromEntries(RECURRING_WRITE_COLUMNS.map((k) => [k, k === 'deleted_at' ? (row.deleted_at ?? null) : row[k]])) as RecurringWrite;

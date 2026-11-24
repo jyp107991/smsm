@@ -11,7 +11,7 @@
 | `categories` | 12 defaults + custom | `colour` is a palette token name; `default_ratio`; `archived`; `sort` |
 | `chapters` | trips and projects | `kind`, `country`, dates, `closed` |
 | `expenses` | every entry | `kind` expense / money_back; `paid` and `shares` (jsonb, pence); `paid_via`; `split_mode`, `split_params`; `chapter_id`; `country`, `place`, `lat`, `lng` (3 decimals); itemised `items`; original currency fields (reference only); `receipt_path`; source fields; `refund_of`; soft delete |
-| `recurring` | templates | `amount_varies`; `is_subscription`; schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). A new start after one has posted counts every new day on or before the UK today as done (`recurring_guard`) |
+| `recurring` | templates | `amount_varies`; `is_subscription`; schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). `ever_posted` (the server's: "has posted", never cleared). A new start after one has posted: the next payment is the new occurrence nearest to the old next day (`recurring_guard`, `recurring_restart_index`) |
 | `settlements` | "A paid B £x" | `method` monzo / other; soft delete |
 | `inbox_items` | things awaiting a decision | sources bill / scan / share / monzo; never counted as money |
 | `comments` | threads on entries | author-only edit; soft delete |

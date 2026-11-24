@@ -552,14 +552,19 @@ for (const size of SIZES) {
       test('S10 REC-2: after one has posted the start can move: the line says what happens, nothing posts, Bills follows', async ({ page }) => {
         await add(page, { amount: '33.33', description: 'Window box', category: 'Household', payer: 'Sam', startsOn: today() });
         const net0 = await jaeNet(page);
-        // Ten days back: by REC-2's rule from that start, every day on or before today is done; the next is after it.
+        // Ten days back. Its next day was a month from today (D); the next payment is the new day nearest to D, a tie to
+        // the later (DECISIONS 24 Nov), worked out here independently.
         const start = addDays(today(), -10);
+        const d = addMonths(today(), 1);
+        const gap = (x: string) => Math.abs(Date.parse(`${x}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`));
         let k = 0;
-        while (addMonths(start, k) <= today()) k += 1;
+        while (addMonths(start, k) < d) k += 1;
+        if (k > 0 && gap(addMonths(start, k - 1)) < gap(addMonths(start, k))) k -= 1;
         const next = addMonths(start, k);
         const day = Number(start.slice(8));
         const nth = `${String(day)}${day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th'}`;
-        const line = `From now on it posts on the ${nth}${day > 28 ? ', or the last day of a shorter month' : ''}. Next: ${dayName(next)}. Past payments stay as they are.`;
+        const instead = next === d ? '' : ` (instead of ${dayName(d)})`;
+        const line = `From now on it posts on the ${nth}${day > 28 ? ', or the last day of a shorter month' : ''}. Next: ${dayName(next)}${instead}. Past payments stay as they are.`;
 
         let sheet = await openPosted(page, 'Window box');
         const starts = sheet.getByRole('group', { name: 'Starts' });
@@ -573,7 +578,9 @@ for (const size of SIZES) {
         await check(page, `${where}: a new start on a posted payment`);
         await save(page, sheet, 'Saved Window box as a regular payment');
 
-        await expectJaeNet(page, net0, 'a new start posts nothing');
+        // The nearest new day is about three weeks away, so nothing posts now.
+        expect(next > today()).toBe(true);
+        await expectJaeNet(page, net0, 'a new start posts nothing now');
         await tab(page, 'Activity');
         await expect(page.getByRole('main').getByRole('link', { name: /^Window box,/ })).toHaveCount(1);
         await show(page, 'Next 30 days');

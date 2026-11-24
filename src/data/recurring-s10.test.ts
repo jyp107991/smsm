@@ -141,6 +141,24 @@ describe('deleting a regular payment (S10, REC-1)', () => {
     expect(() => m.resumeRecurring(ID, sam.layer)).toThrow(EntryInvalidError);
   });
 
+  it('S10 review 5: deleting one that ends today, before today’s day has posted, posts it first, once', async () => {
+    const weekly = storedRecurring({ frequency: 'weekly', start_date: '2026-11-07', end_date: TODAY, posted_count: 0, ever_posted: false, paid: { [JAE_ID]: 145000, [SAM_ID]: 0 } });
+    const c = household({ recurring: [weekly] });
+    await c.layer.ready;
+    await settle(c.layer);
+    const server = c.controls.tables;
+    server.expenses = server.expenses.filter((e) => e.occurrence_date !== TODAY);
+    const row = server.recurring[0];
+    if (row) row.posted_count = 1;
+    await act(async () => { await c.layer.refresh(); });
+    expect(m.deleteRecurring(ID, c.layer)).toBe(true);
+    await settle(c.layer);
+    await act(async () => { await c.layer.api.postDueRecurring(); });
+    expect(server.recurring[0]?.posted_count).toBe(2);
+    expect(server.recurring[0]?.deleted_at).not.toBeNull();
+    expect(server.expenses.filter((e) => e.recurring_id === ID).map((e) => e.occurrence_date).sort()).toEqual(['2026-11-07', TODAY]);
+  });
+
   it('S10 OFF-5: a delete waiting when the app closes is sent once on the next open', async () => {
     const storage = memoryStorage();
     const first = household({ recurring: [storedRecurring({ active: false })], storage });
@@ -184,33 +202,35 @@ describe('a new start after one has posted (S10, REC-2, REC-6)', () => {
   /** The stored rent with its money exactly as the phone builds it (each person named in paid), so only the start differs. */
   const rentAsSaved = () => storedRecurring({ paid: { [JAE_ID]: 145000, [SAM_ID]: 0 } });
 
-  it('S10 OFF-2: offline, the waiting copy shows the count the server will make, so nothing past looks due; the server stores the start and posts nothing', async () => {
-    // Rent from 1 Jan, posted to 1 Nov (11). Moved to the 15th on 14 Nov: 15 Jan … 15 Oct are done (10); next 15 Nov.
+  it('S10 OFF-2: offline, the waiting copy shows the count the server will make; the server stores the start and the next payment is the nearest to the old next day', async () => {
+    // Rent from 1 Jan, posted to 1 Nov (11): D = 1 Dec. Moved to the 15th: 15 Dec (14 days) is nearer than 15 Nov (16).
     const c = household({ recurring: [rentAsSaved()] });
     await c.layer.ready;
     await settle(c.layer);
     c.network.set(false);
     const view = watch(c.layer);
     act(() => { m.saveRecurring({ ...rentDraft('2026-01-15'), id: ID }, c.layer); });
-    const expected = restart({ frequency: 'monthly', every: 1, startDate: '2026-01-15', endDate: null }, TODAY);
-    expect(expected).toMatchObject({ done: 10, next: '2026-11-15' });
-    await waitFor(() => { expect(view.result.current.recurring.data?.[0]).toMatchObject({ start_date: '2026-01-15', posted_count: 10 }); });
+    expect(restart({ frequency: 'monthly', every: 1, startDate: '2026-01-01', endDate: null }, 11, '2026-01-15')).toMatchObject({ done: 11, next: '2026-12-15' });
+    await waitFor(() => { expect(view.result.current.recurring.data?.[0]).toMatchObject({ start_date: '2026-01-15', posted_count: 11 }); });
     c.network.set(true);
     await settle(c.layer);
-    expect(c.controls.tables.recurring[0]).toMatchObject({ start_date: '2026-01-15', posted_count: 10 });
+    expect(c.controls.tables.recurring[0]).toMatchObject({ start_date: '2026-01-15', posted_count: 11, ever_posted: true });
     expect(c.controls.tables.expenses).toEqual([]);
     expect(logged(c)).toEqual(['start_date']);
     view.unmount();
   });
 
-  it('S10 REC-2: a new day that falls today doesn’t post today (the in-memory Api counts it done, as the database does)', async () => {
-    const c = household({ recurring: [rentAsSaved()] });
+  it('S10 REC-2: the review’s 15th → 5th: the nearest new day is before today, and it posts at once on its own date, once', async () => {
+    // Monthly from 15 Jan, posted to 15 Oct (10): D = 15 Nov. Moved to the 5th: 5 Nov (10 days) beats 5 Dec (20).
+    const c = household({ recurring: [storedRecurring({ start_date: '2026-01-15', posted_count: 10, paid: { [JAE_ID]: 145000, [SAM_ID]: 0 } })] });
     await c.layer.ready;
-    m.saveRecurring({ ...rentDraft('2026-01-14'), id: ID }, c.layer);
+    await settle(c.layer);
+    m.saveRecurring({ ...rentDraft('2026-01-05'), id: ID }, c.layer);
     await settle(c.layer);
     await act(async () => { await c.layer.api.postDueRecurring(); });
-    expect(c.controls.tables.recurring[0]).toMatchObject({ start_date: '2026-01-14', posted_count: 11 });
-    expect(c.controls.tables.expenses).toEqual([]);
+    await act(async () => { await c.layer.api.postDueRecurring(); });
+    expect(c.controls.tables.recurring[0]).toMatchObject({ start_date: '2026-01-05', posted_count: 11 });
+    expect(c.controls.tables.expenses.map((e) => e.occurrence_date)).toEqual(['2026-11-05']);
   });
 
   it('S10: moved to before the first posting, nothing back-posts', async () => {
@@ -223,9 +243,23 @@ describe('a new start after one has posted (S10, REC-2, REC-6)', () => {
     expect(c.controls.tables.expenses).toEqual([]);
   });
 
-  it('S10 REC-2: an old day due today that hasn’t posted yet (before the nightly post) posts once, first; then the new start takes over', async () => {
+  it('S10 review 1: "has posted" survives a start moved into the future (count 0): moving it far back then back-posts nothing', async () => {
+    const c = household({ recurring: [rentAsSaved()] });
+    await c.layer.ready;
+    m.saveRecurring({ ...rentDraft('2026-12-04'), id: ID }, c.layer);
+    await settle(c.layer);
+    expect(c.controls.tables.recurring[0]).toMatchObject({ start_date: '2026-12-04', posted_count: 0, ever_posted: true });
+    // D = 4 Dec; from 11 Jan the days are 11 Nov (23 days) and 11 Dec (7): 11 Dec, nothing posts now.
+    m.saveRecurring({ ...rentDraft('2026-01-11'), id: ID }, c.layer);
+    await settle(c.layer);
+    await act(async () => { await c.layer.api.postDueRecurring(); });
+    expect(c.controls.tables.recurring[0]).toMatchObject({ start_date: '2026-01-11', posted_count: 11 });
+    expect(c.controls.tables.expenses).toEqual([]);
+  });
+
+  it('S10 REC-2: a day due today not posted yet (before the nightly post): the nearest new day replaces it, billed once', async () => {
     // Weekly from Sat 7 Nov. Opening posts 7 and 14 Nov; then, as if the nightly post hadn't run yet, 14 Nov isn't posted.
-    const weekly = storedRecurring({ frequency: 'weekly', start_date: '2026-11-07', posted_count: 0, paid: { [JAE_ID]: 145000, [SAM_ID]: 0 } });
+    const weekly = storedRecurring({ frequency: 'weekly', start_date: '2026-11-07', posted_count: 0, ever_posted: false, paid: { [JAE_ID]: 145000, [SAM_ID]: 0 } });
     const c = household({ recurring: [weekly] });
     await c.layer.ready;
     await settle(c.layer);
@@ -236,15 +270,43 @@ describe('a new start after one has posted (S10, REC-2, REC-6)', () => {
     await act(async () => { await c.layer.refresh(); });
     c.network.set(false);
     const view = watch(c.layer);
-    // Moved to Wed 11 Nov: 11 Nov is done, next Wed 18 Nov. The phone's waiting copy says so at once.
+    // Moved to Wed 11 Nov: D = 14 Nov; 11 Nov (3 days) beats 18 Nov (4). The phone's waiting copy says so at once.
     act(() => { m.saveRecurring({ ...rentDraft('2026-11-11'), frequency: 'weekly', id: ID }, c.layer); });
-    await waitFor(() => { expect(view.result.current.recurring.data?.[0]).toMatchObject({ start_date: '2026-11-11', posted_count: 1 }); });
+    await waitFor(() => { expect(view.result.current.recurring.data?.[0]).toMatchObject({ start_date: '2026-11-11', posted_count: 0 }); });
     c.network.set(true);
     await settle(c.layer);
     await act(async () => { await c.layer.api.postDueRecurring(); });
     expect(server.recurring[0]).toMatchObject({ start_date: '2026-11-11', posted_count: 1 });
-    expect(server.expenses.filter((e) => e.recurring_id === ID).map((e) => e.occurrence_date).sort()).toEqual(['2026-11-07', TODAY]);
+    expect(server.expenses.filter((e) => e.recurring_id === ID).map((e) => e.occurrence_date).sort()).toEqual(['2026-11-07', '2026-11-11']);
     view.unmount();
+  });
+
+  it('S10 review 2: a stale edit (only the amount) never undoes the partner’s new start, even with the sheet opened before it', async () => {
+    const c = household({ as: 'sam', recurring: [rentAsSaved()] });
+    await c.layer.ready;
+    await settle(c.layer);
+    // Jae moved it to the 15th on the other phone; this phone has heard (or not): either way the form opened on the 1st.
+    const row = c.controls.tables.recurring[0];
+    if (row) Object.assign(row, { start_date: '2026-01-15', posted_count: 11 });
+    await act(async () => { await c.layer.refresh(); });
+    m.saveRecurring({ ...rentDraft('2026-01-01'), amount: pence(150000), id: ID, opened: { frequency: 'monthly', every: 1, startDate: '2026-01-01', endDate: null } }, c.layer);
+    await settle(c.layer);
+    expect(c.controls.tables.recurring[0]).toMatchObject({ amount_pence: 150000, start_date: '2026-01-15', posted_count: 11 });
+    const edit = c.controls.tables.activity.filter((a) => a.entity === 'recurring' && a.action === 'edited').at(-1);
+    expect(Object.keys(edit?.summary as object).sort()).toEqual(['amount_pence', 'paid', 'shares']);
+  });
+
+  it('S10 review 2: offline, a stale phone’s amount change sent later leaves the start alone too (no opened: compared with its own copy)', async () => {
+    const c = household({ as: 'sam', recurring: [rentAsSaved()] });
+    await c.layer.ready;
+    await settle(c.layer);
+    c.network.set(false);
+    m.saveRecurring({ ...rentDraft('2026-01-01'), amount: pence(150000), id: ID }, c.layer);
+    const row = c.controls.tables.recurring[0];
+    if (row) Object.assign(row, { start_date: '2026-01-15', posted_count: 11 });
+    c.network.set(true);
+    await settle(c.layer);
+    expect(c.controls.tables.recurring[0]).toMatchObject({ amount_pence: 150000, start_date: '2026-01-15', posted_count: 11 });
   });
 
   it('S10: a template that hasn’t posted yet moves as before (its past is the past-start choice’s, not counted done)', async () => {

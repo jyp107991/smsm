@@ -21,7 +21,7 @@ import { checkTotal, itemise } from '../../core/itemise';
 import { splitForNewPayer } from '../../core/split';
 import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, deleteRecurring, editExpense, endRecurring, restoreRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
+  addExpense, deleteExpense, deleteRecurring, hasStarted, isDeleted, editExpense, endRecurring, restoreRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
   currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, forgetPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
   useSmartFeatures, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
@@ -222,7 +222,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     && (rec.frequency !== template.frequency || recEvery !== template.every || rec.startDate !== template.start_date || rec.endDate !== template.end_date);
   const amountNow = parsedAmount(s);
   const pastSchedule = rec && recEvery !== null ? { frequency: rec.frequency, every: recEvery, startDate: rec.startDate, endDate: rec.endDate } : null;
-  const past = pastSchedule && (template === undefined || (template.active && template.posted_count === 0 && scheduleChanged))
+  // S10 review 1: "has posted" is the server's ever_posted (a start moved into the future leaves posted_count at 0).
+  const past = pastSchedule && (template === undefined || (template.active && !hasStarted(template) && scheduleChanged))
     ? pastOccurrences({ schedule: pastSchedule, amount: amountNow ?? pence(0) }, today)
     : null;
   // "Start from <next>" keeps the day only when the next date is on it; when it isn't (30 Nov from the 31st), online
@@ -275,9 +276,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   // S10: Delete is for one that has stopped (paused, or ended on or before today); the database refuses the rest.
   const stopped = template !== undefined && !isRunning({ active: template.active, endDate: template.end_date }, today);
   // S10: a new start on one that has posted (the same rhythm): the core says what it does from now on.
-  const restartText = template !== undefined && template.posted_count > 0 && rec !== null && recEvery !== null && rec.startDate !== template.start_date
-    ? restartLine({ frequency: rec.frequency, every: recEvery, startDate: rec.startDate, endDate: rec.endDate }, today)
+  const restartText = template !== undefined && hasStarted(template) && rec !== null && recEvery !== null && rec.startDate !== template.start_date
+    ? restartLine({ frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: rec.endDate }, template.posted_count, rec.startDate, today)
     : null;
+  // S10 review 4: deleted (on the other phone, say) while this sheet is open: it says so, and offers nothing to undo.
+  const goneNow = template !== undefined && (templates ?? []).some((t) => t.id === template.id && isDeleted(t));
 
   /** A new description: the category and split follow the household's guess until the person picks them. */
   const describe = (description: string) => {
@@ -593,6 +596,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         description: d.description, amount: d.amount, categoryId: d.categoryId, payer: d.payer, split: d.split, notes: d.notes ?? null,
         frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: r.amountVaries, isSubscription: r.isSubscription,
         ...(skipping && !template ? { active: false } : {}),
+        // Review 2: only what this form changed of the schedule is sent (never the values it opened with).
+        ...(template ? { opened: { frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: template.end_date } } : {}),
       });
       if (skipping) resumeRecurring(savedId);
     } catch (err) {
@@ -613,17 +618,21 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   /** REC-1: pause, resume or end a template from its sheet; S10: delete one that has stopped (soft, with Undo). */
   const lifecycle = (what: 'pause' | 'resume' | 'end' | 'delete') => {
     if (!template || done.current) return;
+    let changed = true;
     try {
       if (what === 'pause') pauseRecurring(template.id);
       else if (what === 'resume') resumeRecurring(template.id);
       else if (what === 'end') endRecurring(template.id);
-      else deleteRecurring(template.id);
+      else changed = deleteRecurring(template.id);
     } catch (err) {
       setErrors([plainError(err)]);
       return;
     }
     done.current = true;
-    if (what === 'delete') {
+    if (what === 'delete' && !changed) {
+      // Review 4: already deleted (by the partner): nothing of ours to undo.
+      toast.show({ message: strings.recurring.alreadyDeleted(template.description) });
+    } else if (what === 'delete') {
       const { id, description } = template;
       toast.show({
         message: strings.recurring.deletedToast(description),
@@ -840,7 +849,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         <ScheduleFields
           rec={rec}
           today={today}
-          rhythmLocked={template !== undefined && template.posted_count > 0}
+          rhythmLocked={template !== undefined && hasStarted(template)}
           restart={restartText}
           past={pastChoice}
           startsRef={startsRef}
@@ -920,7 +929,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           </div>
         ) : null}
       </Disclosure>
-      {template ? (
+      {template && goneNow ? (
+        <div className="flex flex-col gap-4">
+          <p className="text-secondary text-ink-2 m-0">{strings.recurring.deletedNote}</p>
+          <RecurringHistory template={template} />
+        </div>
+      ) : template ? (
         <div className="flex flex-col gap-4">
           {!template.active ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.pausedNote}</p> : null}
           {template.end_date !== null && template.end_date <= today ? (

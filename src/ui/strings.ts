@@ -494,8 +494,8 @@ export const strings = {
     lockedOften: (often: string, n: number, unit: string) => (n === 1 ? often : `Every ${String(n)} ${unit}`),
     lockedOftenHint: 'It has started, so how often stays as it is. To change that, end it and add a new one.',
     /** S10: a new start after one has posted (core restart): what it repeats on, the next day, and that the past stays. */
-    restartLine: (on: string, next: string | null) =>
-      `From now on it posts ${on}. ${next === null ? 'It ends before its next day, so nothing more posts.' : `Next: ${next}.`} Past payments stay as they are.`,
+    restartLine: (on: string, next: string | null, instead: string | null) =>
+      `From now on it posts ${on}. ${next === null ? 'It ends before its next day, so nothing more posts.' : `Next: ${next}${instead === null ? '' : ` (instead of ${instead})`}.`} Past payments stay as they are.`,
     onWeekday: (every: number, weekday: string) => (every === 1 ? `on ${weekday}s` : `every ${String(every)} weeks on ${weekday}`),
     onDayOfMonth: (every: number, day: number, shorter: boolean) =>
       `${every === 1 ? '' : `every ${String(every)} months `}on the ${ordinal(day)}${shorter ? ', or the last day of a shorter month' : ''}`,
@@ -521,6 +521,9 @@ export const strings = {
     delete: 'Delete',
     deleteFirst: 'To delete it, pause or end it first.',
     deletedToast: (description: string) => `Deleted ${description}`,
+    /** S10 review 4: deleted while its sheet is open, or already deleted when Delete is tapped. */
+    deletedNote: 'It was deleted, so it no longer posts.',
+    alreadyDeleted: (description: string) => `${description} was already deleted`,
     priceChange: (description: string, before: string, after: string, month: string) => `${description} ${before} → ${after} from ${month}`,
     everyNeeded: 'Write how often as a whole number, 1 or more.',
     endBeforeStart: 'It can’t end before it starts.',

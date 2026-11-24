@@ -23,7 +23,7 @@ import { OtherWindowError } from './windows';
 import { locateWith, rateWith, setStoredCountry, setStoredUseLocation, storedCountry, storedUseLocation, type Located } from './places';
 import {
   buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, chapterWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
-  isDeleted, newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
+  hasStarted, isDeleted, newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
   type SettlementDraft,
 } from './writes';
 import type { Json as JsonValue } from './database.types';
@@ -527,9 +527,12 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
  * future occurrences only. A second submit of the same form changes nothing (Q-F1). Once stored, the phone
  * posts what is due (REC-2), so a payment due today is money at once. `active: false` adds a new one paused (S9:
  * "Start from <next> instead" keeping its day is a paused add, then `resumeRecurring`); an edit never sends `active`.
+ * S10 (review 2): an edit sends how often, every, the start and the end only when the form changed them from the
+ * values it opened with (`opened`; without it, this phone's own copy), so a stale phone or a sheet left open never
+ * writes back an old schedule over the partner's new start or end.
  */
-export function saveRecurring(input: RecurringDraft & { id?: string; active?: boolean }, layer = activeDataLayer()): string {
-  const { id, active, ...draft } = input;
+export function saveRecurring(input: RecurringDraft & { id?: string; active?: boolean; opened?: ScheduleWas }, layer = activeDataLayer()): string {
+  const { id, active, opened, ...draft } = input;
   const ctx = context(layer);
   const existing = id === undefined ? undefined : shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
   // An end before the start is refused when it is picked; one already stored (End tapped before the first day) is kept.
@@ -546,37 +549,54 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
     description: draft.description, amount: draft.amount, date: layer.today(), categoryId: draft.categoryId, payer: draft.payer, split: draft.split,
   }).row;
   const stamp = layer.now().toISOString();
+  // Review 2: the schedule fields the form changed (all of them for a new one); the rest stay as this phone holds them.
+  const was: ScheduleWas | undefined = opened ?? (existing && {
+    frequency: existing.frequency as RecurringDraft['frequency'], every: existing.every, startDate: existing.start_date, endDate: existing.end_date,
+  });
+  const changed = {
+    frequency: !was || draft.frequency !== was.frequency, every: !was || draft.every !== was.every,
+    start_date: !was || draft.startDate !== was.startDate, end_date: !was || draft.endDate !== was.endDate,
+  };
+  const schedule = {
+    frequency: changed.frequency || !existing ? draft.frequency : existing.frequency,
+    every: changed.every || !existing ? draft.every : existing.every,
+    start_date: changed.start_date || !existing ? draft.startDate : existing.start_date,
+    end_date: changed.end_date || !existing ? draft.endDate : existing.end_date,
+  };
   const row: RecurringRow = {
     id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
-    shares: money.shares, is_subscription: draft.isSubscription, frequency: draft.frequency, every: draft.every, start_date: draft.startDate,
-    end_date: draft.endDate, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
-    posted_count: expectedCount(existing, draft, layer.today()), created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
+    shares: money.shares, is_subscription: draft.isSubscription, ...schedule, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
+    posted_count: expectedCount(existing, schedule), ever_posted: existing ? hasStarted(existing) : false,
+    created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
     deleted_at: existing?.deleted_at ?? null,
   };
   // Q-F1: the same form saved twice (a double tap) changes nothing.
   if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
-  // An edit writes what the form owns, never `active` (a partner's pause stays paused).
+  // An edit writes what the form owns, never `active` (a partner's pause stays paused), and of the schedule only what it changed.
+  const columns = EDIT_COLUMNS.filter((k) => !(k in changed) || changed[k as keyof typeof changed]);
   layer.enqueue({
     opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
-    ...(existing ? { columns: EDIT_COLUMNS } : {}),
+    ...(existing ? { columns } : {}),
   });
   return row.id;
 }
 
+/** S10 (review 2): a regular payment's schedule as the form opened with it. */
+export interface ScheduleWas { frequency: RecurringDraft['frequency']; every: number; startDate: IsoDate; endDate: IsoDate | null }
+
 /**
  * S10: the phone's waiting copy of a template, until the server answers: a new start on one that has posted (the same
- * rhythm) counts every new day on or before today as done (core restart, the database's rule), so nothing past looks
- * due. The server first posts any day of the old schedule due by today that hadn't posted (an entry the phone can't
- * make itself: it arrives with the next read); the new count is the same either way. Otherwise the stored count (the
+ * rhythm) takes the count the server will make (core restart, the database's rule: the next payment is the new day
+ * nearest to the old next day), so Bills shows the right next day meanwhile. Otherwise the stored count (the
  * server's; never sent).
  */
-function expectedCount(existing: RecurringRow | undefined, draft: RecurringDraft, today: IsoDate): number {
+function expectedCount(existing: RecurringRow | undefined, s: Pick<RecurringRow, 'frequency' | 'every' | 'start_date' | 'end_date'>): number {
   if (!existing) return 0;
-  const restarts = existing.posted_count > 0 && draft.startDate !== existing.start_date
-    && draft.frequency === existing.frequency && draft.every === existing.every;
+  const restarts = hasStarted(existing) && s.start_date !== existing.start_date && s.frequency === existing.frequency && s.every === existing.every;
   if (!restarts) return existing.posted_count;
-  return restart({ frequency: draft.frequency, every: draft.every, startDate: draft.startDate, endDate: draft.endDate }, today).done;
+  const old = { frequency: existing.frequency as RecurringDraft['frequency'], every: existing.every, startDate: existing.start_date, endDate: s.end_date };
+  return restart(old, existing.posted_count, s.start_date).done;
 }
 
 /** An edit writes what the form owns: never `active` (a partner's pause stays paused), never `deleted_at` (only Delete and Undo). */

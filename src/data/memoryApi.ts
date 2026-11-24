@@ -16,6 +16,7 @@ import {
   type NotificationPrefsPatch, type NotificationPrefsRow,
 } from './api';
 import type { Json } from './database.types';
+import { hasStarted } from './writes';
 
 export interface MemoryTables {
   households: HouseholdRow[];
@@ -217,28 +218,28 @@ export function createMemoryApi(
 
   /**
    * What the recurring_guard trigger does (migration 8, and S10's migration 20261124000000): delete and restore
-   * change deleted_at alone, a deleted template never runs, and a second delete keeps the first time; a new start on a
-   * template that has posted (the same rhythm) first posts the old schedule's due days, then counts every new day on
-   * or before today as done (core restart); a new
+   * change deleted_at alone, a deleted template never runs, a second delete keeps the first time, and deleting first
+   * posts the days due by today; "has posted" (ever_posted) is the server's and never clears; a new start on one that
+   * has posted (the same rhythm) makes the next payment the new day nearest to the old next day (core restart); a new
    * rhythm applies from its next occurrence (posted days never move); a resumed template skips what fell due while it
    * was paused.
    */
   function guardRecurring(old: RecurringRow, next: RecurringRow): RecurringRow {
-    const out = { ...next };
+    const out = { ...next, ever_posted: hasStarted(old) };
     const wasDeleted = (old.deleted_at ?? null) !== null;
     if (wasDeleted !== ((out.deleted_at ?? null) !== null)) {
-      const rest = (r: RecurringRow) => JSON.stringify(Object.entries(r).filter(([k]) => !['deleted_at', 'updated_at', 'posted_count'].includes(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
+      const own = ['deleted_at', 'updated_at', 'posted_count', 'ever_posted'];
+      const rest = (r: RecurringRow) => JSON.stringify(Object.entries(r).filter(([k]) => !own.includes(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
       if (rest(out) !== rest(old)) refuse('deleting or restoring a regular payment changes nothing else', '23514');
     } else if (wasDeleted) {
       out.deleted_at = old.deleted_at;
     }
     refuseDeletedRunning(out, wasDeleted);
+    if (!wasDeleted && (out.deleted_at ?? null) !== null) out.posted_count = postOne(old);
     const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: null });
-    if (old.posted_count > 0 && out.frequency === old.frequency && out.every === old.every && out.start_date !== old.start_date) {
-      // The old schedule's days due by today that haven't posted post first (exactly once), then the new start.
-      postOne(old);
-      out.posted_count = restart(sched(out), today()).done;
-    } else if (old.posted_count > 0 && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
+    if (hasStarted(old) && out.frequency === old.frequency && out.every === old.every && out.start_date !== old.start_date) {
+      out.posted_count = restart(sched(old), old.posted_count, out.start_date).done;
+    } else if (hasStarted(old) && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
       const nxt = occurrence(sched(old), old.posted_count);
       out.start_date = out.start_date > nxt ? out.start_date : nxt;
       out.posted_count = 0;
@@ -247,6 +248,7 @@ export function createMemoryApi(
       const t = today();
       for (let n = 0; n < 10000 && occurrence(sched(out), out.posted_count) < t; n += 1) out.posted_count += 1;
     }
+    out.ever_posted = out.ever_posted || out.posted_count > 0;
     return out;
   }
 
@@ -256,7 +258,7 @@ export function createMemoryApi(
     const o = before as Record<string, Json>;
     const n = after as Record<string, Json>;
     for (const k of Object.keys(n)) {
-      if (k === 'updated_at' || k === 'updated_by' || k === 'posted_count') continue;
+      if (k === 'updated_at' || k === 'updated_by' || k === 'posted_count' || k === 'ever_posted') continue;
       if (JSON.stringify(o[k] ?? null) !== JSON.stringify(n[k] ?? null)) out[k] = { before: o[k] ?? null, after: n[k] ?? null };
     }
     return out;
@@ -407,6 +409,7 @@ export function createMemoryApi(
       const n = postOne(r);
       posted += n - r.posted_count;
       r.posted_count = n;
+      r.ever_posted = hasStarted(r) || n > 0;
     }
     return posted;
   }
@@ -512,6 +515,8 @@ export function createMemoryApi(
         ...(r as unknown as RecurringRow), id: newId(r['id'], 'recurring'), household_id: hid, active: false,
         category_id: ref(r['category_id'], 'categories'), paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {},
         split_params: remap(r['split_params'] ?? null), created_by: author(r['created_by']),
+        // A backup from before ever_posted: what it had counted says (as recurring_guard).
+        ever_posted: r['ever_posted'] === true || Number(r['posted_count'] ?? 0) > 0,
       };
       checkMoney(row as unknown as ExpenseRow);
       tables.recurring.push(row);
@@ -760,7 +765,7 @@ export function createMemoryApi(
         const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<RecurringRow> : row;
         let next: RecurringRow = existing
           ? { ...existing, ...sent, updated_at: stamp }
-          : { posted_count: 0, created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
+          : { created_by: me().userId, created_at: stamp, updated_at: stamp, ...row, posted_count: 0, ever_posted: false };
         if (existing) next = guardRecurring(existing, next);
         else refuseDeletedRunning(next, false);
         // The table's checks (amount > 0, every 1–52). An end before the start is not one of them: End on a payment

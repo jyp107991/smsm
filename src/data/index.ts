@@ -38,7 +38,7 @@ export {
 } from './notifications';
 export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, forgetPhoto, photoBlob, photoUrl, sortLater, sortPhotoLater, recapWording, askSmsm, takeShared, parseLoose, guessCategory, type LooseReading } from './smartActions';
 export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';
-export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, isDeleted, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
+export { EntryInvalidError, PartnerNotJoinedError, hasStarted, inputFromRow, isDeleted, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
   type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow, type ImportRuleRow, type RestoreCounts,

@@ -431,7 +431,7 @@ begin
     else
       act := 'edited';
       for k in select jsonb_object_keys(n) loop
-        if k not in ('updated_at','updated_by','posted_count') and (n -> k) is distinct from (o -> k) then
+        if k not in ('updated_at','updated_by','posted_count','ever_posted') and (n -> k) is distinct from (o -> k) then
           diff := diff || jsonb_build_object(k, jsonb_build_object('before', o -> k, 'after', n -> k));
         end if;
       end loop;
@@ -889,10 +889,12 @@ CREATE FUNCTION public.recurring_guard() RETURNS trigger
     SET search_path TO 'public'
     AS $$
 declare uk_today date := (now() at time zone 'Europe/London')::date; nxt date; n int := 0;
-        own constant text[] := array['deleted_at', 'updated_at', 'posted_count'];
+        own constant text[] := array['deleted_at', 'updated_at', 'posted_count', 'ever_posted'];
 begin
   if tg_op = 'INSERT' then
-    if current_user = 'authenticated' then new.posted_count := 0; end if;
+    if current_user = 'authenticated' then new.posted_count := 0; new.ever_posted := false; end if;
+    -- A backup from before the column (restore_backup) has none: what it had counted says.
+    new.ever_posted := coalesce(new.ever_posted, false) or coalesce(new.posted_count, 0) > 0;
     if new.deleted_at is not null and new.active and (new.end_date is null or new.end_date > uk_today) then
       raise exception 'a regular payment that is still running can''t be deleted: pause or end it first' using errcode = '23514';
     end if;
@@ -901,6 +903,8 @@ begin
   if current_user = 'authenticated' and new.posted_count is distinct from old.posted_count then
     raise exception 'posted_count is kept by the server' using errcode = '42501';
   end if;
+  -- 2. Only the server says it has posted, and it never stops having posted.
+  new.ever_posted := old.ever_posted;
   -- 1b. Delete and restore are one thing at a time; deleted once, when it was.
   if (old.deleted_at is null) <> (new.deleted_at is null) then
     if (to_jsonb(new) - own) is distinct from (to_jsonb(old) - own) then
@@ -916,20 +920,15 @@ begin
     end if;
     raise exception 'a regular payment that is still running can''t be deleted: pause or end it first' using errcode = '23514';
   end if;
-  if old.posted_count > 0 and (new.frequency, new.every) is not distinct from (old.frequency, old.every)
+  -- 1c. Deleted: first the days due by today that haven't posted (nothing for a paused one).
+  if old.deleted_at is null and new.deleted_at is not null then
+    new.posted_count := recurring_post_due_one(old.id);
+  end if;
+  if old.ever_posted and (new.frequency, new.every) is not distinct from (old.frequency, old.every)
      and new.start_date is distinct from old.start_date then
-    -- 2. A new start. First the old schedule's days due by today that haven't posted (exactly once; nothing for a
-    -- paused or deleted one); then what falls on or before today is done, and the next is the first new day after it.
-    perform recurring_post_due_one(old.id);
-    new.posted_count := 0;
-    loop
-      exit when (new.start_date + recurring_step(new.frequency, new.every) * new.posted_count)::date > uk_today;
-      new.posted_count := new.posted_count + 1;
-      n := n + 1;
-      if n > 100000 then raise exception 'that start is too far back' using errcode = '22023'; end if;
-    end loop;
-    n := 0;
-  elsif old.posted_count > 0 and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
+    -- 3. A new start: the next payment is the new occurrence nearest to the old next day.
+    new.posted_count := recurring_restart_index(old.start_date, old.frequency, old.every, old.posted_count, new.start_date);
+  elsif old.ever_posted and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
     nxt := (old.start_date + recurring_step(old.frequency, old.every) * old.posted_count)::date;
     new.start_date := greatest(new.start_date, nxt);
     new.posted_count := 0;
@@ -941,6 +940,7 @@ begin
       n := n + 1;
     end loop;
   end if;
+  new.ever_posted := new.ever_posted or new.posted_count > 0;
   return new;
 end $$;
 
@@ -992,6 +992,26 @@ begin
   perform set_config('smsm.posting', coalesce(nullif(was, ''), 'off'), true);
   if p_kick and v_told then perform kick_push(); end if;
   return n;
+end $$;
+
+--
+-- Name: recurring_restart_index(date, text, integer, integer, date); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.recurring_restart_index(p_old_start date, p_frequency text, p_every integer, p_posted integer, p_new_start date) RETURNS integer
+    LANGUAGE plpgsql IMMUTABLE
+    SET search_path TO 'public'
+    AS $$
+declare step interval := recurring_step(p_frequency, p_every); d date := (p_old_start + step * p_posted)::date;
+        k int := 0; cur date;
+begin
+  loop
+    cur := (p_new_start + step * k)::date;
+    exit when cur >= d;
+    k := k + 1;
+    if k > 100000 then raise exception 'that start is too far back' using errcode = '22023'; end if;
+  end loop;
+  if k > 0 and d - (p_new_start + step * (k - 1))::date < cur - d then return k - 1; end if;
+  return k;
 end $$;
 
 --
@@ -1980,6 +2000,7 @@ CREATE TABLE public.recurring (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
+    ever_posted boolean DEFAULT false NOT NULL,
     CONSTRAINT recurring_amount_pence_check CHECK ((amount_pence > 0)),
     CONSTRAINT recurring_every_check CHECK (((every >= 1) AND (every <= 52))),
     CONSTRAINT recurring_frequency_check CHECK ((frequency = ANY (ARRAY['weekly'::text, 'monthly'::text, 'yearly'::text]))),
@@ -3220,6 +3241,13 @@ GRANT ALL ON FUNCTION public.recurring_guard() TO service_role;
 REVOKE ALL ON FUNCTION public.recurring_post_due_one(p_id uuid, p_kick boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.recurring_post_due_one(p_id uuid, p_kick boolean) TO authenticated;
 GRANT ALL ON FUNCTION public.recurring_post_due_one(p_id uuid, p_kick boolean) TO service_role;
+
+--
+-- Name: FUNCTION recurring_restart_index(p_old_start date, p_frequency text, p_every integer, p_posted integer, p_new_start date); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.recurring_restart_index(p_old_start date, p_frequency text, p_every integer, p_posted integer, p_new_start date) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.recurring_restart_index(p_old_start date, p_frequency text, p_every integer, p_posted integer, p_new_start date) TO authenticated;
+GRANT ALL ON FUNCTION public.recurring_restart_index(p_old_start date, p_frequency text, p_every integer, p_posted integer, p_new_start date) TO service_role;
 
 --
 -- Name: FUNCTION recurring_step(p_frequency text, p_every integer); Type: ACL; Schema: public; Owner: -

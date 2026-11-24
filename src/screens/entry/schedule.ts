@@ -60,17 +60,20 @@ export function fromMonth(t: RecurringRow, changedOn: IsoDate, today: IsoDate): 
 }
 
 /**
- * S10: under Starts, when a regular payment that has posted takes a new start: what it repeats on from now on, its
- * next day and that past payments stay ("From now on it posts on the 15th. Next: Tue 15 Dec. Past payments stay as
- * they are."). The dates are the core's (`restart`, the database's rule).
+ * S10: under Starts, when a regular payment that has posted takes a new start: what it repeats on from now on, the next
+ * payment and the old day it replaces, and that past payments stay ("From now on it posts on the 5th. Next: Thu 5 Nov
+ * (instead of Sun 15 Nov). Past payments stay as they are."). The dates are the core's (`restart`, the database's
+ * rule: the next payment is the new day nearest to the old next day).
  */
-export function restartLine(s: Schedule, today: IsoDate): string {
-  const { next, on } = restart(s, today);
+export function restartLine(old: Schedule, postedCount: number, startDate: IsoDate, today: IsoDate): string {
+  const s = { ...old, startDate };
+  const { next, instead, on } = restart(old, postedCount, startDate);
   const weekday = strings.datePicker.weekdays[on.weekday - 1]?.[1] ?? '';
   // A date in the start's own year reads "15 Dec" whichever year that is (the year is the next date's business).
   const date = formatShortDate(s.startDate, s.startDate);
   const words = on.frequency === 'weekly' ? strings.recurring.onWeekday(on.every, weekday)
     : on.frequency === 'monthly' ? strings.recurring.onDayOfMonth(on.every, on.day, on.shorter)
       : strings.recurring.onDate(on.every, date, on.shorter);
-  return strings.recurring.restartLine(words, next === null ? null : formatDate(next, today));
+  return strings.recurring.restartLine(words, next === null ? null : formatDate(next, today),
+    next === null || instead === null || instead === next ? null : formatDate(instead, today));
 }

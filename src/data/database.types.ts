@@ -493,14 +493,14 @@ isOneToOne: false
                   ]
                 },"recurring": {
                   Row: {
-                    "active": boolean,"amount_pence": number,"amount_varies": boolean,"category_id": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description": string,"end_date": string | null,"every": number,"frequency": string,"household_id": string,"id": string,"is_subscription": boolean,"notes": string | null,"paid": NonNullable<Json>,"paid_via": string,"posted_count": number,"shares": NonNullable<Json>,"split_mode": string,"split_params": Json | null,"start_date": string,"updated_at": string
+                    "active": boolean,"amount_pence": number,"amount_varies": boolean,"category_id": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description": string,"end_date": string | null,"ever_posted": boolean,"every": number,"frequency": string,"household_id": string,"id": string,"is_subscription": boolean,"notes": string | null,"paid": NonNullable<Json>,"paid_via": string,"posted_count": number,"shares": NonNullable<Json>,"split_mode": string,"split_params": Json | null,"start_date": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"amount_pence": number,"amount_varies"?: boolean,"category_id"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description": string,"end_date"?: string | null,"every"?: number,"frequency": string,"household_id": string,"id"?: string,"is_subscription"?: boolean,"notes"?: string | null,"paid": NonNullable<Json>,"paid_via"?: string,"posted_count"?: number,"shares": NonNullable<Json>,"split_mode"?: string,"split_params"?: Json | null,"start_date": string,"updated_at"?: string
+                    "active"?: boolean,"amount_pence": number,"amount_varies"?: boolean,"category_id"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description": string,"end_date"?: string | null,"ever_posted"?: boolean,"every"?: number,"frequency": string,"household_id": string,"id"?: string,"is_subscription"?: boolean,"notes"?: string | null,"paid": NonNullable<Json>,"paid_via"?: string,"posted_count"?: number,"shares": NonNullable<Json>,"split_mode"?: string,"split_params"?: Json | null,"start_date": string,"updated_at"?: string
                   }
                   Update: {
-                    "active"?: boolean,"amount_pence"?: number,"amount_varies"?: boolean,"category_id"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description"?: string,"end_date"?: string | null,"every"?: number,"frequency"?: string,"household_id"?: string,"id"?: string,"is_subscription"?: boolean,"notes"?: string | null,"paid"?: NonNullable<Json>,"paid_via"?: string,"posted_count"?: number,"shares"?: NonNullable<Json>,"split_mode"?: string,"split_params"?: Json | null,"start_date"?: string,"updated_at"?: string
+                    "active"?: boolean,"amount_pence"?: number,"amount_varies"?: boolean,"category_id"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description"?: string,"end_date"?: string | null,"ever_posted"?: boolean,"every"?: number,"frequency"?: string,"household_id"?: string,"id"?: string,"is_subscription"?: boolean,"notes"?: string | null,"paid"?: NonNullable<Json>,"paid_via"?: string,"posted_count"?: number,"shares"?: NonNullable<Json>,"split_mode"?: string,"split_params"?: Json | null,"start_date"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -662,6 +662,9 @@ isOneToOne: false
                            },
 "recurring_post_due_one":
 { Args: { "p_id": string,"p_kick"?: boolean }; Returns: number
+                           },
+"recurring_restart_index":
+{ Args: { "p_every": number,"p_frequency": string,"p_new_start": string,"p_old_start": string,"p_posted": number }; Returns: number
                            },
 "recurring_step":
 { Args: { "p_every": number,"p_frequency": string }; Returns: string

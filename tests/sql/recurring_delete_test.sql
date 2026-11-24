@@ -72,8 +72,9 @@ update recurring set deleted_at = now(), description = 'Something else' where id
 select description = 'Delete gym' and deleted_at is null as ok_s10_mixed_delete_changed_nothing from recurring where id = :'GYM';
 update recurring set deleted_at = now() where id = :'GYM' returning (deleted_at is not null) as ok_s10_deleted_again_after_undo;
 
--- ───────── Ended (its end before today), with a day never posted: deleted, it never posts ─────────
+-- ───────── Ended (its end before today), with days never posted: deleting posts them first, once; then nothing ─────────
 -- Weekly from 14 days ago, ended yesterday, added through the app and not posted yet (14 and 7 days ago are due).
+-- (Fresh review 5: a bill due before the delete is a bill; the delete posts it, as the nightly job would have.)
 insert into recurring(id, household_id, description, amount_pence, paid, shares, frequency, start_date, end_date) values
   (:'WINDOW', :'hid', 'Delete window cleaner', 1000, jsonb_build_object(:'A', 1000), jsonb_build_object(:'A', 500, :'B', 500),
    'weekly', :'uk_today'::date - 14, :'uk_today'::date - 1);
@@ -82,9 +83,10 @@ select post_due_recurring() >= 0 as ok_s10_post_after_deleting_an_ended_one;
 reset role;
 set request.jwt.claim.sub = '';
 select post_due_recurring_all() >= 0 as ok_s10_nightly_job_after_deleting;
-select count(*) = 0 as ok_s10_deleted_template_never_posts from expenses where recurring_id = :'WINDOW';
+select array_agg(occurrence_date order by occurrence_date) = array[:'uk_today'::date - 14, :'uk_today'::date - 7]
+   as ok_s10_delete_posts_what_was_due_once_then_never_again from expenses where recurring_id = :'WINDOW';
 select count(*) = 0 as ok_s10_deleted_template_never_fills_the_inbox from inbox_items where recurring_id = :'WINDOW';
-select posted_count = 0 as ok_s10_deleted_template_keeps_its_count from recurring where id = :'WINDOW';
+select posted_count = 2 as ok_s10_deleted_template_counts_what_it_posted from recurring where id = :'WINDOW';
 set role authenticated;
 set request.jwt.claim.sub = :'A';
 -- Moving its end after today would make a deleted payment run again: refused.
@@ -99,6 +101,24 @@ insert into recurring(id, household_id, description, amount_pence, paid, shares,
 update recurring set end_date = :'uk_today' where id = :'TODAYS';
 update recurring set deleted_at = now() where id = :'TODAYS' returning (deleted_at is not null) as ok_s10_ended_today_can_be_deleted;
 
+-- ───────── Fresh review 5: ended today, today's day not posted yet (before the nightly post): it posts once, then deletes ─────────
+\set LASTDAY 'd1000000-0000-4000-8000-000000000004'
+reset role;
+set request.jwt.claim.sub = '';
+insert into recurring(id, household_id, description, amount_pence, paid, shares, frequency, start_date, end_date, posted_count, ever_posted) values
+  (:'LASTDAY', :'hid', 'Delete last day', 1400, jsonb_build_object(:'A', 1400), jsonb_build_object(:'A', 700, :'B', 700),
+   'weekly', :'uk_today'::date - 7, :'uk_today', 1, true);
+set role authenticated;
+set request.jwt.claim.sub = :'A';
+update recurring set deleted_at = now() where id = :'LASTDAY' returning (deleted_at is not null and posted_count = 2) as ok_s10_delete_posts_the_last_day_first;
+select post_due_recurring() >= 0 as ok_s10_post_after_deleting_on_the_last_day;
+reset role;
+select post_due_recurring_all() >= 0 as ok_s10_nightly_after_deleting_on_the_last_day;
+select count(*) = 1 and bool_and(date = :'uk_today'::date and amount_pence = 1400) as ok_s10_last_day_posted_exactly_once
+from expenses where recurring_id = :'LASTDAY';
+set role authenticated;
+set request.jwt.claim.sub = :'A';
+
 -- ───────── Members only; no hard delete ─────────
 set request.jwt.claim.sub = :'E';
 select create_household() is not null as ok_s10_e_has_a_household_of_their_own;
@@ -111,7 +131,7 @@ delete from recurring where id = :'GYM';                                        
 reset role;
 select deleted_at is not null as ok_s10_outsider_could_not_restore from recurring where id = :'GYM';
 select count(*) = 0 as ok_s10_outsider_left_no_history from activity where entity = 'recurring' and actor = :'E';
-select count(*) = 3 as ok_s10_deleted_templates_are_still_there from recurring where id in (:'GYM', :'WINDOW', :'TODAYS');
+select count(*) = 4 as ok_s10_deleted_templates_are_still_there from recurring where id in (:'GYM', :'WINDOW', :'TODAYS', :'LASTDAY');
 -- A deleted template is never running, whatever wrote it (the invariant the bill-tomorrow notice relies on).
 select count(*) = 0 as ok_s10_no_deleted_template_is_running
 from recurring where deleted_at is not null and active and (end_date is null or end_date > :'uk_today'::date);

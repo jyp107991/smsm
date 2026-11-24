@@ -128,7 +128,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
       category_id: cat(category), paid: { ...paid }, paid_via: 'person', split_mode: 'ratio',
       split_params: { [JAE]: 50, [SAM]: 50 }, shares: { ...shares }, is_subscription: false, frequency: 'monthly',
       every: 1, start_date: addDays(start, 2), end_date: null, posted_count: 0, active: true, notes: null,
-      created_by: payer, created_at: stamp(start), updated_at: stamp(start), deleted_at: null, ...extra,
+      created_by: payer, created_at: stamp(start), updated_at: stamp(start), deleted_at: null, ever_posted: false, ...extra,
     };
   };
   const recurring: RecurringRow[] = [
@@ -153,6 +153,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     const due = dueOccurrences({ frequency: 'monthly', every: 1, startDate: r.start_date, endDate: null }, 0, today);
     due.forEach((date, i) => {
       r.posted_count += 1;
+      r.ever_posted = true;
       // Drawn either way, so the rest of the demo's figures stay as they were.
       const amount = r.amount_varies ? between(6200, 13800) : r.amount_pence;
       // S3 (REC-3): the latest bill whose amount varies waits in the Inbox for its amount, as the database leaves it.

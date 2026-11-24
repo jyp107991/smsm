@@ -99,31 +99,39 @@ export interface RepeatsOn {
 }
 
 export interface Restart {
-  /** The occurrences of the new schedule on or before today: they count as done and never post (the server's new posted_count). */
+  /** The new schedule's occurrences before the next payment: they count as done (the server's new posted_count). */
   done: number;
-  /** The first occurrence after today, not after the end date; null when the end comes first. */
+  /** The next payment: the new occurrence nearest to `instead` (a tie to the later); null when after the end date. */
   next: IsoDate | null;
+  /** D, the old schedule's first day not yet posted, which the next payment replaces; null when after the end date. */
+  instead: IsoDate | null;
   on: RepeatsOn;
 }
 
 /**
- * A new start on a regular payment that has posted, as the database applies it (recurring_guard, migration
- * 20261124000000): the start is the anchor (REC-2), every occurrence on or before today counts as done, so the change
- * posts nothing (a new day that falls today included: that period's bill posted on the old day), and the next
- * occurrence is the first after today. The dates are `occurrence`'s, which are the database's
- * (tests/unit/recurring-sql.test.ts).
+ * A new start (the same rhythm) on a regular payment that has posted, as the database applies it (recurring_guard,
+ * recurring_restart_index, migration 20261124000000; DECISIONS 24 Nov): D is the old schedule's first day not yet
+ * posted (occurrence `postedCount`); the next payment is the new schedule's occurrence nearest to D, a tie to the later
+ * one. The ones before it count as done; it and what follows post as normal (one on or before today posts at once,
+ * on its own date). So no period is skipped or billed twice, and nothing posted moves. The dates are `occurrence`'s,
+ * which are the database's (tests/unit/recurring-sql.test.ts).
  */
-export function restart(s: Schedule, today: IsoDate): Restart {
-  let done = 0;
-  while (occurrence(s, done) <= today) done += 1;
-  const first = occurrence(s, done);
-  const day = Number(s.startDate.slice(8, 10));
-  const month = Number(s.startDate.slice(5, 7));
+export function restart(old: Schedule, postedCount: number, startDate: IsoDate): Restart {
+  const s: Schedule = { ...old, startDate };
+  const d = occurrence(old, postedCount);
+  let k = 0;
+  while (occurrence(s, k) < d) k += 1;
+  if (k > 0 && daysBetween(occurrence(s, k - 1), d) < daysBetween(d, occurrence(s, k))) k -= 1;
+  const next = occurrence(s, k);
+  const day = Number(startDate.slice(8, 10));
+  const month = Number(startDate.slice(5, 7));
+  const end = old.endDate;
   return {
-    done,
-    next: s.endDate !== null && first > s.endDate ? null : first,
+    done: k,
+    next: end !== null && next > end ? null : next,
+    instead: end !== null && d > end ? null : d,
     on: {
-      frequency: s.frequency, every: s.every, weekday: weekday(s.startDate), day, month,
+      frequency: s.frequency, every: s.every, weekday: weekday(startDate), day, month,
       shorter: s.frequency === 'monthly' ? day > 28 : s.frequency === 'yearly' && month === 2 && day === 29,
     },
   };

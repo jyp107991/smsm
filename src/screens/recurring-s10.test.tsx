@@ -152,6 +152,23 @@ describe('deleting a regular payment (S10, REC-1, REC-7, REC-8)', () => {
   });
 });
 
+describe('a regular payment deleted while its sheet is open (S10 review 4)', () => {
+  it('S10: deleted on the other phone while open: the sheet says so in plain words, with nothing to pause, resume or delete', async () => {
+    const c = household();
+    show(c.layer);
+    await goBills();
+    const sheet = await openFrom('Paused or ended', /^Old gym\b/);
+    expect(within(sheet).getByRole('button', { name: 'Delete' })).toBeTruthy();
+    const row = c.controls.tables.recurring.find((r) => r.id === R(7));
+    if (row) row.deleted_at = '2026-11-14T08:00:00.000Z';
+    act(() => { c.controls.emitChange('recurring'); });
+    await waitFor(() => { expect(text(sheet)).toContain('It was deleted, so it no longer posts.'); });
+    expect(within(sheet).queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(within(sheet).queryByRole('button', { name: 'Resume' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+});
+
 describe('a new start after one has posted (S10, REC-2)', () => {
   it('S10 REC-2: How often is fixed, Starts can change; the line says from when, the next day and that past payments stay; no past-start choice; Save posts nothing', async () => {
     const c = household();
@@ -162,32 +179,34 @@ describe('a new start after one has posted (S10, REC-2)', () => {
     expect(text(within(sheet).getByRole('group', { name: 'How often' }))).toContain('Monthly');
     expect(text(sheet)).toContain('It has started, so how often stays as it is. To change that, end it and add a new one.');
     expect(text(startsGroup(sheet))).not.toContain('From now on');
-    await pickStart(sheet, 0, 'Thu 15 Jan');
-    await waitFor(() => { expect(text(startsGroup(sheet))).toContain('From now on it posts on the 15th. Next: Sun 15 Nov. Past payments stay as they are.'); });
+    // Rent posted to 1 Nov: its next day is Tue 1 Dec. From the 5th, Sat 5 Dec (4 days) is nearer than Thu 5 Nov (26).
+    await pickStart(sheet, 0, 'Mon 5 Jan');
+    await waitFor(() => { expect(text(startsGroup(sheet))).toContain('From now on it posts on the 5th. Next: Sat 5 Dec (instead of Tue 1 Dec). Past payments stay as they are.'); });
     expect(within(sheet).queryByText(/past payments?,|This adds/)).toBeNull();
     expect(within(sheet).queryByRole('button', { name: /^Add (them|it)$/ })).toBeNull();
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     await closed();
     await settle(c.layer);
     await settle(c.layer);
-    expect(c.controls.tables.recurring.find((r) => r.id === R(1))).toMatchObject({ start_date: '2026-01-15', posted_count: 10 });
+    expect(c.controls.tables.recurring.find((r) => r.id === R(1))).toMatchObject({ start_date: '2026-01-05', posted_count: 11 });
     expect(c.controls.tables.expenses.filter((e) => e.recurring_id === R(1)).map((e) => e.date)).toEqual(['2026-11-01']);
-    // Bills follows at once: the next is Sun 15 Nov.
+    // Bills follows at once: the next is Sat 5 Dec.
     showSegment('Next 30 days');
-    expect(text(within(await screen.findByRole('list', { name: 'Next 30 days' })).getByRole('button', { name: /^Rent\b/ }))).toContain('Sun 15 Nov');
+    expect(text(within(await screen.findByRole('list', { name: 'Next 30 days' })).getByRole('button', { name: /^Rent\b/ }))).toContain('Sat 5 Dec');
     // The history says the start changed.
     const again = await openFrom('Next 30 days', /^Rent\b/);
     const history = within(again).getByRole('region', { name: 'History' });
     await waitFor(() => { expect(text(history)).toMatch(/Jae changed the start/); });
   });
 
-  it('S10 REC-2: weekly names the weekday; moved to today, today counts as done and the next is two weeks on', async () => {
+  it('S10 REC-2: weekly names the weekday; a tie between the new days either side of the old next day takes the later', async () => {
     const c = household();
     show(c.layer);
     await goBills();
     const sheet = await openFrom('Next 30 days', /^Window cleaner\b/);
     fireEvent.click(within(startsGroup(sheet)).getByRole('button', { name: 'Today' }));
-    await waitFor(() => { expect(text(startsGroup(sheet))).toContain('From now on it posts every 2 weeks on Saturday. Next: Sat 28 Nov. Past payments stay as they are.'); });
+    // Its next day is Sat 21 Nov; from today the days are Sat 14 Nov and Sat 28 Nov, 7 days either side.
+    await waitFor(() => { expect(text(startsGroup(sheet))).toContain('From now on it posts every 2 weeks on Saturday. Next: Sat 28 Nov (instead of Sat 21 Nov). Past payments stay as they are.'); });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     await closed();
     await settle(c.layer);
