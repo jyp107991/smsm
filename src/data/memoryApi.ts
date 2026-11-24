@@ -218,7 +218,8 @@ export function createMemoryApi(
   /**
    * What the recurring_guard trigger does (migration 8, and S10's migration 20261124000000): delete and restore
    * change deleted_at alone, a deleted template never runs, and a second delete keeps the first time; a new start on a
-   * template that has posted (the same rhythm) counts every new day on or before today as done (core restart); a new
+   * template that has posted (the same rhythm) first posts the old schedule's due days, then counts every new day on
+   * or before today as done (core restart); a new
    * rhythm applies from its next occurrence (posted days never move); a resumed template skips what fell due while it
    * was paused.
    */
@@ -234,6 +235,8 @@ export function createMemoryApi(
     refuseDeletedRunning(out, wasDeleted);
     const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: null });
     if (old.posted_count > 0 && out.frequency === old.frequency && out.every === old.every && out.start_date !== old.start_date) {
+      // The old schedule's days due by today that haven't posted post first (exactly once), then the new start.
+      postOne(old);
       out.posted_count = restart(sched(out), today()).done;
     } else if (old.posted_count > 0 && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
       const nxt = occurrence(sched(old), old.posted_count);
@@ -352,44 +355,58 @@ export function createMemoryApi(
     return next;
   }
 
+  /**
+   * What recurring_post_due_one() does (migration 20261124000000): posts one template's due days, each once, at home,
+   * by the UK date, from its posted_count on; returns the new count without writing it. Only an active template that
+   * isn't deleted posts.
+   */
+  function postOne(r: RecurringRow): number {
+    let n = r.posted_count;
+    if (!r.active || (r.deleted_at ?? null) !== null) return n;
+    const hid = r.household_id;
+    const home = tables.households.find((h) => h.id === hid)?.home_country ?? 'GB';
+    const uk = today();
+    const schedule = { frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: r.end_date };
+    for (;;) {
+      const d = occurrence(schedule, n);
+      if (d > uk || (r.end_date !== null && d > r.end_date)) break;
+      const stamp = now().toISOString();
+      if (r.amount_varies) {
+        if (!tables.inboxItems.some((x) => x.recurring_id === r.id && x.occurrence_date === d)) {
+          tables.inboxItems.push({
+            id: crypto.randomUUID(), household_id: hid, source: 'bill', status: 'open', receipt_path: null, recurring_id: r.id,
+            occurrence_date: d, external_id: null, expense_id: null, created_by: null, created_at: stamp, updated_at: stamp,
+            payload: { description: r.description, estimate_pence: r.amount_pence, date: d, category_id: r.category_id },
+          });
+        }
+      } else if (!tables.expenses.some((e) => e.recurring_id === r.id && e.occurrence_date === d)) {
+        const id = crypto.randomUUID();
+        tables.expenses.push({
+          id, household_id: hid, kind: 'expense', description: r.description, amount_pence: r.amount_pence, date: d,
+          category_id: r.category_id, chapter_id: null, paid: r.paid, paid_via: r.paid_via, split_mode: r.split_mode,
+          split_params: r.split_params, shares: r.shares, notes: r.notes, tags: [], country: home, refund_of: null, source: 'recurring',
+          items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
+          fx_rate: null, receipt_path: null, category_guess: false, external_id: null, merchant: null, external_category: null, account_id: null,
+          recurring_id: r.id, occurrence_date: d, created_by: r.created_by, created_at: stamp, updated_by: r.created_by,
+          updated_at: stamp, deleted_at: null,
+        });
+        log('expense', id, 'created', { after: { description: r.description, amount_pence: r.amount_pence } }, hid);
+      }
+      n += 1;
+    }
+    return n;
+  }
+
   /** What post_due_recurring() does (migration 6): each due occurrence once, at home, by the UK date. */
   function postDue(): number {
     const hid = myHousehold();
     if (!hid) return 0;
-    const home = tables.households.find((h) => h.id === hid)?.home_country ?? 'GB';
-    const uk = today();
     let posted = 0;
     for (const r of tables.recurring) {
-      if (r.household_id !== hid || !r.active || (r.deleted_at ?? null) !== null) continue;
-      const schedule = { frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: r.end_date };
-      for (;;) {
-        const d = occurrence(schedule, r.posted_count);
-        if (d > uk || (r.end_date !== null && d > r.end_date)) break;
-        const stamp = now().toISOString();
-        if (r.amount_varies) {
-          if (!tables.inboxItems.some((x) => x.recurring_id === r.id && x.occurrence_date === d)) {
-            tables.inboxItems.push({
-              id: crypto.randomUUID(), household_id: hid, source: 'bill', status: 'open', receipt_path: null, recurring_id: r.id,
-              occurrence_date: d, external_id: null, expense_id: null, created_by: null, created_at: stamp, updated_at: stamp,
-              payload: { description: r.description, estimate_pence: r.amount_pence, date: d, category_id: r.category_id },
-            });
-          }
-        } else if (!tables.expenses.some((e) => e.recurring_id === r.id && e.occurrence_date === d)) {
-          const id = crypto.randomUUID();
-          tables.expenses.push({
-            id, household_id: hid, kind: 'expense', description: r.description, amount_pence: r.amount_pence, date: d,
-            category_id: r.category_id, chapter_id: null, paid: r.paid, paid_via: r.paid_via, split_mode: r.split_mode,
-            split_params: r.split_params, shares: r.shares, notes: r.notes, tags: [], country: home, refund_of: null, source: 'recurring',
-            items: null, bill_total_pence: null, place: null, lat: null, lng: null, original_amount: null, original_currency: null,
-            fx_rate: null, receipt_path: null, category_guess: false, external_id: null, merchant: null, external_category: null, account_id: null,
-            recurring_id: r.id, occurrence_date: d, created_by: r.created_by, created_at: stamp, updated_by: r.created_by,
-            updated_at: stamp, deleted_at: null,
-          });
-          log('expense', id, 'created', { after: { description: r.description, amount_pence: r.amount_pence } }, hid);
-        }
-        r.posted_count += 1;
-        posted += 1;
-      }
+      if (r.household_id !== hid) continue;
+      const n = postOne(r);
+      posted += n - r.posted_count;
+      r.posted_count = n;
     }
     return posted;
   }

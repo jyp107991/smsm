@@ -660,6 +660,9 @@ isOneToOne: false
 "queue_notification":
 { Args: { "p_actor": string,"p_household": string,"p_kind": string,"p_payload"?: Json,"p_ref": string }; Returns: undefined
                            },
+"recurring_post_due_one":
+{ Args: { "p_id": string,"p_kick"?: boolean }; Returns: number
+                           },
 "recurring_step":
 { Args: { "p_every": number,"p_frequency": string }; Returns: string
                            },

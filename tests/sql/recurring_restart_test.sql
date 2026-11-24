@@ -170,3 +170,59 @@ from activity where entity = 'recurring' and entity_id = :'FWD' and action = 'ed
 select net_pence = :net_a_rested as ok_s10_balance_untouched_by_a_paused_restart from member_net where user_id = :'A';
 select count(*) = 0 as ok_s10_no_entry_twice_for_one_day
 from (select recurring_id, occurrence_date from expenses where recurring_id is not null group by 1, 2 having count(*) > 1) x;
+
+-- ───────── A start change that arrives before the day's posting: the old day's bill posts first, exactly once ─────────
+-- Between UK midnight and the nightly post (01:17), on a day nobody has opened the app, a template can have a day
+-- due today (or earlier) that hasn't posted yet. recurring_guard posts the OLD schedule's due days first (the same
+-- posting as post_due_recurring, so exactly once), and only then counts the new schedule's days on or before today.
+\set DUE 'c1000000-0000-4000-8000-000000000008'
+\set BEHIND 'c1000000-0000-4000-8000-000000000009'
+\set HELD 'c1000000-0000-4000-8000-00000000000a'
+reset role;
+set request.jwt.claim.sub = '';
+-- Weekly from 7 days ago, its first day posted (as the nightly job would have), today's not yet.
+insert into recurring(id, household_id, description, amount_pence, paid, shares, frequency, start_date, posted_count) values
+  (:'DUE', :'hid', 'Restart due today', 1100, jsonb_build_object(:'A', 1100), jsonb_build_object(:'A', 550, :'B', 550), 'weekly', :'uk_today'::date - 7, 1);
+insert into expenses(household_id, description, amount_pence, date, paid, shares, country, source, recurring_id, occurrence_date)
+values (:'hid', 'Restart due today', 1100, :'uk_today'::date - 7, jsonb_build_object(:'A', 1100), jsonb_build_object(:'A', 550, :'B', 550), 'GB', 'recurring', :'DUE', :'uk_today'::date - 7);
+-- Weekly from 14 days ago, only its first day posted: 7 days ago and today are both still to post (posting fell behind).
+insert into recurring(id, household_id, description, amount_pence, paid, shares, frequency, start_date, posted_count) values
+  (:'BEHIND', :'hid', 'Restart behind', 1200, jsonb_build_object(:'A', 1200), jsonb_build_object(:'A', 600, :'B', 600), 'weekly', :'uk_today'::date - 14, 1);
+-- Paused, with today's day not posted: a paused one posts nothing (as post_due_recurring), start change or not.
+insert into recurring(id, household_id, description, amount_pence, paid, shares, frequency, start_date, posted_count, active) values
+  (:'HELD', :'hid', 'Restart held', 1300, jsonb_build_object(:'A', 1300), jsonb_build_object(:'A', 650, :'B', 650), 'weekly', :'uk_today'::date - 7, 1, false);
+select net_pence as net_a_due from member_net where user_id = :'A' \gset
+
+set role authenticated;
+set request.jwt.claim.sub = :'A';
+-- Moved to 3 days ago: the new days are 3 days ago (done) and then 4 days from now.
+update recurring set start_date = :'uk_today'::date - 3 where id = :'DUE'
+returning (start_date = :'uk_today'::date - 3 and posted_count = 1) as ok_s10_due_today_then_new_start_counts_the_new_schedule;
+update recurring set start_date = :'uk_today'::date - 3 where id = :'BEHIND'
+returning (posted_count = 1) as ok_s10_behind_then_new_start_counts_the_new_schedule;
+update recurring set start_date = :'uk_today'::date - 3 where id = :'HELD'
+returning (posted_count = 1 and not active) as ok_s10_paused_new_start_counts_the_new_schedule;
+-- Both phones and the nightly job post again: nothing more.
+select post_due_recurring() >= 0 as ok_s10_post_after_due_start_change;
+reset role;
+set request.jwt.claim.sub = '';
+select post_due_recurring_all() >= 0 as ok_s10_nightly_after_due_start_change;
+select count(*) = 1 and bool_and(occurrence_date = :'uk_today'::date - 7)
+   as ok_s10_due_first_day_untouched
+from expenses where recurring_id = :'DUE' and occurrence_date < :'uk_today'::date;
+select count(*) = 1 and bool_and(date = :'uk_today'::date and amount_pence = 1100 and source = 'recurring' and deleted_at is null)
+   as ok_s10_old_day_due_today_posted_exactly_once
+from expenses where recurring_id = :'DUE' and occurrence_date = :'uk_today'::date;
+select count(*) = 2 as ok_s10_due_has_its_two_old_days_and_nothing_from_the_new from expenses where recurring_id = :'DUE';
+select pg_temp.next_of(:'DUE') = :'uk_today'::date + 4 as ok_s10_due_next_follows_the_new_start;
+select array_agg(occurrence_date order by occurrence_date) = array[:'uk_today'::date - 7, :'uk_today'::date]
+   as ok_s10_behind_old_days_each_posted_once
+from expenses where recurring_id = :'BEHIND' and occurrence_date >= :'uk_today'::date - 7;
+select count(*) = 0 as ok_s10_behind_nothing_from_the_new_start from expenses where recurring_id = :'BEHIND' and occurrence_date = :'uk_today'::date - 3;
+select pg_temp.next_of(:'BEHIND') = :'uk_today'::date + 4 as ok_s10_behind_next_follows_the_new_start;
+select count(*) = 0 as ok_s10_paused_old_day_not_posted_by_a_start_change from expenses where recurring_id = :'HELD';
+-- Jae paid both; Sam's shares of today's 11.00, and of 7 days ago's and today's 12.00, are owed to Jae.
+select net_pence = :net_a_due + 550 + 600 + 600 as ok_s10_balance_moves_by_exactly_the_old_days from member_net where user_id = :'A';
+select count(*) = 1 as ok_s10_old_day_logged_once
+from activity where entity = 'expense' and action = 'created'
+  and entity_id in (select id from expenses where recurring_id = :'DUE' and occurrence_date = :'uk_today'::date);

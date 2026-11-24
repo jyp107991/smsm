@@ -567,7 +567,9 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
 /**
  * S10: the phone's waiting copy of a template, until the server answers: a new start on one that has posted (the same
  * rhythm) counts every new day on or before today as done (core restart, the database's rule), so nothing past looks
- * due. Otherwise the stored count (the server's; never sent).
+ * due. The server first posts any day of the old schedule due by today that hadn't posted (an entry the phone can't
+ * make itself: it arrives with the next read); the new count is the same either way. Otherwise the stored count (the
+ * server's; never sent).
  */
 function expectedCount(existing: RecurringRow | undefined, draft: RecurringDraft, today: IsoDate): number {
   if (!existing) return 0;

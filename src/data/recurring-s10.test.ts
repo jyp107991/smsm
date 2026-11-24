@@ -223,6 +223,30 @@ describe('a new start after one has posted (S10, REC-2, REC-6)', () => {
     expect(c.controls.tables.expenses).toEqual([]);
   });
 
+  it('S10 REC-2: an old day due today that hasn’t posted yet (before the nightly post) posts once, first; then the new start takes over', async () => {
+    // Weekly from Sat 7 Nov. Opening posts 7 and 14 Nov; then, as if the nightly post hadn't run yet, 14 Nov isn't posted.
+    const weekly = storedRecurring({ frequency: 'weekly', start_date: '2026-11-07', posted_count: 0, paid: { [JAE_ID]: 145000, [SAM_ID]: 0 } });
+    const c = household({ recurring: [weekly] });
+    await c.layer.ready;
+    await settle(c.layer);
+    const server = c.controls.tables;
+    server.expenses = server.expenses.filter((e) => e.occurrence_date !== TODAY);
+    const row = server.recurring[0];
+    if (row) row.posted_count = 1;
+    await act(async () => { await c.layer.refresh(); });
+    c.network.set(false);
+    const view = watch(c.layer);
+    // Moved to Wed 11 Nov: 11 Nov is done, next Wed 18 Nov. The phone's waiting copy says so at once.
+    act(() => { m.saveRecurring({ ...rentDraft('2026-11-11'), frequency: 'weekly', id: ID }, c.layer); });
+    await waitFor(() => { expect(view.result.current.recurring.data?.[0]).toMatchObject({ start_date: '2026-11-11', posted_count: 1 }); });
+    c.network.set(true);
+    await settle(c.layer);
+    await act(async () => { await c.layer.api.postDueRecurring(); });
+    expect(server.recurring[0]).toMatchObject({ start_date: '2026-11-11', posted_count: 1 });
+    expect(server.expenses.filter((e) => e.recurring_id === ID).map((e) => e.occurrence_date).sort()).toEqual(['2026-11-07', TODAY]);
+    view.unmount();
+  });
+
   it('S10: a template that hasn’t posted yet moves as before (its past is the past-start choice’s, not counted done)', async () => {
     const c = household({ recurring: [storedRecurring({ start_date: '2026-12-01', posted_count: 0 })] });
     await c.layer.ready;
