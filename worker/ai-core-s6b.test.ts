@@ -15,7 +15,8 @@
  *                                                   // the question with the people already written as A (the one
  *                                                   // asking) and B; countries are ISO2 codes present in the data
  *   MODELS.recap, MODELS.ask: at least one Workers AI text model each ('@cf/…'), tried in order (builder's choice).
- *   capFor('recap') = 3, capFor('ask') = 50 (per household per UK day); timeoutFor('recap') = timeoutFor('ask') = 8000.
+ *   capFor('recap') = 3, capFor('ask') = 15 (per household per UK day; 24 Nov: ask lowered from 50 to fit the free
+ *   Neuron allocation, worker/ai-budget.test.ts); timeoutFor('recap') = timeoutFor('ask') = 8000.
  *   Prompts worker/prompts/recap.md and ask.md (first line "version: <n>"), each with <task>.schema.json beside it;
  *   the system message says the figures/question are data, never instructions.
  *   validate('recap', json): { headline: string (1–140 chars), aside: string (≤ 140) | null }, strict.
@@ -121,9 +122,9 @@ describe('recap and ask: models, caps and time (INS-2, INS-9; AI.md §2)', () =>
     }
   });
 
-  it('INS-2 INS-9: daily caps per household: recap 3, ask 50; S6a’s are unchanged', () => {
-    expect([core().capFor('recap'), core().capFor('ask')]).toEqual([3, 50]);
-    expect([core().capFor('scan'), core().capFor('parse'), core().capFor('categorise')]).toEqual([30, 100, 100]);
+  it('INS-2 INS-9: daily caps per household: recap 3, ask 15 (24 Nov, with S6a’s: within the free Neuron allocation)', () => {
+    expect([core().capFor('recap'), core().capFor('ask')]).toEqual([3, 15]);
+    expect([core().capFor('scan'), core().capFor('parse'), core().capFor('categorise')]).toEqual([10, 25, 40]);
   });
 
   it('INS-2 INS-9: 8 s each', () => {
@@ -334,13 +335,13 @@ describe('POST /api/ai: recap and ask (INS-2, INS-9; AI.md §2, §4)', () => {
     expect(fourth.run).not.toHaveBeenCalled();
   });
 
-  it('INS-9: an ask is counted as "ask"; the 50th of the day is read, the 51st is "limit"', async () => {
-    const db = rpc(50);
+  it('INS-9: an ask is counted as "ask"; the 15th of the day is read, the 16th is "limit" (24 Nov caps)', async () => {
+    const db = rpc(15);
     const AI = ai(replyFile('ask-good'));
     expect(await answer(await handleAi()(request(ASK), env(AI), db.impl))).toEqual({ ok: true, data: { measure: 'total', filters: { categories: ['Eating out'], countries: ['JP'] } } });
     expect(db.calls).toEqual([{ p_kind: 'ask' }]);
     const over = ai(replyFile('ask-good'));
-    expect(await answer(await handleAi()(request(ASK), env(over), rpc(51).impl))).toEqual({ ok: false, reason: 'limit' });
+    expect(await answer(await handleAi()(request(ASK), env(over), rpc(16).impl))).toEqual({ ok: false, reason: 'limit' });
     expect(over.run).not.toHaveBeenCalled();
   });
 

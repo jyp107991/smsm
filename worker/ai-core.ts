@@ -60,13 +60,18 @@ export function isDailyLimit(message: string): boolean {
   return /4006|daily free allocation|neurons/i.test(message);
 }
 
-/** AI.md §2: per household per day. */
+/**
+ * AI.md §2: per household per day. 24 Nov: lowered (scan 30 → 10, parse 100 → 25, categorise 100 → 40, ask 50 → 15) so
+ * one household's worst day fits within 60% of the account's 10,000 free Neurons, shared with MacroPy
+ * (worker/ai-budget.ts worstCaseDay; DECISIONS 24 Nov).
+ */
 export function capFor(task: Task): number {
   switch (task) {
-    case 'scan': return 30;
+    case 'scan': return 10;
+    case 'parse': return 25;
+    case 'categorise': return 40;
     case 'recap': return 3;
-    case 'ask': return 50;
-    default: return 100;
+    case 'ask': return 15;
   }
 }
 /** The whole time a task may take, across its models (Workers AI's image models are slower than AI.md's 10 s). */
