@@ -18,7 +18,8 @@
  *     scan       '@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'
  *     parse      '@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'          (24 Nov: qwen3-30b-a3b-fp8 retired, worker/ai-models.test.ts)
  *     categorise '@cf/openai/gpt-oss-20b', '@cf/qwen/qwen3.8-27b'
- *   capFor(task): number                 per household per UK day: scan 30, parse 100, categorise 100
+ *   capFor(task): number                 per household per UK day: scan 10, parse 25, categorise 40 (24 Nov: lowered
+ *                                        from 30, 100, 100 to fit the free Neuron allocation; worker/ai-budget.test.ts)
  *   timeoutFor(task): number             ms, in total across the fallbacks: scan 25000, parse 8000, categorise 8000
  *   isDailyLimit(message: string): boolean   true for /4006|daily free allocation|neurons/i (Workers AI's free allocation)
  *
@@ -133,8 +134,8 @@ describe('models, caps and time (SCAN-5; AI.md §2)', () => {
     });
   });
 
-  it('SCAN-5: daily caps per household: scan 30, parse 100, categorise 100', () => {
-    expect([core().capFor('scan'), core().capFor('parse'), core().capFor('categorise')]).toEqual([30, 100, 100]);
+  it('SCAN-5: daily caps per household: scan 10, parse 25, categorise 40 (24 Nov: within the free Neuron allocation)', () => {
+    expect([core().capFor('scan'), core().capFor('parse'), core().capFor('categorise')]).toEqual([10, 25, 40]);
   });
 
   it('SCAN-5: time allowed in total: scan 25 s, the others 8 s', () => {

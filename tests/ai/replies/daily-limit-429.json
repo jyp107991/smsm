@@ -1,0 +1,15 @@
+{
+ "source": "eval-ai run 45423764195 (24 Nov 2026), 'Why calls failed': every model's answer from the Cloudflare REST API once the account's free daily allocation was used up. The run logged the first 160 characters; the message's end and the rest of the envelope follow Cloudflare's v4 error shape and the binding's 4006 error (worker/index.test.ts).",
+ "status": 429,
+ "body": {
+  "errors": [
+   {
+    "message": "AiError: AiError: you have used up your daily free allocation of 10,000 neurons, please upgrade to Cloudflare's Workers Paid plan if you would like to continue usage.",
+    "code": 4006
+   }
+  ],
+  "success": false,
+  "result": null,
+  "messages": []
+ }
+}

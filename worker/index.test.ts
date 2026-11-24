@@ -153,19 +153,19 @@ describe('POST /api/ai: one count per call, daily caps (SCAN-5; AI.md §2, §4 "
     expect(db.calls[0]?.body).toEqual({ p_kind: 'scan' });
   });
 
-  it('SCAN-5: the 30th scan of the day is read; the 31st is "limit" and Workers AI isn’t asked', async () => {
+  it('SCAN-5: the 10th scan of the day is read; the 11th is "limit" and Workers AI isn’t asked (24 Nov caps)', async () => {
     const AI = ai(replyFile('scan-good'));
-    expect((await answer(await handleAi()(request(SCAN), env(AI), rpc({ count: 30 }).impl))).ok).toBe(true);
+    expect((await answer(await handleAi()(request(SCAN), env(AI), rpc({ count: 10 }).impl))).ok).toBe(true);
     AI.run.mockClear();
-    expect(await answer(await handleAi()(request(SCAN), env(AI), rpc({ count: 31 }).impl))).toEqual({ ok: false, reason: 'limit' });
+    expect(await answer(await handleAi()(request(SCAN), env(AI), rpc({ count: 11 }).impl))).toEqual({ ok: false, reason: 'limit' });
     expect(AI.run).not.toHaveBeenCalled();
   });
 
-  it('ADD-9 CAT-2: parse and categorise stop after 100 a day', async () => {
+  it('ADD-9 CAT-2: parse stops after 25 a day and categorise after 40 (24 Nov caps)', async () => {
     const AI = ai({ response: '{"category":"Household"}' });
-    expect(await answer(await handleAi()(request(PARSE), env(AI), rpc({ count: 101 }).impl))).toEqual({ ok: false, reason: 'limit' });
-    expect(await answer(await handleAi()(request(CATEGORISE), env(AI), rpc({ count: 101 }).impl))).toEqual({ ok: false, reason: 'limit' });
-    expect((await answer(await handleAi()(request(CATEGORISE), env(AI), rpc({ count: 100 }).impl))).ok).toBe(true);
+    expect(await answer(await handleAi()(request(PARSE), env(AI), rpc({ count: 26 }).impl))).toEqual({ ok: false, reason: 'limit' });
+    expect(await answer(await handleAi()(request(CATEGORISE), env(AI), rpc({ count: 41 }).impl))).toEqual({ ok: false, reason: 'limit' });
+    expect((await answer(await handleAi()(request(CATEGORISE), env(AI), rpc({ count: 40 }).impl))).ok).toBe(true);
   });
 
   it('SCAN-5: the count failing for any other reason is "error", and nothing is read', async () => {
