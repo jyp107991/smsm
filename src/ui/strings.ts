@@ -2,6 +2,10 @@
  * Every interface string lives here (SPEC TXT-7), so another interface language can be added later
  * without touching screens. Sentence case, plain verbs (DESIGN §5).
  */
+
+/** "1st", "2nd", "3rd", "11th", "22nd", "31st". */
+const ordinal = (n: number) => `${String(n)}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+
 export const strings = {
   app: {
     name: 'smsm',
@@ -102,6 +106,9 @@ export const strings = {
     notYours: 'Only whoever wrote a comment can change it.',
     settleDay: 'Pick a day from the 1st to the 28th.',
     originalDeleted: 'The original was deleted, so this can’t be money back for it.',
+    /** S10: Delete is for a regular payment that has stopped. */
+    stillRunning: 'Pause or end it first, then delete it.',
+    deletedRegular: 'It was deleted, so it can’t start again.',
   },
 
   // ───────────── S2: the daily loop ─────────────
@@ -209,6 +216,9 @@ export const strings = {
       category: 'Its category has been removed. Pick another one and save again.',
       chapter: 'Its chapter isn’t there any more. Pick another one (or Everyday) and save again.',
       photo: 'The receipt photo couldn’t be kept with it; the entry itself is saved.',
+      /** S10: a regular payment refused by the database's rules for Delete. */
+      'still-running': 'It was still running, so it wasn’t deleted. Pause or end it first.',
+      'deleted-regular': 'It was deleted on the other phone, so it can’t start again.',
       other: 'It couldn’t be saved. Open it to check it and save again.',
     },
     fix: 'Fix it',
@@ -474,15 +484,23 @@ export const strings = {
     pastAdded: (n: number) => (n === 1 ? 'It’s added when you save.' : 'They’re added when you save.'),
     /** The start moves to `day`; when that day is shorter than the start's own (30 Nov from the 31st), it says so. */
     startFrom: (day: string, then: string | null) => `Start from ${day} instead${then === null ? '' : `, ${then}`}`,
-    thenMonthly: (day: number) => `then on the ${String(day)}${day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th'} each month`,
+    thenMonthly: (day: number) => `then on the ${ordinal(day)} each month`,
     thenYearly: (day: string) => `then on ${day} each year`,
     /** Online, "Start from" chosen keeping the start's own day: nothing past is added. */
     pastSkipped: (n: number, bills: boolean, day: string) =>
       `It starts on ${day}, without the ${n === 1 ? '' : `${String(n)} `}past ${bills ? 'bill' : 'payment'}${n === 1 ? '' : 's'}.`,
     pastFirst: 'First choose: add the past payments, or start from the next one.',
-    lockedRhythm: (often: string, n: number, unit: string, start: string) =>
-      n === 1 ? `${often}, from ${start}` : `Every ${String(n)} ${unit}, from ${start}`,
-    lockedHint: 'It has started, so its days stay as they are. To repeat on other days, end it and add a new one.',
+    /** S10: once one has posted, how often is fixed (the start can still move). */
+    lockedOften: (often: string, n: number, unit: string) => (n === 1 ? often : `Every ${String(n)} ${unit}`),
+    lockedOftenHint: 'It has started, so how often stays as it is. To change that, end it and add a new one.',
+    /** S10: a new start after one has posted (core restart): what it repeats on, the next day, and that the past stays. */
+    restartLine: (on: string, next: string | null) =>
+      `From now on it posts ${on}. ${next === null ? 'It ends before its next day, so nothing more posts.' : `Next: ${next}.`} Past payments stay as they are.`,
+    onWeekday: (every: number, weekday: string) => (every === 1 ? `on ${weekday}s` : `every ${String(every)} weeks on ${weekday}`),
+    onDayOfMonth: (every: number, day: number, shorter: boolean) =>
+      `${every === 1 ? '' : `every ${String(every)} months `}on the ${ordinal(day)}${shorter ? ', or the last day of a shorter month' : ''}`,
+    onDate: (every: number, date: string, leap: boolean) =>
+      `${every === 1 ? `on ${date} each year` : `every ${String(every)} years on ${date}`}${leap ? ', or 28 Feb when there’s no 29th' : ''}`,
     ends: 'Ends',
     never: 'Never',
     pickStart: 'When it starts',
@@ -499,6 +517,10 @@ export const strings = {
     pausedToast: (description: string) => `Paused ${description}`,
     resumedToast: (description: string) => `Resumed ${description}`,
     endedToast: (description: string) => `Ended ${description}`,
+    /** S10: Delete, for a paused or ended one; Undo on its toast. */
+    delete: 'Delete',
+    deleteFirst: 'To delete it, pause or end it first.',
+    deletedToast: (description: string) => `Deleted ${description}`,
     priceChange: (description: string, before: string, after: string, month: string) => `${description} ${before} → ${after} from ${month}`,
     everyNeeded: 'Write how often as a whole number, 1 or more.',
     endBeforeStart: 'It can’t end before it starts.',

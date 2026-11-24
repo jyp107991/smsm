@@ -3,7 +3,7 @@
  * monthly dates anchor to it: 31 Jan → 28/29 Feb → 31 Mar, never drifting to the 28th. This is exactly how
  * post_due_recurring() computes dates in the database; a test compares the two for random schedules.
  */
-import { addDays, addMonths, addYears, daysBetween, type IsoDate } from './dates';
+import { addDays, addMonths, addYears, daysBetween, weekday, type IsoDate } from './dates';
 import { pence, type Pence } from './money';
 import { normaliseKey } from './text';
 
@@ -73,6 +73,60 @@ export function pastOccurrences(t: { schedule: Schedule; amount: Pence }, today:
 export function keepsAnchor(s: Schedule, d: IsoDate): boolean {
   // A yearly occurrence is always in the start's month, so for both it is the day of the month that tells.
   return s.frequency === 'weekly' || d.slice(8) === s.startDate.slice(8);
+}
+
+// ───────── S10: a new start after one has posted; deleting one that has stopped ─────────
+
+/**
+ * Running: not paused, and not ended (one that ends today has had its last day). Only a template that isn't running
+ * can be deleted, and a deleted one never runs again (recurring_guard checks the same with the UK today).
+ */
+export function isRunning(t: { active: boolean; endDate: IsoDate | null }, today: IsoDate): boolean {
+  return t.active && (t.endDate === null || t.endDate > today);
+}
+
+/** What a schedule repeats on, for the sheet's sentence ("From now on it posts on the 15th."). */
+export interface RepeatsOn {
+  frequency: Schedule['frequency'];
+  every: number;
+  /** The start's weekday, Monday = 1 … Sunday = 7 (what weekly repeats on). */
+  weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /** The start's day of the month and month (what monthly and yearly repeat on). */
+  day: number;
+  month: number;
+  /** Shorter months (from the 29th, 30th or 31st) or common years (from 29 Feb) take their last day instead. */
+  shorter: boolean;
+}
+
+export interface Restart {
+  /** The occurrences of the new schedule on or before today: they count as done and never post (the server's new posted_count). */
+  done: number;
+  /** The first occurrence after today, not after the end date; null when the end comes first. */
+  next: IsoDate | null;
+  on: RepeatsOn;
+}
+
+/**
+ * A new start on a regular payment that has posted, as the database applies it (recurring_guard, migration
+ * 20261124000000): the start is the anchor (REC-2), every occurrence on or before today counts as done, so the change
+ * posts nothing (a new day that falls today included: that period's bill posted on the old day), and the next
+ * occurrence is the first after today. The dates are `occurrence`'s, which are the database's
+ * (tests/unit/recurring-sql.test.ts).
+ */
+export function restart(s: Schedule, today: IsoDate): Restart {
+  let done = 0;
+  while (occurrence(s, done) <= today) done += 1;
+  const first = occurrence(s, done);
+  const day = Number(s.startDate.slice(8, 10));
+  const month = Number(s.startDate.slice(5, 7));
+  return {
+    done,
+    next: s.endDate !== null && first > s.endDate ? null : first,
+    on: {
+      frequency: s.frequency, every: s.every, weekday: weekday(s.startDate), day, month,
+      shorter: s.frequency === 'monthly' ? day > 28 : s.frequency === 'yearly' && month === 2 && day === 29,
+    },
+  };
 }
 
 // ───────── S3: what regular payments cost, what is coming up, and "looks monthly" ─────────

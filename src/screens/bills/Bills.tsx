@@ -7,7 +7,7 @@
 import { useId, useMemo, useState } from 'react';
 import { formatDate, monthWeeks, type IsoDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
-import { useDataLayer, useEntries, useRecurring, type RecurringRow } from '../../data';
+import { isDeleted, useDataLayer, useEntries, useRecurring, type RecurringRow } from '../../data';
 import { Button, Segmented } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
@@ -21,7 +21,9 @@ const NO_TEMPLATES: RecurringRow[] = [];
 export function Bills() {
   const layer = useDataLayer();
   const today = layer.today();
-  const templates = useRecurring().data ?? NO_TEMPLATES;
+  // S10: a deleted regular payment is gone from Bills everywhere (what it posted stays an entry).
+  const all = useRecurring().data ?? NO_TEMPLATES;
+  const templates = useMemo(() => all.filter((t) => !isDeleted(t)), [all]);
   const sheets = useSheets();
   const [view, setView] = useState<View>('month');
   const costsId = useId();
@@ -81,8 +83,22 @@ export function Bills() {
   );
 }
 
-/** A tappable bill row: the description and its detail on the left, the amount on the right. */
-function Row({ label, detail, amount, onClick }: { label: string; detail: string; amount: string; onClick: () => void }) {
+/**
+ * A tappable bill row: the description and its detail on the left, the amount on the right. Without `onClick` (S10:
+ * a bill posted by a regular payment since deleted) the same row as plain text: there is nothing to open.
+ */
+function Row({ label, detail, amount, onClick }: { label: string; detail: string; amount: string; onClick?: () => void }) {
+  if (!onClick) {
+    return (
+      <div className="flex min-h-14 w-full min-w-0 items-center gap-3 py-2.5">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-body text-ink truncate">{label}</span>
+          <span className="text-secondary text-ink-2 truncate">{detail}</span>
+        </span>
+        <span className="text-body nums-list text-ink shrink-0 text-right">{amount}</span>
+      </div>
+    );
+  }
   return (
     <button
       type="button"
@@ -165,13 +181,15 @@ function ThisMonth({ templates, today, onOpen }: { templates: readonly Recurring
             <ul aria-labelledby={`${titleId}-day`} className="m-0 list-none p-0">
               {pickedBills.map((b) => {
                 const amount = formatPence(b.amount);
+                // S10: a bill whose regular payment was deleted stays (it is an entry), with nothing to open.
+                const live = templates.some((t) => t.id === b.id);
                 return (
                   <li key={`${b.id}:${String(b.posted)}`} className="border-line border-b last:border-b-0">
                     <Row
                       label={b.description}
                       detail={b.posted ? strings.bills.postedTag : strings.bills.dueTag}
                       amount={b.varies ? strings.bills.about(amount) : amount}
-                      onClick={() => { onOpen(b.id); }}
+                      {...(live ? { onClick: () => { onOpen(b.id); } } : {})}
                     />
                   </li>
                 );

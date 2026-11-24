@@ -96,7 +96,7 @@ export function storedRecurring(over: Partial<RecurringRow> = {}): RecurringRow 
     category_id: categoryId('Rent & bills'), paid: { [JAE_ID]: amount }, paid_via: 'person', split_mode: 'ratio',
     split_params: { [JAE_ID]: 50, [SAM_ID]: 50 }, shares: { [JAE_ID]: amount - half, [SAM_ID]: half }, is_subscription: false,
     frequency: 'monthly', every: 1, start_date: '2026-01-01', end_date: null, posted_count: 11, active: true, notes: null,
-    created_by: JAE_ID, created_at: '2026-01-01T09:00:00.000Z', updated_at: '2026-01-01T09:00:00.000Z',
+    created_by: JAE_ID, created_at: '2026-01-01T09:00:00.000Z', updated_at: '2026-01-01T09:00:00.000Z', deleted_at: null,
     ...over,
   };
 }

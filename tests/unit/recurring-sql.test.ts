@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { execFileSync } from 'node:child_process';
-import { occurrence, pastOccurrences, type Schedule } from '../../src/core/recurring';
+import { occurrence, pastOccurrences, restart, type Schedule } from '../../src/core/recurring';
 import { pence } from '../../src/core/money';
 
 const DAY_MS = 86_400_000;
@@ -142,6 +142,51 @@ from v order by v.i;`;
       const sqlNext = next === '' ? null : next;
       if (r.count !== Number(count) || r.nextDate !== sqlNext || r.totalPence !== Number(count) * c.amount) {
         mismatches.push(`${c.frequency} every ${String(c.every)} from ${c.startDate} to ${String(c.endDate)}, today ${c.today}: core ${String(r.count)} / ${String(r.nextDate)}, SQL ${String(count)} / ${String(sqlNext)}`);
+      }
+    });
+    expect(mismatches).toEqual([]);
+  }, 60_000);
+  // S10: a new start on a template that has posted. recurring_guard (migration 20261124000000) sets posted_count to the
+  // number of k with (start_date + step * k)::date <= the UK today (it loops while that holds), so post_due_recurring's
+  // next day is (start_date + step * posted_count)::date, posted only if not after end_date. restart(s, today) must
+  // give the same count and next day for the same schedule, end and today.
+  it('S10 REC-2 restart(schedule, today) counts what is done and finds the next day exactly as recurring_guard and post_due_recurring do, for 500 random schedules', () => {
+    const dateArb = fc.integer({ min: dayNumber('2000-01-01'), max: dayNumber('2045-12-31') }).map(fromDayNumber);
+    const arb = fc.record({
+      frequency: fc.constantFrom<Schedule['frequency']>('weekly', 'monthly', 'yearly'),
+      every: fc.oneof(fc.integer({ min: 1, max: 3 }), fc.integer({ min: 1, max: 52 })),
+      startDate: fc.oneof(dateArb, fc.tuple(fc.integer({ min: 2000, max: 2045 }), fc.constantFrom('01-31', '03-31', '08-31', '10-31', '01-29', '01-30')).map(([y, md]) => `${String(y)}-${md}`), fc.integer({ min: 500, max: 511 }).map((q) => `${String(4 * q)}-02-29`)),
+      endDate: fc.option(dateArb, { nil: null, freq: 3 }),
+      today: dateArb,
+    });
+    const cases = [
+      { frequency: 'monthly' as const, every: 1, startDate: '2026-01-15', endDate: null, today: '2026-11-24' },
+      { frequency: 'monthly' as const, every: 1, startDate: '2026-01-31', endDate: null, today: '2026-11-24' },
+      { frequency: 'weekly' as const, every: 1, startDate: '2026-11-10', endDate: null, today: '2026-11-24' },
+      { frequency: 'yearly' as const, every: 1, startDate: '2024-02-29', endDate: null, today: '2027-03-01' },
+      { frequency: 'monthly' as const, every: 1, startDate: '2026-01-15', endDate: '2026-12-14', today: '2026-11-24' },
+      ...fc.sample(arb, { numRuns: 500, seed: 20261124 }),
+    ];
+    const values = cases
+      .map((c, i) => `(${String(i)}, date '${c.startDate}', ${c.endDate === null ? 'null::date' : `date '${c.endDate}'`}, date '${c.today}', '${c.frequency}', ${String(c.every)})`)
+      .join(',\n');
+    const step = `(case frequency when 'weekly' then make_interval(weeks => every) when 'monthly' then make_interval(months => every) else make_interval(years => every) end)`;
+    const sql = `
+with v(i, start_date, end_date, today, frequency, every) as (values ${values}),
+c as (select v.*, (select count(*) from generate_series(0, 2500) k where (start_date + ${step} * k)::date <= today) as done from v)
+select i, done, case when end_date is null or (start_date + ${step} * done)::date <= end_date then ((start_date + ${step} * done)::date)::text else '' end
+from c order by i;`;
+    const rows = psql(sql).trim().split('\n').map((line) => line.split('|'));
+    expect(rows).toHaveLength(cases.length);
+    const mismatches: string[] = [];
+    rows.forEach(([i, done, next], idx) => {
+      expect(Number(i)).toBe(idx);
+      const c = cases[idx];
+      if (!c) throw new Error('row out of range');
+      const r = restart({ frequency: c.frequency, every: c.every, startDate: c.startDate, endDate: c.endDate }, c.today);
+      const sqlNext = next === '' ? null : next;
+      if (r.done !== Number(done) || r.next !== sqlNext) {
+        mismatches.push(`${c.frequency} every ${String(c.every)} from ${c.startDate} to ${String(c.endDate)}, today ${c.today}: core ${String(r.done)} / ${String(r.next)}, SQL ${String(done)} / ${String(sqlNext)}`);
       }
     });
     expect(mismatches).toEqual([]);

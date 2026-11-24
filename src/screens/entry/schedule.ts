@@ -4,8 +4,8 @@
  * to the day the person picks in "Starts" (monthly on that day of the month, weekly on that weekday, yearly on
  * that date), which can be any day, past or future, not just the day it was entered.
  */
-import { addDays, addYears, type IsoDate } from '../../core/dates';
-import { occurrencesBetween, type Frequency } from '../../core/recurring';
+import { addDays, addYears, formatDate, formatShortDate, type IsoDate } from '../../core/dates';
+import { occurrencesBetween, restart, type Frequency, type Schedule } from '../../core/recurring';
 import type { ExpenseRow, RecurringRow } from '../../data';
 import { strings } from '../../ui/strings';
 import type { Person } from '../shared/words';
@@ -57,4 +57,20 @@ export function fromMonth(t: RecurringRow, changedOn: IsoDate, today: IsoDate): 
   if (next === undefined) return null;
   const name = strings.datePicker.months[Number(next.slice(5, 7)) - 1] ?? '';
   return next.slice(0, 4) === today.slice(0, 4) ? name : `${name} ${next.slice(0, 4)}`;
+}
+
+/**
+ * S10: under Starts, when a regular payment that has posted takes a new start: what it repeats on from now on, its
+ * next day and that past payments stay ("From now on it posts on the 15th. Next: Tue 15 Dec. Past payments stay as
+ * they are."). The dates are the core's (`restart`, the database's rule).
+ */
+export function restartLine(s: Schedule, today: IsoDate): string {
+  const { next, on } = restart(s, today);
+  const weekday = strings.datePicker.weekdays[on.weekday - 1]?.[1] ?? '';
+  // A date in the start's own year reads "15 Dec" whichever year that is (the year is the next date's business).
+  const date = formatShortDate(s.startDate, s.startDate);
+  const words = on.frequency === 'weekly' ? strings.recurring.onWeekday(on.every, weekday)
+    : on.frequency === 'monthly' ? strings.recurring.onDayOfMonth(on.every, on.day, on.shorter)
+      : strings.recurring.onDate(on.every, date, on.shorter);
+  return strings.recurring.restartLine(words, next === null ? null : formatDate(next, today));
 }

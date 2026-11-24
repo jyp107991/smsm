@@ -4,12 +4,12 @@
  */
 import { addDays, startOfMonth, type IsoDate } from '../../core/dates';
 import { pence, sumPence, type Pence } from '../../core/money';
-import { monthlyCost, upcoming, yearlyCost, type Frequency, type UpcomingBill, type UpcomingTemplate } from '../../core/recurring';
+import { isRunning as running, monthlyCost, upcoming, yearlyCost, type Frequency, type UpcomingBill, type UpcomingTemplate } from '../../core/recurring';
 import type { ExpenseRow, RecurringRow } from '../../data';
 
-/** Running now: not paused, and not ended (one that ends today has had its last day). */
+/** Running now: not paused, and not ended (one that ends today has had its last day); the core's rule. */
 export function isRunning(t: RecurringRow, today: IsoDate): boolean {
-  return t.active && (t.end_date === null || t.end_date > today);
+  return running({ active: t.active, endDate: t.end_date }, today);
 }
 
 function cadence(t: RecurringRow) {

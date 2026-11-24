@@ -159,7 +159,8 @@ describe('a regular payment started long ago (S9, REC-1, REC-2)', () => {
     expect(t).toMatchObject({ start_date: '2026-01-31', active: true, posted_count: 10 });
     expect(c.controls.tables.expenses.filter((e) => e.description === 'Cleaner')).toEqual([]);
     expect(c.controls.calls.filter((x) => x.name === 'upsertRecurring').map((x) => (x.arg as { active: boolean }).active)).toEqual([false, true]);
-    // Reopened, its days are fixed (as for any that has started), and the sheet doesn't claim it has posted.
+    // Reopened, how often is fixed (as for any that has started; S10: its start can still move), and the sheet doesn't
+    // claim it has posted.
     await new Promise((resolve) => setTimeout(resolve, 600));
     const main = screen.getByRole('main');
     const seg = within(main).queryAllByRole('radio', { name: 'Next 30 days' }).concat(within(main).queryAllByRole('tab', { name: 'Next 30 days' }));
@@ -168,7 +169,7 @@ describe('a regular payment started long ago (S9, REC-1, REC-2)', () => {
     expect(within(list).getAllByRole('button', { name: /^Cleaner\b/ })).toHaveLength(1);
     fireEvent.click(within(list).getAllByRole('button', { name: /^Cleaner\b/ })[0] as HTMLElement);
     const edit = await screen.findByRole('dialog', { name: 'Edit regular payment' });
-    expect(text(edit)).toContain('It has started, so its days stay as they are.');
+    expect(text(edit)).toContain('It has started, so how often stays as it is.');
     expect(text(edit)).not.toContain('posted already');
   });
 

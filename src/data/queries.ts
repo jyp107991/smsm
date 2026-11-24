@@ -40,6 +40,7 @@ const recurringSchema = z.looseObject({
   id, household_id: id, description: z.string(), amount_pence: z.int(), amount_varies: z.boolean(), category_id: z.nullable(id),
   paid: z.unknown(), shares: z.unknown(), split_mode: z.string(), is_subscription: z.boolean(), frequency: z.enum(['weekly', 'monthly', 'yearly']),
   every: z.int(), start_date: z.string(), end_date: z.nullable(z.string()), posted_count: z.int(), active: z.boolean(),
+  deleted_at: z.optional(z.nullable(z.string())),
 });
 const inboxSchema = z.looseObject({
   id, household_id: id, source: z.string(), status: z.enum(['open', 'kept', 'dismissed']), payload: z.unknown(),

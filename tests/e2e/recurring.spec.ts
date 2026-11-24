@@ -10,10 +10,12 @@
  *     "Amount varies", which lands in the Inbox and is not money until answered.
  *   - Modify: a new amount changes what comes next only (the posted entry and the balance stay) and the history
  *     says "X £a → £b from Month"; description, payer, split and category are kept; before anything has posted
- *     the rhythm and the start can change; once one has posted the rhythm is locked with its hint; an end date
- *     before the start is refused, a later one kept.
- *   - Remove (nothing is ever deleted): Pause drops it from "What home costs" and the lists and shows the paused
- *     note; Resume brings it back; End drops it and shows the ended note; ending one that has not started yet works.
+ *     the rhythm and the start can change; once one has posted the rhythm is locked with its hint (S10: the start
+ *     can still move, and the line under it says what that does); an end date before the start is refused, a
+ *     later one kept.
+ *   - Remove: Pause drops it from "What home costs" and the lists and shows the paused note; Resume brings it back;
+ *     End drops it and shows the ended note; ending one that has not started yet works. S10: Delete (a soft delete)
+ *     only once it is paused or ended: it leaves Bills, Undo brings it back, and what it posted stays.
  *   - Every toast names what happened; no horizontal overflow; axe clean with the sheet open.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -349,11 +351,11 @@ for (const size of SIZES) {
         // The amount: £33.33 → £40.00. What posted stays; what home costs follows the new amount.
         let sheet = await openPosted(page, 'Window box');
         await expect(sheet.getByRole('textbox', { name: 'Amount' })).toHaveValue('33.33');
-        // Once one has posted, its rhythm and start are fixed, and the sheet says why.
+        // Once one has posted, how often is fixed, and the sheet says why; S10: the start can still move.
         await expect(sheet.getByRole('radiogroup', { name: 'How often' })).toHaveCount(0);
-        await expect(sheet.getByRole('group', { name: 'Starts' })).toHaveCount(0);
-        await expect(sheet).toContainText(/Monthly, from /);
-        await expect(sheet).toContainText('It has started, so its days stay as they are. To repeat on other days, end it and add a new one.');
+        await expect(sheet.getByRole('group', { name: 'How often' })).toContainText('Monthly');
+        await expect(sheet.getByRole('group', { name: 'Starts' })).toBeVisible();
+        await expect(sheet).toContainText('It has started, so how often stays as it is. To change that, end it and add a new one.');
         await check(page, `${where}: a posted regular payment's sheet`);
         await fill(page, sheet, { amount: '40' });
         await save(page, sheet, 'Saved Window box as a regular payment');
@@ -488,6 +490,100 @@ for (const size of SIZES) {
         await save(page, sheet, 'Saved Gym (old) as a regular payment');
         await expect(stopped(page).getByRole('button', { name: 'Gym (old), Ended, £25.00' })).toBeVisible();
         await check(page, `${where}: Bills with ended payments`);
+      });
+
+      test('S10 REC-1 REC-7 REC-8: Delete only once paused or ended; it leaves Bills, Undo brings it back, and what it posted stays', async ({ page }) => {
+        await add(page, { amount: '33.33', description: 'Window box', category: 'Household', payer: 'Sam', startsOn: today() });
+        const net0 = await jaeNet(page);
+
+        // Running: no Delete, and the sheet says what to do first.
+        let sheet = await openPosted(page, 'Window box');
+        await expect(sheet.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
+        await expect(sheet).toContainText('To delete it, pause or end it first.');
+        await lifecycle(page, sheet, 'Pause', 'Paused Window box');
+        const cost0 = await homeCost(page);
+
+        // Paused: Delete. It leaves Bills; the toast says so, with Undo.
+        sheet = await openFrom(page, 'Paused or ended', 'Window box');
+        await expect(sheet).not.toContainText('To delete it, pause or end it first.');
+        await check(page, `${where}: a paused payment's sheet with Delete`);
+        await sheet.getByRole('button', { name: 'Delete', exact: true }).click();
+        await expect(sheet).toBeHidden();
+        await expect(toast(page)).toContainText('Deleted Window box');
+        await expect(stopped(page).getByRole('button', { name: /^Window box,/ })).toHaveCount(0);
+        // Undo brings it back as it was: paused.
+        await toast(page).getByRole('button', { name: 'Undo', exact: true }).click();
+        await expect(stopped(page).getByRole('button', { name: 'Window box, Paused, £33.33' })).toBeVisible();
+        await afterSheet(page);
+
+        // Deleted for good this time: gone from Bills; what it posted stays on the calendar (plain text, nothing to
+        // open), in Activity and in the balance.
+        sheet = await openFrom(page, 'Paused or ended', 'Window box');
+        await sheet.getByRole('button', { name: 'Delete', exact: true }).click();
+        await expect(sheet).toBeHidden();
+        await expect(toast(page)).toContainText('Deleted Window box');
+        await afterSheet(page);
+        await expect(stopped(page).getByRole('button', { name: /^Window box,/ })).toHaveCount(0);
+        await expectHomeCost(page, cost0, 'deleting a paused payment changes nothing in what home costs');
+        await show(page, 'Next 30 days');
+        await expect(next30(page).getByRole('button', { name: /^Window box,/ })).toHaveCount(0);
+        await pickToday(page);
+        await expect(todayCell(page).getByRole('button')).toHaveAccessibleName(/Window box posted/);
+        await expect(page.getByRole('main').getByRole('button', { name: /^Window box, Posted,/ })).toHaveCount(0);
+        await expect(page.getByRole('main').getByRole('listitem').filter({ hasText: 'Window box' })).toHaveCount(1);
+        await check(page, `${where}: the calendar after a delete`);
+        await expectJaeNet(page, net0, 'deleting changes no posted money');
+        await tab(page, 'Activity');
+        await expect(page.getByRole('main').getByRole('link', { name: 'Window box, £33.33, Sam paid' })).toHaveCount(1);
+
+        // Ended (one that hadn't started): Delete is there too.
+        await add(page, { amount: '25', description: 'Gym', category: 'Health', payer: 'Jae', startsOn: addDays(today(), 10) });
+        sheet = await openFrom(page, 'Next 30 days', 'Gym');
+        await lifecycle(page, sheet, 'End', 'Ended Gym');
+        sheet = await openFrom(page, 'Paused or ended', 'Gym');
+        await sheet.getByRole('button', { name: 'Delete', exact: true }).click();
+        await expect(sheet).toBeHidden();
+        await expect(toast(page)).toContainText('Deleted Gym');
+        await expect(stopped(page).getByRole('button', { name: /^Gym,/ })).toHaveCount(0);
+        await tab(page, 'Home');
+        await expect(page.getByText(/changes? waiting to sync|couldn’t|could not/i)).toHaveCount(0);
+      });
+
+      test('S10 REC-2: after one has posted the start can move: the line says what happens, nothing posts, Bills follows', async ({ page }) => {
+        await add(page, { amount: '33.33', description: 'Window box', category: 'Household', payer: 'Sam', startsOn: today() });
+        const net0 = await jaeNet(page);
+        // Ten days back: by REC-2's rule from that start, every day on or before today is done; the next is after it.
+        const start = addDays(today(), -10);
+        let k = 0;
+        while (addMonths(start, k) <= today()) k += 1;
+        const next = addMonths(start, k);
+        const day = Number(start.slice(8));
+        const nth = `${String(day)}${day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th'}`;
+        const line = `From now on it posts on the ${nth}${day > 28 ? ', or the last day of a shorter month' : ''}. Next: ${dayName(next)}. Past payments stay as they are.`;
+
+        let sheet = await openPosted(page, 'Window box');
+        const starts = sheet.getByRole('group', { name: 'Starts' });
+        await expect(starts).not.toContainText('From now on');
+        await starts.getByRole('button').nth(1).click();
+        await pickDay(page, 'When it starts', start);
+        await expect(starts).toContainText(line);
+        // No past-start choice for one that has posted: nothing past is added.
+        await expect(sheet.getByRole('button', { name: /^Add (them|it)$/ })).toHaveCount(0);
+        await expect(sheet).not.toContainText('This adds');
+        await check(page, `${where}: a new start on a posted payment`);
+        await save(page, sheet, 'Saved Window box as a regular payment');
+
+        await expectJaeNet(page, net0, 'a new start posts nothing');
+        await tab(page, 'Activity');
+        await expect(page.getByRole('main').getByRole('link', { name: /^Window box,/ })).toHaveCount(1);
+        await show(page, 'Next 30 days');
+        const rows = next30(page).getByRole('button', { name: /^Window box,/ });
+        if (next <= addDays(today(), 30)) await expect(rows.first()).toHaveAccessibleName(new RegExp(`^Window box, ${dayName(next)},`));
+        else await expect(rows).toHaveCount(0);
+        sheet = await openPosted(page, 'Window box');
+        await expect(sheet.getByRole('region', { name: 'History' })).toContainText(/Jae changed the start/);
+        await expect(sheet.getByRole('group', { name: 'Starts' }).getByRole('button').nth(1)).toHaveAttribute('aria-pressed', 'true');
+        await closeSheet(page, sheet);
       });
     });
   }

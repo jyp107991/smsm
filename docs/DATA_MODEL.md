@@ -11,7 +11,7 @@
 | `categories` | 12 defaults + custom | `colour` is a palette token name; `default_ratio`; `archived`; `sort` |
 | `chapters` | trips and projects | `kind`, `country`, dates, `closed` |
 | `expenses` | every entry | `kind` expense / money_back; `paid` and `shares` (jsonb, pence); `paid_via`; `split_mode`, `split_params`; `chapter_id`; `country`, `place`, `lat`, `lng` (3 decimals); itemised `items`; original currency fields (reference only); `receipt_path`; source fields; `refund_of`; soft delete |
-| `recurring` | templates | `amount_varies`; `is_subscription`; schedule; `posted_count` |
+| `recurring` | templates | `amount_varies`; `is_subscription`; schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). A new start after one has posted counts every new day on or before the UK today as done (`recurring_guard`) |
 | `settlements` | "A paid B £x" | `method` monzo / other; soft delete |
 | `inbox_items` | things awaiting a decision | sources bill / scan / share / monzo; never counted as money |
 | `comments` | threads on entries | author-only edit; soft delete |
@@ -31,7 +31,7 @@
 **To add in their slices, as migrations with tests:** Storage buckets `receipts` and `backups` (private; object path starts with the household id; policies compare the first path segment with `my_household()`); for Monzo later, `monzo_connections` (tokens, no client access).
 
 ## 2. RPCs
-`create_household()`, `join_household(code)`, `set_identity(name, animal)`, `set_monzo_me(name)`, `request_change(kind, payload)`, `decide_change(id, approve)`, `post_due_recurring(household?)`, `my_household()`. All `security definer`, all check the caller. `post_due_recurring` turns fixed templates into expenses and "amount varies" templates into inbox items, always at the home country and outside any chapter, and is safe to call from both phones at once.
+`create_household()`, `join_household(code)`, `set_identity(name, animal)`, `set_monzo_me(name)`, `request_change(kind, payload)`, `decide_change(id, approve)`, `post_due_recurring(household?)`, `my_household()`. All `security definer`, all check the caller. `post_due_recurring` turns fixed templates (not deleted) into expenses and "amount varies" templates into inbox items, always at the home country and outside any chapter, and is safe to call from both phones at once.
 
 ## 3. Money rules
 

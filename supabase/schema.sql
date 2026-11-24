@@ -732,7 +732,7 @@ begin
   v_late := exists (select 1 from notification_daily_runs where day = uk_today)
             and (select count(*) from members x where x.household_id = hid) = 2;
   select home_country into home from households where id = hid;
-  for r in select * from recurring where household_id = hid and active order by id for update loop
+  for r in select * from recurring where household_id = hid and active and deleted_at is null order by id for update loop
     step := case r.frequency when 'weekly' then make_interval(weeks => r.every)
                              when 'monthly' then make_interval(months => r.every)
                              else make_interval(years => r.every) end;
@@ -915,15 +915,45 @@ CREATE FUNCTION public.recurring_guard() RETURNS trigger
     SET search_path TO 'public'
     AS $$
 declare uk_today date := (now() at time zone 'Europe/London')::date; nxt date; n int := 0;
+        own constant text[] := array['deleted_at', 'updated_at', 'posted_count'];
 begin
   if tg_op = 'INSERT' then
     if current_user = 'authenticated' then new.posted_count := 0; end if;
+    if new.deleted_at is not null and new.active and (new.end_date is null or new.end_date > uk_today) then
+      raise exception 'a regular payment that is still running can''t be deleted: pause or end it first' using errcode = '23514';
+    end if;
     return new;
   end if;
   if current_user = 'authenticated' and new.posted_count is distinct from old.posted_count then
     raise exception 'posted_count is kept by the server' using errcode = '42501';
   end if;
-  if old.posted_count > 0 and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
+  -- 1b. Delete and restore are one thing at a time; deleted once, when it was.
+  if (old.deleted_at is null) <> (new.deleted_at is null) then
+    if (to_jsonb(new) - own) is distinct from (to_jsonb(old) - own) then
+      raise exception 'deleting or restoring a regular payment changes nothing else' using errcode = '23514';
+    end if;
+  elsif old.deleted_at is not null then
+    new.deleted_at := old.deleted_at;
+  end if;
+  -- 1a. A deleted template is never running.
+  if new.deleted_at is not null and new.active and (new.end_date is null or new.end_date > uk_today) then
+    if old.deleted_at is not null then
+      raise exception 'a deleted regular payment can''t run again' using errcode = '23514';
+    end if;
+    raise exception 'a regular payment that is still running can''t be deleted: pause or end it first' using errcode = '23514';
+  end if;
+  if old.posted_count > 0 and (new.frequency, new.every) is not distinct from (old.frequency, old.every)
+     and new.start_date is distinct from old.start_date then
+    -- 2. A new start: what falls on or before today is done; the next is the first new day after today.
+    new.posted_count := 0;
+    loop
+      exit when (new.start_date + recurring_step(new.frequency, new.every) * new.posted_count)::date > uk_today;
+      new.posted_count := new.posted_count + 1;
+      n := n + 1;
+      if n > 100000 then raise exception 'that start is too far back' using errcode = '22023'; end if;
+    end loop;
+    n := 0;
+  elsif old.posted_count > 0 and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
     nxt := (old.start_date + recurring_step(old.frequency, old.every) * old.posted_count)::date;
     new.start_date := greatest(new.start_date, nxt);
     new.posted_count := 0;
@@ -1923,6 +1953,7 @@ CREATE TABLE public.recurring (
     created_by uuid DEFAULT auth.uid(),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
     CONSTRAINT recurring_amount_pence_check CHECK ((amount_pence > 0)),
     CONSTRAINT recurring_every_check CHECK (((every >= 1) AND (every <= 52))),
     CONSTRAINT recurring_frequency_check CHECK ((frequency = ANY (ARRAY['weekly'::text, 'monthly'::text, 'yearly'::text]))),

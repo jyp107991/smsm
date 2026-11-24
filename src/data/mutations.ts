@@ -12,7 +12,7 @@ import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
-import { occurrence } from '../core/recurring';
+import { isRunning, occurrence, restart } from '../core/recurring';
 import type { Pence } from '../core/money';
 import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
@@ -23,7 +23,7 @@ import { OtherWindowError } from './windows';
 import { locateWith, rateWith, setStoredCountry, setStoredUseLocation, storedCountry, storedUseLocation, type Located } from './places';
 import {
   buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, chapterWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
-  newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
+  isDeleted, newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
   type SettlementDraft,
 } from './writes';
 import type { Json as JsonValue } from './database.types';
@@ -551,7 +551,8 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
     shares: money.shares, is_subscription: draft.isSubscription, frequency: draft.frequency, every: draft.every, start_date: draft.startDate,
     end_date: draft.endDate, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
-    posted_count: existing?.posted_count ?? 0, created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
+    posted_count: expectedCount(existing, draft, layer.today()), created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
+    deleted_at: existing?.deleted_at ?? null,
   };
   // Q-F1: the same form saved twice (a double tap) changes nothing.
   if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
@@ -563,12 +564,26 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
   return row.id;
 }
 
+/**
+ * S10: the phone's waiting copy of a template, until the server answers: a new start on one that has posted (the same
+ * rhythm) counts every new day on or before today as done (core restart, the database's rule), so nothing past looks
+ * due. Otherwise the stored count (the server's; never sent).
+ */
+function expectedCount(existing: RecurringRow | undefined, draft: RecurringDraft, today: IsoDate): number {
+  if (!existing) return 0;
+  const restarts = existing.posted_count > 0 && draft.startDate !== existing.start_date
+    && draft.frequency === existing.frequency && draft.every === existing.every;
+  if (!restarts) return existing.posted_count;
+  return restart({ frequency: draft.frequency, every: draft.every, startDate: draft.startDate, endDate: draft.endDate }, today).done;
+}
+
+/** An edit writes what the form owns: never `active` (a partner's pause stays paused), never `deleted_at` (only Delete and Undo). */
 const EDIT_COLUMNS: readonly RecurringColumn[] = RECURRING_WRITE_COLUMNS.filter(
-  (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active',
+  (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active' && k !== 'deleted_at',
 );
 
 function changeRecurring(
-  id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date'>>, layer: DataLayer,
+  id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date' | 'deleted_at'>>, layer: DataLayer,
   /** What the server will make of it, for the phone's waiting copy only (never sent). */
   expected: Partial<Pick<RecurringRow, 'posted_count'>> = {},
 ): boolean {
@@ -596,6 +611,8 @@ export function pauseRecurring(id: string, layer = activeDataLayer()): boolean {
  */
 export function resumeRecurring(id: string, layer = activeDataLayer()): boolean {
   const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  // S10: a deleted one never runs again (the database refuses it too).
+  if (current && isDeleted(current)) throw new EntryInvalidError(['deletedRegular']);
   if (!current || current.active) return changeRecurring(id, { active: true }, layer);
   const schedule = { frequency: current.frequency as 'weekly' | 'monthly' | 'yearly', every: current.every, startDate: current.start_date, endDate: null };
   const today = layer.today();
@@ -607,6 +624,24 @@ export function resumeRecurring(id: string, layer = activeDataLayer()): boolean 
 /** REC-1: end on a day (today unless told); the template and its history stay. */
 export function endRecurring(id: string, endDate?: IsoDate, layer = activeDataLayer()): boolean {
   return changeRecurring(id, { end_date: endDate ?? layer.today() }, layer);
+}
+
+/**
+ * S10: delete a regular payment that is paused or ended (a soft delete, as for an entry: deleted_at alone, through
+ * the queue; logged). It leaves Bills and never posts again; what it posted stays. A running one is refused here, as
+ * the database refuses it: pause or end it first. True when something changed.
+ */
+export function deleteRecurring(id: string, layer = activeDataLayer()): boolean {
+  const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  if (!current) throw new EntryNotFoundError(id);
+  if (isDeleted(current)) return false;
+  if (isRunning({ active: current.active, endDate: current.end_date }, layer.today())) throw new EntryInvalidError(['stillRunning']);
+  return changeRecurring(id, { deleted_at: layer.now().toISOString() }, layer);
+}
+
+/** S10: Undo of Delete: deleted_at cleared, alone; it comes back as it was (paused or ended). True when something changed. */
+export function restoreRecurring(id: string, layer = activeDataLayer()): boolean {
+  return changeRecurring(id, { deleted_at: null }, layer);
 }
 
 /**

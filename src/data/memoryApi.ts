@@ -6,7 +6,7 @@
  */
 import { todayIn, type IsoDate } from '../core/dates';
 import { pence, type Pence } from '../core/money';
-import { occurrence } from '../core/recurring';
+import { isRunning, occurrence, restart } from '../core/recurring';
 import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
@@ -209,15 +209,33 @@ export function createMemoryApi(
     tables.activity.push({ id: activityId++, household_id: householdId, actor: user?.userId ?? null, entity, entity_id: id, action, summary: summary ?? {}, at: now().toISOString() });
   }
 
+  /** S10 (recurring_guard, migration 20261124000000): a deleted template is never running. */
+  function refuseDeletedRunning(r: RecurringRow, wasDeleted: boolean) {
+    if ((r.deleted_at ?? null) === null || !isRunning({ active: r.active, endDate: r.end_date }, today())) return;
+    refuse(wasDeleted ? 'a deleted regular payment can\'t run again' : 'a regular payment that is still running can\'t be deleted: pause or end it first', '23514');
+  }
+
   /**
-   * What the recurring_guard trigger does (migration 8): a new rhythm or start on a template that has posted
-   * applies from its next occurrence (posted days never move); a resumed template skips what fell due while it
+   * What the recurring_guard trigger does (migration 8, and S10's migration 20261124000000): delete and restore
+   * change deleted_at alone, a deleted template never runs, and a second delete keeps the first time; a new start on a
+   * template that has posted (the same rhythm) counts every new day on or before today as done (core restart); a new
+   * rhythm applies from its next occurrence (posted days never move); a resumed template skips what fell due while it
    * was paused.
    */
   function guardRecurring(old: RecurringRow, next: RecurringRow): RecurringRow {
     const out = { ...next };
+    const wasDeleted = (old.deleted_at ?? null) !== null;
+    if (wasDeleted !== ((out.deleted_at ?? null) !== null)) {
+      const rest = (r: RecurringRow) => JSON.stringify(Object.entries(r).filter(([k]) => !['deleted_at', 'updated_at', 'posted_count'].includes(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
+      if (rest(out) !== rest(old)) refuse('deleting or restoring a regular payment changes nothing else', '23514');
+    } else if (wasDeleted) {
+      out.deleted_at = old.deleted_at;
+    }
+    refuseDeletedRunning(out, wasDeleted);
     const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: null });
-    if (old.posted_count > 0 && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
+    if (old.posted_count > 0 && out.frequency === old.frequency && out.every === old.every && out.start_date !== old.start_date) {
+      out.posted_count = restart(sched(out), today()).done;
+    } else if (old.posted_count > 0 && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
       const nxt = occurrence(sched(old), old.posted_count);
       out.start_date = out.start_date > nxt ? out.start_date : nxt;
       out.posted_count = 0;
@@ -342,7 +360,7 @@ export function createMemoryApi(
     const uk = today();
     let posted = 0;
     for (const r of tables.recurring) {
-      if (r.household_id !== hid || !r.active) continue;
+      if (r.household_id !== hid || !r.active || (r.deleted_at ?? null) !== null) continue;
       const schedule = { frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: r.end_date };
       for (;;) {
         const d = occurrence(schedule, r.posted_count);
@@ -727,6 +745,7 @@ export function createMemoryApi(
           ? { ...existing, ...sent, updated_at: stamp }
           : { posted_count: 0, created_by: me().userId, created_at: stamp, updated_at: stamp, ...row };
         if (existing) next = guardRecurring(existing, next);
+        else refuseDeletedRunning(next, false);
         // The table's checks (amount > 0, every 1–52). An end before the start is not one of them: End on a payment
         // that hasn't started yet stores today as its end (the phone refuses one picked before the start).
         if (next.amount_pence <= 0) refuse('new row violates check constraint "recurring_amount_pence_check"', '23514');
@@ -734,7 +753,13 @@ export function createMemoryApi(
         checkMoney(next as unknown as ExpenseRow);
         if (existing) tables.recurring[i] = next;
         else tables.recurring.push(next);
-        log('recurring', next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);
+        // As log_activity: a delete or restore says what it was; an edit, what changed (nothing changed: nothing logged).
+        const was = existing ? (existing.deleted_at ?? null) : null;
+        const deletedNow = next.deleted_at ?? null;
+        if (!existing) log('recurring', next.id, 'created', { after: next as unknown as Json }, next.household_id);
+        else if (was === null && deletedNow !== null) log('recurring', next.id, 'deleted', { description: next.description, amount_pence: next.amount_pence }, next.household_id);
+        else if (was !== null && deletedNow === null) log('recurring', next.id, 'restored', { description: next.description, amount_pence: next.amount_pence }, next.household_id);
+        else log('recurring', next.id, 'edited', diff(existing, next), next.household_id);
         return next;
       }),
     patchInboxItem: (id, patch) =>

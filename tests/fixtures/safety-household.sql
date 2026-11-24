@@ -2,7 +2,7 @@
 -- write it (signed in as each person, under row-level security, through the RPCs), for tests/unit/data-safety.test.ts.
 -- Every split mode; money back linked to an original and money back with none; an original deleted with its money back;
 -- a deleted entry and a restored one; an edited one; a trip abroad with places and the other currency; regular payments
--- active, paused, ended and "amount varies" (posted by post_due_recurring); a year of everyday spending (more than one
+-- active, paused, ended (and deleted, S10) and "amount varies" (posted by post_due_recurring); a year of everyday spending (more than one
 -- restore call's 500 rows); settle-ups; comments, one deleted; categories of the household's own with emoji, one
 -- archived; a closed trip and an open project; change requests approved, declined and pending; the settle day; each
 -- person's notification switches; remembered categories and a keep rule. Prints the household's id last.
@@ -56,6 +56,8 @@ insert into recurring(household_id, description, amount_pence, amount_varies, pa
 values (:'hid', 'Energy', 9000, true, jsonb_build_object(:'B', 9000), 'ratio', jsonb_build_object(:'A', 50, :'B', 50), jsonb_build_object(:'A', 4500, :'B', 4500), 'monthly', 1, '2026-10-03', true) returning id as energy \gset
 select post_due_recurring() > 0;
 update recurring set active = false where id = :'netflix';
+-- S10: the ended gym deleted (soft); its posted entries stay, with their recurring_id.
+update recurring set deleted_at = now() where id = :'gym';
 
 -- entries in every split mode
 insert into expenses(household_id, description, amount_pence, date, category_id, paid, split_mode, split_params, shares, tags, notes)

@@ -536,6 +536,12 @@ describe('notes: subscriptions and regular payments (INS-3)', () => {
     expect(ofKind(notesOf([], templates), 'new-regular')).toEqual([]);
     expect(ofKind(notesOf([], [{ ...GYM, startDate: '2026-11-01' }]), 'new-regular')).toHaveLength(1);
   });
+
+  it('INS-3 S10: an old one whose start was moved into this month is not new (it posted before the 1st); one new this month still is', () => {
+    const moved = { ...RENT_T, startDate: '2026-11-10' };
+    expect(ofKind(notesOf([posted(RENT_T, 150000, '2026-10-01'), posted(RENT_T, 150000, '2026-11-01')], [moved]), 'new-regular')).toEqual([]);
+    expect(ofKind(notesOf([posted(GYM, 3000, '2026-11-03')], [{ ...GYM, startDate: '2026-11-04' }]), 'new-regular')).toHaveLength(1);
+  });
 });
 
 describe('notes: order (INS-1, INS-3)', () => {

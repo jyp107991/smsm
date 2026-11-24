@@ -212,6 +212,10 @@ describe.skipIf(!process.env.PGHOST)('S9 data-safety drill: export, wipe, restor
     expect(rc.some((r) => r.active)).toBe(true);
     expect(rc.some((r) => !r.active)).toBe(true);
     expect(rc.some((r) => r.end_date !== null && r.end_date < TODAY)).toBe(true);
+    // S10: a deleted regular payment, whose posted entries stay with their recurring_id.
+    const gone = rc.find((r) => r.deleted_at !== null);
+    expect(gone).toBeDefined();
+    expect(e.some((x) => x.recurring_id === gone?.id && x.deleted_at === null)).toBe(true);
     expect(before.inbox_items.length).toBeGreaterThan(0);
     expect(before.change_requests.map((r) => r['status']).sort()).toEqual(['approved', 'declined', 'pending']);
     expect(before.household['settle_day']).toBe(15);
@@ -268,6 +272,10 @@ describe.skipIf(!process.env.PGHOST)('S9 data-safety drill: export, wipe, restor
     const regular = (map: Map<unknown, unknown>) => (r: Row) => ({ ...without(r, 'household_id', 'category_id', 'active'), category: map.get(r['category_id']) ?? null });
     expect(byId(after.recurring).map(regular(now))).toEqual(byId(before.recurring).map(regular(was)));
     expect((after.recurring as unknown as RecurringRow[]).every((r) => !r.active)).toBe(true);
+    // S10: a deleted regular payment comes back deleted (as deleted entries do), still the one its entries point at.
+    const goneAfter = (after.recurring as unknown as RecurringRow[]).filter((r) => r.deleted_at !== null);
+    expect(goneAfter.map((r) => [r.description, r.deleted_at])).toEqual((before.recurring as unknown as RecurringRow[]).filter((r) => r.deleted_at !== null).map((r) => [r.description, r.deleted_at]));
+    expect((after.expenses as unknown as ExpenseRow[]).filter((x) => goneAfter.some((r) => r.id === x.recurring_id)).length).toBeGreaterThan(0);
     expect(after.category_memory.map((r) => ({ ...without(r, 'household_id', 'category_id'), category: now.get(r['category_id']) })))
       .toEqual(before.category_memory.map((r) => ({ ...without(r, 'household_id', 'category_id'), category: was.get(r['category_id']) })));
     const rule = (map: Map<unknown, unknown>) => (r: Row) => [r['match_text'], r['decision'], r['split_mode'], r['split_params'], map.get(r['category_id'])];
