@@ -216,6 +216,10 @@ describe.skipIf(!process.env.PGHOST)('S9 data-safety drill: export, wipe, restor
     const gone = rc.find((r) => r.deleted_at !== null);
     expect(gone).toBeDefined();
     expect(e.some((x) => x.recurring_id === gone?.id && x.deleted_at === null)).toBe(true);
+    // Owner, 24 Nov: regular payments with notes, and the entries and Inbox bills they posted carrying them.
+    expect(rc.filter((r) => r.notes !== null).map((r) => [r.description, r.notes]).sort()).toEqual([['Energy', 'Meter 42'], ['Rent', 'Account 1234']]);
+    expect(e.some((x) => x.recurring_id === rc.find((r) => r.description === 'Rent')?.id && x.notes === 'Account 1234')).toBe(true);
+    expect(before.inbox_items.some((i) => (i['payload'] as Row)['notes'] === 'Meter 42')).toBe(true);
     expect(before.inbox_items.length).toBeGreaterThan(0);
     expect(before.change_requests.map((r) => r['status']).sort()).toEqual(['approved', 'declined', 'pending']);
     expect(before.household['settle_day']).toBe(15);
@@ -272,6 +276,8 @@ describe.skipIf(!process.env.PGHOST)('S9 data-safety drill: export, wipe, restor
     const regular = (map: Map<unknown, unknown>) => (r: Row) => ({ ...without(r, 'household_id', 'category_id', 'active'), category: map.get(r['category_id']) ?? null });
     expect(byId(after.recurring).map(regular(now))).toEqual(byId(before.recurring).map(regular(was)));
     expect((after.recurring as unknown as RecurringRow[]).every((r) => !r.active)).toBe(true);
+    expect((after.recurring as unknown as RecurringRow[]).filter((r) => r.notes !== null).map((r) => [r.description, r.notes]).sort())
+      .toEqual([['Energy', 'Meter 42'], ['Rent', 'Account 1234']]);
     // S10: a deleted regular payment comes back deleted (as deleted entries do), still the one its entries point at.
     const goneAfter = (after.recurring as unknown as RecurringRow[]).filter((r) => r.deleted_at !== null);
     expect(goneAfter.map((r) => [r.description, r.deleted_at])).toEqual((before.recurring as unknown as RecurringRow[]).filter((r) => r.deleted_at !== null).map((r) => [r.description, r.deleted_at]));

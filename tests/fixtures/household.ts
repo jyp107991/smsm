@@ -51,10 +51,11 @@ function rng(seed: number) {
   };
 }
 
-const CATEGORY_DEFS: readonly [string, string, string][] = [
-  ['Groceries', '🛒', 'moss'], ['Eating out', '🍜', 'amber'], ['Rent & bills', '🏠', 'walnut'], ['Utilities', '💡', 'honey'],
-  ['Transport', '🚆', 'slate'], ['Subscriptions', '📺', 'plum'], ['Household', '🧺', 'oak'], ['Going out', '🍸', 'berry'],
-  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '📦', 'stone'],
+const CATEGORY_DEFS: readonly [string, string, string, string][] = [
+  ['Groceries', '🛒', 'moss', 'groceries'], ['Eating out', '🍜', 'amber', 'eating_out'], ['Rent & bills', '🏠', 'walnut', 'rent_bills'],
+  ['Utilities', '💡', 'honey', 'utilities'], ['Transport', '🚆', 'slate', 'transport'], ['Subscriptions', '📺', 'plum', 'subscriptions'],
+  ['Household', '🧺', 'oak', 'household'], ['Going out', '🍸', 'berry', 'going_out'], ['Travel', '✈️', 'lake', 'travel'],
+  ['Gifts', '🎁', 'clay', 'gifts'], ['Health', '💊', 'fern', 'health'], ['Other', '📦', 'stone', 'other'],
 ];
 
 function id(n: number): string {
@@ -78,9 +79,9 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     { household_id: DEMO_HOUSEHOLD_ID, user_id: JAE, display_name: 'Jae', animal: 'dog', locked_at: stamp(start), monzo_me: 'jae-demo', joined_at: stamp(start) },
     { household_id: DEMO_HOUSEHOLD_ID, user_id: SAM, display_name: 'Sam', animal: 'cat', locked_at: stamp(start), monzo_me: null, joined_at: stamp(start) },
   ];
-  const categories: CategoryRow[] = CATEGORY_DEFS.map(([name, emoji, colour], i) => ({
+  const categories: CategoryRow[] = CATEGORY_DEFS.map(([name, emoji, colour, key], i) => ({
     id: id(0x100 + i), household_id: DEMO_HOUSEHOLD_ID, name, emoji, colour, default_ratio: null,
-    archived: false, sort: i + 1, updated_at: stamp(start),
+    archived: false, sort: i + 1, seed_key: key, updated_at: stamp(start),
   }));
   const cat = (name: string): string => categories.find((c) => c.name === name)?.id ?? '';
 

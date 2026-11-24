@@ -12,6 +12,25 @@ CREATE SCHEMA public;
 --
 COMMENT ON SCHEMA public IS 'standard public schema';
 --
+-- Name: categories_seed_guard(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.categories_seed_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+begin
+  if tg_op = 'INSERT' then
+    if coalesce(current_setting('smsm.restoring', true), '') = 'on' then
+      new.seed_key := null;
+    elsif current_user = 'authenticated' and new.seed_key is not null then
+      raise exception 'a starting category''s key is set by the server' using errcode = '42501';
+    end if;
+  elsif current_user = 'authenticated' and new.seed_key is distinct from old.seed_key then
+    raise exception 'a starting category''s key is set by the server' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+--
 -- Name: check_comment_entry(); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.check_comment_entry() RETURNS trigger
@@ -162,19 +181,19 @@ begin
   if exists (select 1 from members where user_id = auth.uid()) then raise exception 'already in a household'; end if;
   insert into households default values returning id into hid;
   insert into members(household_id, user_id) values (hid, auth.uid());
-  insert into categories(household_id, name, emoji, colour, sort) values
-    (hid, 'Groceries',     '🛒', 'moss',   1),
-    (hid, 'Eating out',    '🍜', 'amber',  2),
-    (hid, 'Rent & bills',  '🏠', 'walnut', 3),
-    (hid, 'Utilities',     '💡', 'honey',  4),
-    (hid, 'Transport',     '🚆', 'slate',  5),
-    (hid, 'Subscriptions', '📺', 'plum',   6),
-    (hid, 'Household',     '🧺', 'oak',    7),
-    (hid, 'Going out',     '🍸', 'berry',  8),
-    (hid, 'Travel',        '✈️', 'lake',   9),
-    (hid, 'Gifts',         '🎁', 'clay',   10),
-    (hid, 'Health',        '💊', 'fern',   11),
-    (hid, 'Other',         '📦', 'stone',  12);
+  insert into categories(household_id, name, emoji, colour, sort, seed_key) values
+    (hid, 'Groceries',     '🛒', 'moss',   1,  'groceries'),
+    (hid, 'Eating out',    '🍜', 'amber',  2,  'eating_out'),
+    (hid, 'Rent & bills',  '🏠', 'walnut', 3,  'rent_bills'),
+    (hid, 'Utilities',     '💡', 'honey',  4,  'utilities'),
+    (hid, 'Transport',     '🚆', 'slate',  5,  'transport'),
+    (hid, 'Subscriptions', '📺', 'plum',   6,  'subscriptions'),
+    (hid, 'Household',     '🧺', 'oak',    7,  'household'),
+    (hid, 'Going out',     '🍸', 'berry',  8,  'going_out'),
+    (hid, 'Travel',        '✈️', 'lake',   9,  'travel'),
+    (hid, 'Gifts',         '🎁', 'clay',   10, 'gifts'),
+    (hid, 'Health',        '💊', 'fern',   11, 'health'),
+    (hid, 'Other',         '📦', 'stone',  12, 'other');
   return hid;
 end $$;
 --
@@ -366,6 +385,38 @@ CREATE FUNCTION public.keep_first_deletion() RETURNS trigger
 begin
   if old.deleted_at is not null and new.deleted_at is not null then new.deleted_at := old.deleted_at; end if;
   return new;
+end $$;
+--
+-- Name: key_starting_categories(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.key_starting_categories() RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare n int;
+begin
+  with seeds(key, name) as (values
+    ('groceries', 'Groceries'), ('eating_out', 'Eating out'), ('rent_bills', 'Rent & bills'), ('utilities', 'Utilities'),
+    ('transport', 'Transport'), ('subscriptions', 'Subscriptions'), ('household', 'Household'), ('going_out', 'Going out'),
+    ('travel', 'Travel'), ('gifts', 'Gifts'), ('health', 'Health'), ('other', 'Other')),
+  first_name as (
+    select c.id, c.household_id, c.name, c.sort,
+           coalesce((select a.summary -> 'name' ->> 'before' from activity a
+                     where a.entity = 'category' and a.entity_id = c.id and a.action = 'edited' and a.summary ? 'name'
+                     order by a.at, a.id limit 1), c.name) as was
+    from categories c
+    where c.seed_key is null
+      and not exists (
+        select 1 from activity a join households h on h.id = c.household_id
+        where a.entity = 'category' and a.entity_id = c.id and a.action = 'created' and a.at <> h.created_at)),
+  candidates as (
+    select f.id, s.key,
+           row_number() over (partition by f.household_id, s.key order by (f.name = s.name) desc, f.sort, f.id) as rn
+    from first_name f join seeds s on s.name = f.was
+    where not exists (select 1 from categories k where k.household_id = f.household_id and k.seed_key = s.key))
+  update categories c set seed_key = x.key from candidates x where x.id = c.id and x.rn = 1;
+  get diagnostics n = row_count;
+  return n;
 end $$;
 --
 -- Name: kick_push(); Type: FUNCTION; Schema: public; Owner: -
@@ -931,7 +982,7 @@ begin
     if r.amount_varies then
       insert into inbox_items(household_id, source, recurring_id, occurrence_date, payload)
       values (r.household_id, 'bill', r.id, d, jsonb_build_object('description', r.description,
-              'estimate_pence', r.amount_pence, 'date', d, 'category_id', r.category_id))
+              'estimate_pence', r.amount_pence, 'date', d, 'category_id', r.category_id, 'notes', r.notes))
       on conflict do nothing;
     else
       v_id := null;
@@ -1572,7 +1623,9 @@ CREATE TABLE public.categories (
     archived boolean DEFAULT false NOT NULL,
     sort integer DEFAULT 0 NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT categories_colour_palette CHECK ((colour = ANY (ARRAY['moss'::text, 'amber'::text, 'walnut'::text, 'honey'::text, 'slate'::text, 'plum'::text, 'oak'::text, 'berry'::text, 'lake'::text, 'clay'::text, 'fern'::text, 'stone'::text])))
+    seed_key text,
+    CONSTRAINT categories_colour_palette CHECK ((colour = ANY (ARRAY['moss'::text, 'amber'::text, 'walnut'::text, 'honey'::text, 'slate'::text, 'plum'::text, 'oak'::text, 'berry'::text, 'lake'::text, 'clay'::text, 'fern'::text, 'stone'::text]))),
+    CONSTRAINT categories_seed_key_check CHECK (((seed_key IS NULL) OR (seed_key = ANY (ARRAY['groceries'::text, 'eating_out'::text, 'rent_bills'::text, 'utilities'::text, 'transport'::text, 'subscriptions'::text, 'household'::text, 'going_out'::text, 'travel'::text, 'gifts'::text, 'health'::text, 'other'::text]))))
 );
 --
 -- Name: category_memory; Type: TABLE; Schema: public; Owner: -
@@ -2087,6 +2140,10 @@ ALTER TABLE ONLY public.settlements
 --
 CREATE INDEX activity_household_at ON public.activity USING btree (household_id, at DESC);
 --
+-- Name: categories_household_seed_key; Type: INDEX; Schema: public; Owner: -
+--
+CREATE UNIQUE INDEX categories_household_seed_key ON public.categories USING btree (household_id, seed_key) WHERE (seed_key IS NOT NULL);
+--
 -- Name: change_requests_one_pending; Type: INDEX; Schema: public; Owner: -
 --
 CREATE UNIQUE INDEX change_requests_one_pending ON public.change_requests USING btree (household_id, kind) WHERE (status = 'pending'::text);
@@ -2142,6 +2199,10 @@ CREATE INDEX push_subscriptions_user ON public.push_subscriptions USING btree (u
 -- Name: categories categories_log; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER categories_log AFTER INSERT OR UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.log_activity();
+--
+-- Name: categories categories_seed_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER categories_seed_guard BEFORE INSERT OR UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.categories_seed_guard();
 --
 -- Name: categories categories_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
@@ -2735,6 +2796,12 @@ CREATE POLICY settlements_upd ON public.settlements FOR UPDATE USING ((household
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO anon;
 --
+-- Name: FUNCTION categories_seed_guard(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.categories_seed_guard() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.categories_seed_guard() TO authenticated;
+GRANT ALL ON FUNCTION public.categories_seed_guard() TO service_role;
+--
 -- Name: FUNCTION check_comment_entry(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.check_comment_entry() FROM PUBLIC;
@@ -2825,6 +2892,10 @@ GRANT ALL ON FUNCTION public.jsonb_pence_sum(j jsonb) TO service_role;
 -- Name: FUNCTION keep_first_deletion(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.keep_first_deletion() FROM PUBLIC;
+--
+-- Name: FUNCTION key_starting_categories(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.key_starting_categories() FROM PUBLIC;
 --
 -- Name: FUNCTION kick_push(); Type: ACL; Schema: public; Owner: -
 --

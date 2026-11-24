@@ -27,7 +27,11 @@ import { usePeople } from '../shared/people';
 import { plainError } from '../shared/plain';
 import { useSheets } from '../sheets';
 
-interface Bill { description: string; estimate: number; date: IsoDate; categoryId: string | null }
+/**
+ * `notes`: the regular payment's notes on the day the bill was due (migration 20261124000100); undefined for a bill
+ * posted before bills carried them, which then takes its regular payment's notes.
+ */
+interface Bill { description: string; estimate: number; date: IsoDate; categoryId: string | null; notes?: string | null }
 
 /** What an Inbox bill says about itself (its payload), read defensively. */
 export function billOf(item: InboxItemRow): Bill {
@@ -38,6 +42,7 @@ export function billOf(item: InboxItemRow): Bill {
     estimate: typeof p.estimate_pence === 'number' && Number.isSafeInteger(p.estimate_pence) && p.estimate_pence >= 0 ? p.estimate_pence : 0,
     date,
     categoryId: typeof p.category_id === 'string' ? p.category_id : null,
+    ...('notes' in p ? { notes: typeof p.notes === 'string' ? p.notes : null } : {}),
   };
 }
 
@@ -69,6 +74,7 @@ export function Inbox() {
       categoryTouched: true,
       splitTouched: true,
       date: bill.date,
+      ...(bill.notes !== undefined ? { notes: bill.notes ?? '' } : {}),
     };
   };
   /** REC-3 (S9a, DESIGN §4.9): "Usually £90.00": the person's tap keeps the bill at its usual amount, at once. */

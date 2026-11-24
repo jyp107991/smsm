@@ -220,8 +220,8 @@ async function fill(page: Page, sheet: Locator, p: Partial<NewPayment>): Promise
   if (p.varies !== undefined && (await sheet.getByRole('switch', { name: 'Amount varies' }).isChecked()) !== p.varies) {
     await sheet.getByRole('switch', { name: 'Amount varies' }).click();
   }
-  if (p.subscription !== undefined && (await sheet.getByRole('switch', { name: 'Subscription' }).isChecked()) !== p.subscription) {
-    await sheet.getByRole('switch', { name: 'Subscription' }).click();
+  if (p.subscription !== undefined && (await sheet.getByRole('switch', { name: 'Show in Subscriptions' }).isChecked()) !== p.subscription) {
+    await sheet.getByRole('switch', { name: 'Show in Subscriptions' }).click();
   }
 }
 
@@ -711,6 +711,62 @@ for (const theme of THEMES) {
       await expectJaeNet(page, net0 + (found.next === today() ? 1000 : 0), 'nothing past posts (one due today would)');
       await tab(page, 'Activity');
       await expect(page.getByRole('main').getByRole('link', { name: 'Cleaner, £20.00, Jae paid' })).toHaveCount(found.next === today() ? 1 : 0);
+    });
+  });
+}
+
+// ───────── Owner's reports, 24 Nov: one meaning for "subscription", and notes (DECISIONS 24 Nov) ─────────
+
+for (const theme of THEMES) {
+  test.describe(`390×844, ${theme}: Show in Subscriptions and notes`, () => {
+    test.beforeEach(async ({ page }) => { await start(page, { width: 390, height: 844 }, theme); });
+
+    test('REC-7 REC-1 REC-6: picking Subscriptions turns "Show in Subscriptions" on (another category undoes only that); notes on add and edit, carried by what it posts', async ({ page }) => {
+      const where = `390×844, ${theme}`;
+      const sheet = await openNew(page);
+      const sw = sheet.getByRole('switch', { name: 'Show in Subscriptions' });
+      await expect(sw).not.toBeChecked();
+      await expect(sw).toHaveAccessibleDescription('Lists it with its monthly and yearly cost under Subscriptions on Bills.');
+      await expect(sheet.getByRole('switch', { name: 'Subscription', exact: true })).toHaveCount(0);
+      const category = (name: string) => sheet.getByRole('group', { name: 'Category' }).getByRole('button', { name: new RegExp(`^${name}\\b`) });
+      await category('Subscriptions').click();
+      await expect(sw).toBeChecked();
+      await category('Household').click();
+      await expect(sw).not.toBeChecked();
+      await category('Subscriptions').click();
+      await expect(sw).toBeChecked();
+      // Notes is on the sheet itself.
+      await expect(sheet.getByRole('button', { name: 'More details' })).toHaveCount(0);
+      const notes = sheet.getByRole('textbox', { name: 'Notes' });
+      await notes.fill('Account 1234');
+      await fill(page, sheet, { amount: '7.99', description: 'Music', payer: 'Jae', split: '50/50', startsOn: today() });
+      await check(page, `${where}: the sheet with Show in Subscriptions and Notes`);
+      await save(page, sheet, 'Saved Music as a regular payment');
+
+      // In Subscriptions on Bills, at £7.99 a month and £95.88 a year.
+      await show(page, 'Subscriptions');
+      await expect(page.getByRole('list', { name: 'Subscriptions' }).getByRole('button', { name: 'Music, £95.88 a year, £7.99 a month' })).toBeVisible();
+      // It posted today, with the note.
+      await tab(page, 'Activity');
+      await page.getByRole('main').getByRole('link', { name: 'Music, £7.99, Jae paid' }).click();
+      await expect(page.getByRole('main')).toContainText('Account 1234');
+      await page.goBack();
+
+      // Edit: the notes are there; a new note saves and is in the history; the entry already posted keeps its own.
+      let edit = await openFrom(page, 'Subscriptions', 'Music');
+      await expect(edit.getByRole('textbox', { name: 'Notes' })).toHaveValue('Account 1234');
+      await edit.getByRole('textbox', { name: 'Notes' }).fill('Account 5678');
+      await save(page, edit, 'Saved Music as a regular payment');
+      edit = await openFrom(page, 'Subscriptions', 'Music');
+      await expect(edit.getByRole('textbox', { name: 'Notes' })).toHaveValue('Account 5678');
+      await expect(edit.getByRole('region', { name: 'History' })).toContainText(/the note/);
+      await expect(edit.getByRole('switch', { name: 'Show in Subscriptions' })).toBeChecked();
+      await check(page, `${where}: editing, with its notes`);
+      await closeSheet(page, edit);
+      await tab(page, 'Activity');
+      await page.getByRole('main').getByRole('link', { name: 'Music, £7.99, Jae paid' }).click();
+      await expect(page.getByRole('main')).toContainText('Account 1234');
+      await expect(page.getByRole('main')).not.toContainText('Account 5678');
     });
   });
 }

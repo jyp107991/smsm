@@ -15,6 +15,7 @@ import { Minus, Plus } from 'lucide-react';
 import { startTransition, useEffect, useId, useMemo, useRef, useState, type RefObject, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, formatShortDate } from '../../core/dates';
 import { isRunning, keepsAnchor, pastOccurrences } from '../../core/recurring';
+import { subscriptionsCategoryId, subscriptionSwitch, switchByPerson, switchForCategory } from '../../core/subscription';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
@@ -112,11 +113,18 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     const country = currentCountry();
     return { ...blank, categoryId: otherCategoryId(live), chapterId, country, ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
   });
+  // REC-7 (owner, 24 Nov): the household's Subscriptions category (by its starting key, never its name). A new
+  // regular payment in it starts with "Show in Subscriptions" on; that automatic "on" goes if another category is
+  // picked, but one the person set stays (a stored template's switch is the person's).
+  const subscriptionsId = useMemo(() => subscriptionsCategoryId(categories), [categories]);
+  const [startSwitch] = useState(() => (request.mode === 'recurring' && !template && request.schedule?.isSubscription === undefined
+    ? subscriptionSwitch(initial.categoryId, subscriptionsId) : null));
+  const subscriptionAuto = useRef(startSwitch?.auto ?? false);
   // S3 (REC-1): the schedule, when this is a regular payment ("Repeat" turns an expense into one).
   const [initialSchedule] = useState((): ScheduleState | null => {
     if (request.mode !== 'recurring') return null;
     if (template) return scheduleOf(template);
-    return { ...blankSchedule(today), ...request.schedule };
+    return { ...blankSchedule(today), ...(startSwitch ? { isSubscription: startSwitch.on } : {}), ...request.schedule };
   });
   const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
@@ -194,6 +202,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     // Q-F5: money back on an exact split keeps the original's proportion until the person types a share.
     setS(followExact(next));
     setErrors([]);
+    // REC-7: a new category moves "Show in Subscriptions" (only an automatic "on" is undone).
+    if (rec && next.categoryId !== s.categoryId) {
+      const sw = switchForCategory({ on: rec.isSubscription, auto: subscriptionAuto.current }, next.categoryId, subscriptionsId);
+      subscriptionAuto.current = sw.auto;
+      if (sw.on !== rec.isSubscription) setRec({ ...rec, isSubscription: sw.on });
+    }
   };
   /**
    * When closing asks "Discard your changes?" first. Editing a saved entry: any change from it (amount,
@@ -210,6 +224,19 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const dirty = asked(s, rec) !== asked(initial, initialSchedule) || (photo !== null && fromInboxScan === undefined);
   const changeSchedule = (next: Partial<ScheduleState>) => {
     if (rec) setRec({ ...rec, ...next });
+    setErrors([]);
+  };
+  /** REC-7: the person set "Show in Subscriptions": theirs from now on. */
+  const setSubscription = (on: boolean) => {
+    subscriptionAuto.current = switchByPerson(on).auto;
+    changeSchedule({ isSubscription: on });
+  };
+  /** REC-1: "Repeat" makes this entry a regular payment (one in Subscriptions shows there, REC-7). */
+  const repeat = () => {
+    const sw = subscriptionSwitch(s.categoryId, subscriptionsId);
+    subscriptionAuto.current = sw.auto;
+    setRec({ ...blankSchedule(s.date), isSubscription: sw.on });
+    setS((prev) => ({ ...prev, foreign: null }));
     setErrors([]);
   };
 
@@ -437,6 +464,19 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     : request.mode === 'refund' ? strings.entry.moneyBack
     : request.mode === 'edit' ? (existing?.kind === 'money_back' ? strings.entry.editMoneyBack : strings.entry.edit)
     : strings.entry.add;
+  // Notes: under More details for an entry; on the sheet itself for a regular payment (owner, 24 Nov).
+  const notesField = (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={`${formId}-notes`} className="text-secondary text-ink-2 font-medium">{strings.entry.notes}</label>
+      <textarea
+        id={`${formId}-notes`}
+        value={s.notes}
+        rows={3}
+        onChange={(e) => { update({ ...s, notes: e.target.value }); }}
+        className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
+      />
+    </div>
+  );
   if (!me) return null;
   const payerPerson = pair.find((p) => p.id === s.payer) ?? me;
   const other = pair.find((p) => p.id !== s.payer) ?? null;
@@ -597,7 +637,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: r.amountVaries, isSubscription: r.isSubscription,
         ...(skipping && !template ? { active: false } : {}),
         // Review 2: only what this form changed of the schedule is sent (never the values it opened with).
-        ...(template ? { opened: { frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: template.end_date } } : {}),
+        ...(template ? { opened: { frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: template.end_date, notes: template.notes } } : {}),
       });
       if (skipping) resumeRecurring(savedId);
     } catch (err) {
@@ -854,6 +894,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           past={pastChoice}
           startsRef={startsRef}
           onChange={changeSchedule}
+          onSubscription={setSubscription}
           onPick={setPicking}
         />
       ) : (
@@ -881,54 +922,44 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         />
       ) : null}
 
+      {/* A regular payment's notes are on the sheet itself (owner, 24 Nov): More details would hold nothing else. */}
+      {rec ? notesField : (
       <Disclosure label={strings.entry.moreDetails} open={showMore} onOpenChange={setShowMore}>
         {photoMode && !photo ? (
           <div className="mb-4"><PhotoButton label={strings.smart.addPhoto} scan={false} autoOpen={startScan && !(smart && online)} onPicked={(file) => { pick(file, false); }} /></div>
         ) : null}
         {photoMode && s.items && s.items.length > 0 ? <Itemise items={s.items} mismatch={mismatch} currency={receipt?.currency ?? null} onToggle={toggleItem} /> : null}
-        {!rec ? (
-          <Field
-            ref={placeRef}
-            label={strings.places.place}
-            hint={strings.places.placeHint}
-            value={s.place ?? ''}
-            autoComplete="off"
-            autoCapitalize="words"
-            maxLength={80}
-            className="mb-4"
-            // A typed place carries no position (PLC-1).
-            onChange={(e) => { placeTouched.current = true; update({ ...s, place: e.target.value, lat: null, lng: null }); }}
-          />
-        ) : null}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${formId}-notes`} className="text-secondary text-ink-2 font-medium">{strings.entry.notes}</label>
-          <textarea
-            id={`${formId}-notes`}
-            value={s.notes}
-            rows={3}
-            onChange={(e) => { update({ ...s, notes: e.target.value }); }}
-            className="bg-sunk text-ink text-body min-h-24 w-full resize-none rounded-[12px] px-4 py-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
-          />
+        <Field
+          ref={placeRef}
+          label={strings.places.place}
+          hint={strings.places.placeHint}
+          value={s.place ?? ''}
+          autoComplete="off"
+          autoCapitalize="words"
+          maxLength={80}
+          className="mb-4"
+          // A typed place carries no position (PLC-1).
+          onChange={(e) => { placeTouched.current = true; update({ ...s, place: e.target.value, lat: null, lng: null }); }}
+        />
+        {notesField}
+        {/* ADD-4: tags, as chips (quick add's #tags land here too). (A regular payment keeps none of its own.) */}
+        <div className="mt-4">
+          <TagsField tags={s.tags} onChange={(tags) => { update({ ...s, tags }); }} />
         </div>
-        {/* ADD-4: tags, as chips (quick add's #tags land here too). A regular payment keeps none of its own. */}
-        {!rec ? (
-          <div className="mt-4">
-            <TagsField tags={s.tags} onChange={(tags) => { update({ ...s, tags }); }} />
-          </div>
-        ) : null}
         {/* CHP-1: with no chapter open yet, one can be started from here (it is chosen for this entry). */}
-        {!rec && request.mode === 'add' && request.inboxItem === undefined && !(chapters ?? []).some((c) => !c.closed) ? (
+        {request.mode === 'add' && request.inboxItem === undefined && !(chapters ?? []).some((c) => !c.closed) ? (
           <div className="mt-4">
             <Button variant="plain" onClick={() => { setNewChapter(true); }}>{strings.chapters.start}</Button>
           </div>
         ) : null}
         {/* REC-1: an expense can become a regular payment, keeping what was typed. */}
-        {request.mode === 'add' && request.inboxItem === undefined && request.importCard === undefined && !rec && !isBack ? (
+        {request.mode === 'add' && request.inboxItem === undefined && request.importCard === undefined && !isBack ? (
           <div className="mt-4">
-            <Button variant="plain" onClick={() => { setRec(blankSchedule(s.date)); setS((prev) => ({ ...prev, foreign: null })); setErrors([]); }}>{strings.recurring.repeat}</Button>
+            <Button variant="plain" onClick={repeat}>{strings.recurring.repeat}</Button>
           </div>
         ) : null}
       </Disclosure>
+      )}
       {template && goneNow ? (
         <div className="flex flex-col gap-4">
           <p className="text-secondary text-ink-2 m-0">{strings.recurring.deletedNote}</p>
@@ -1081,7 +1112,7 @@ interface PastChoice {
   onMove: () => void;
 }
 
-function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, onChange, onPick }: {
+function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, onChange, onSubscription, onPick }: {
   rec: ScheduleState;
   today: string;
   /** S10: one has posted, so how often is fixed (a new rhythm is a new payment); the start can still move. */
@@ -1091,6 +1122,8 @@ function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, on
   past: PastChoice | null;
   startsRef: RefObject<HTMLDivElement | null>;
   onChange: (next: Partial<ScheduleState>) => void;
+  /** REC-7: the person set "Show in Subscriptions". */
+  onSubscription: (on: boolean) => void;
   onPick: (which: 'start' | 'end') => void;
 }) {
   const n = everyOf(rec.everyText) ?? 1;
@@ -1159,15 +1192,16 @@ function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, on
         {/* S10: a moved start's own line says when it posts; the general hint would repeat it. */}
         {restart === null ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p> : null}
       </Group>
-      <EndsAndSwitches rec={rec} today={today} onChange={onChange} onPick={onPick} />
+      <EndsAndSwitches rec={rec} today={today} onChange={onChange} onSubscription={onSubscription} onPick={onPick} />
     </>
   );
 }
 
-function EndsAndSwitches({ rec, today, onChange, onPick }: {
+function EndsAndSwitches({ rec, today, onChange, onSubscription, onPick }: {
   rec: ScheduleState;
   today: string;
   onChange: (next: Partial<ScheduleState>) => void;
+  onSubscription: (on: boolean) => void;
   onPick: (which: 'start' | 'end') => void;
 }) {
   return (
@@ -1185,7 +1219,7 @@ function EndsAndSwitches({ rec, today, onChange, onPick }: {
 
       <div className="flex flex-col">
         <Toggle label={strings.recurring.amountVaries} hint={strings.recurring.amountVariesHint} on={rec.amountVaries} onChange={(amountVaries) => { onChange({ amountVaries }); }} />
-        <Toggle label={strings.recurring.subscription} on={rec.isSubscription} onChange={(isSubscription) => { onChange({ isSubscription }); }} />
+        <Toggle label={strings.recurring.subscription} hint={strings.recurring.subscriptionHint} on={rec.isSubscription} onChange={onSubscription} />
       </div>
     </>
   );

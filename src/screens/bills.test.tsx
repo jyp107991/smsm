@@ -261,13 +261,13 @@ describe('the regular payment sheet (REC-1, REC-6, SPL-2)', () => {
     expect(within(sheet).getByRole('radiogroup', { name: 'Who paid' })).toBeTruthy();
     expect(within(sheet).getByRole('radiogroup', { name: 'How it’s shared' })).toBeTruthy();
     expect(isChecked(toggle(sheet, 'Amount varies'))).toBe(false);
-    expect(isChecked(toggle(sheet, 'Subscription'))).toBe(false);
+    expect(isChecked(toggle(sheet, 'Show in Subscriptions'))).toBe(false);
 
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '12' } });
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Description' }), { target: { value: 'Window cleaner' } });
     fireEvent.click(within(sheet).getByRole('radio', { name: 'Weekly' }));
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Every' }), { target: { value: '2' } });
-    fireEvent.click(toggle(sheet, 'Subscription'));
+    fireEvent.click(toggle(sheet, 'Show in Subscriptions'));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Regular payment' })).toBeNull(); });
     await settle(c.layer);

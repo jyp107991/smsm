@@ -612,7 +612,7 @@ export class FakeServer {
     ['Groceries', 'Eating out', 'Rent & bills', 'Utilities', 'Transport', 'Subscriptions', 'Household', 'Going out', 'Travel', 'Gifts', 'Health', 'Other'].forEach((name, i) => {
       const cid = this.uuid();
       categories[name] = cid;
-      this.rows('categories').push({ id: cid, household_id: id, name, emoji: '•', colour: 'stone', default_ratio: null, archived: false, sort: i + 1, updated_at: at });
+      this.rows('categories').push({ id: cid, household_id: id, name, emoji: '•', colour: 'stone', default_ratio: null, archived: false, sort: i + 1, seed_key: name.toLowerCase().replace(' & ', '_').replace(' ', '_'), updated_at: at });
     });
     this.rows('app_config').push({ key: 'min_client_version', value: opts.minClientVersion ?? '0.0.0' });
     return { id, members: [jae, sam], categories };

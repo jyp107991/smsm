@@ -45,15 +45,17 @@ select id as household_cat from categories where household_id = :'hid' and name 
 insert into chapters(household_id, name, emoji, kind, country, start_date, end_date) values (:'hid', 'Japan', '🗾', 'trip', 'JP', '2026-04-01', '2026-04-10') returning id as japan \gset
 insert into chapters(household_id, name, emoji, kind) values (:'hid', 'Kitchen', '🔨', 'project') returning id as kitchen \gset
 
--- regular payments: active, paused, ended, amount varies, a subscription
+-- regular payments: active, paused, ended, amount varies, a subscription; two with notes (owner, 24 Nov)
 insert into recurring(household_id, description, amount_pence, category_id, paid, split_mode, split_params, shares, frequency, every, start_date, active)
 values (:'hid', 'Rent', 145000, :'rent_cat', jsonb_build_object(:'A', 145000), 'ratio', jsonb_build_object(:'A', 50, :'B', 50), jsonb_build_object(:'A', 72500, :'B', 72500), 'monthly', 1, '2026-08-01', true) returning id as rent \gset
+update recurring set notes = 'Account 1234' where id = :'rent';
 insert into recurring(household_id, description, amount_pence, paid, split_mode, shares, frequency, every, start_date, active, is_subscription)
 values (:'hid', 'Netflix', 1099, jsonb_build_object(:'B', 1099), 'treat', jsonb_build_object(:'B', 1099), 'monthly', 1, '2026-09-05', true, true) returning id as netflix \gset
 insert into recurring(household_id, description, amount_pence, paid, split_mode, split_params, shares, frequency, every, start_date, end_date, active)
 values (:'hid', 'Gym', 4000, jsonb_build_object(:'A', 4000), 'exact', jsonb_build_object(:'A', 2500, :'B', 1500), jsonb_build_object(:'A', 2500, :'B', 1500), 'monthly', 1, '2026-07-10', '2026-09-30', true) returning id as gym \gset
 insert into recurring(household_id, description, amount_pence, amount_varies, paid, split_mode, split_params, shares, frequency, every, start_date, active)
 values (:'hid', 'Energy', 9000, true, jsonb_build_object(:'B', 9000), 'ratio', jsonb_build_object(:'A', 50, :'B', 50), jsonb_build_object(:'A', 4500, :'B', 4500), 'monthly', 1, '2026-10-03', true) returning id as energy \gset
+update recurring set notes = 'Meter 42' where id = :'energy';
 select post_due_recurring() > 0;
 update recurring set active = false where id = :'netflix';
 -- S10: the ended gym deleted (soft); its posted entries stay, with their recurring_id.

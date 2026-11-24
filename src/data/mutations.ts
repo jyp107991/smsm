@@ -529,7 +529,8 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
  * "Start from <next> instead" keeping its day is a paused add, then `resumeRecurring`); an edit never sends `active`.
  * S10 (review 2): an edit sends how often, every, the start and the end only when the form changed them from the
  * values it opened with (`opened`; without it, this phone's own copy), so a stale phone or a sheet left open never
- * writes back an old schedule over the partner's new start or end.
+ * writes back an old schedule over the partner's new start or end. Notes likewise (owner, 24 Nov): sent only when
+ * changed, and an empty note (null) clears them.
  */
 export function saveRecurring(input: RecurringDraft & { id?: string; active?: boolean; opened?: ScheduleWas }, layer = activeDataLayer()): string {
   const { id, active, opened, ...draft } = input;
@@ -563,10 +564,16 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
     start_date: changed.start_date || !existing ? draft.startDate : existing.start_date,
     end_date: changed.end_date || !existing ? draft.endDate : existing.end_date,
   };
+  // Notes: as typed (null clears them); not given, they stay as they are.
+  const typedNotes = draft.notes === undefined ? (existing?.notes ?? null) : draft.notes;
+  const notesWere = opened?.notes !== undefined ? opened.notes : (existing?.notes ?? null);
+  const notesChanged = existing === undefined || typedNotes !== notesWere;
+  const notes = existing === undefined || notesChanged ? typedNotes : existing.notes;
   const row: RecurringRow = {
     id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
-    shares: money.shares, is_subscription: draft.isSubscription, ...schedule, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
+    shares: money.shares, is_subscription: draft.isSubscription, ...schedule, active: existing?.active ?? active ?? true,
+    notes,
     posted_count: expectedCount(existing, schedule), ever_posted: existing ? hasStarted(existing) : false,
     created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
     deleted_at: existing?.deleted_at ?? null,
@@ -574,7 +581,7 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
   // Q-F1: the same form saved twice (a double tap) changes nothing.
   if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
   // An edit writes what the form owns, never `active` (a partner's pause stays paused), and of the schedule only what it changed.
-  const columns = EDIT_COLUMNS.filter((k) => !(k in changed) || changed[k as keyof typeof changed]);
+  const columns = EDIT_COLUMNS.filter((k) => (k === 'notes' ? notesChanged : !(k in changed) || changed[k as keyof typeof changed]));
   layer.enqueue({
     opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
     ...(existing ? { columns } : {}),
@@ -582,8 +589,8 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
   return row.id;
 }
 
-/** S10 (review 2): a regular payment's schedule as the form opened with it. */
-export interface ScheduleWas { frequency: RecurringDraft['frequency']; every: number; startDate: IsoDate; endDate: IsoDate | null }
+/** S10 (review 2): a regular payment's schedule (and, owner 24 Nov, its notes) as the form opened with it. */
+export interface ScheduleWas { frequency: RecurringDraft['frequency']; every: number; startDate: IsoDate; endDate: IsoDate | null; notes?: string | null }
 
 /**
  * S10: the phone's waiting copy of a template, until the server answers: a new start on one that has posted (the same
@@ -755,7 +762,7 @@ export function saveCategory(input: CategoryDraft & { id?: string }, layer = act
   const next: CategoryRow = {
     id: id ?? newId(), household_id: ctx.hid, name: draft.name.trim(), emoji: draft.emoji.trim(), colour: draft.colour,
     archived: current?.archived ?? false, sort: current?.sort ?? Math.max(0, ...all.map((c) => c.sort)) + 1,
-    default_ratio: current?.default_ratio ?? null, updated_at: layer.now().toISOString(),
+    default_ratio: current?.default_ratio ?? null, seed_key: current?.seed_key ?? null, updated_at: layer.now().toISOString(),
   };
   enqueueCategory(layer, ctx.uid, current, next);
   return next.id;
