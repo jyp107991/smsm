@@ -9,7 +9,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ToastProvider, useToast, type ToastApi } from './Toast';
+import { lowestClearFoot, ToastProvider, useToast, type ToastApi } from './Toast';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -75,5 +75,31 @@ describe('Toast', () => {
     expect(screen.queryAllByRole('button', { name: 'Undo' })).toHaveLength(0);
     const leaving = screen.queryAllByRole('button', { name: 'Undo', hidden: true });
     for (const b of leaving) expect(b.closest('[inert]')?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+/**
+ * Q-L4: where the toast's foot goes, given what it keeps clear of (with the 12 px it keeps from each). Boxes are
+ * CI run 45387654645's at 320 × 640: Quick add 511–567, the tab bar 572–640, a 79 px toast, 16 px from each edge.
+ */
+describe('lowestClearFoot', () => {
+  const quickAdd = { top: 511, bottom: 567 };
+  const tabBar = { top: 572, bottom: 640 };
+  it('with nothing to avoid, the foot of the screen', () => {
+    expect(lowestClearFoot([], 79, 624, 16)).toBe(624);
+  });
+  it('above Quick add and the tab bar, never on either', () => {
+    expect(lowestClearFoot([tabBar, quickAdd], 79, 624, 16)).toBe(499);
+    expect(lowestClearFoot([quickAdd, tabBar], 79, 624, 16)).toBe(499);
+  });
+  it('no room above Quick add: into the gap between two marks, or higher, rather than onto either', () => {
+    // A mark at 380–440 leaves 452–499 above Quick add: too short for 79 px, so above that mark instead.
+    expect(lowestClearFoot([quickAdd, tabBar, { top: 380, bottom: 440 }], 79, 624, 16)).toBe(368);
+    // A mark at 300–340 leaves 352–499: room for it there.
+    expect(lowestClearFoot([quickAdd, tabBar, { top: 300, bottom: 340 }], 79, 624, 16)).toBe(499);
+  });
+  it('no gap tall enough anywhere: none (the toast waits, hidden)', () => {
+    expect(lowestClearFoot([{ top: 60, bottom: 600 }], 79, 624, 16)).toBeNull();
+    expect(lowestClearFoot([], 79, 90, 16)).toBeNull();
   });
 });

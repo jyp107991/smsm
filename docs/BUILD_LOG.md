@@ -2,6 +2,12 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-24: toasts never stand over Quick add, even for one frame
+- **What you'd notice:** with "reduce motion" on in the phone's settings, a "Saved" toast could flash for one frame at the very bottom, over Quick add and the tab bar, before jumping to its place. That is what CI caught (deploy run 45387654645). It now appears in its place straight away. On a very short screen with no room anywhere, it waits until there is room, as it already does beside the full Add sheet.
+- **Cause:** the reduce-motion setting turned every change on the page into a tiny transition that only starts at the next frame, so for one frame things still showed their old position or colour. Transitions are now instant under reduced motion; the toast layer never transitions at all.
+- **Tests:** a new browser test reads the toast in the same moment it appears (320 × 640 and 390 × 844, reduce motion on and off): it fails on the old code with CI's exact numbers and passes now; a unit test for where the toast goes. polish-1b 330/330 and s9b + s9b-review 430/430 with each test repeated 10 times; the whole browser suite 243/243; `npm run verify` green.
+- **Next:** nothing for the owner.
+
 ## 2026-11-24: regular payments: delete a stopped one; move the start after one has posted
 - **Delete** (owner: "can you add deleting paused or ended regular payments?"). A paused or ended regular payment now has a Delete button; a running one says "To delete it, pause or end it first." The toast says "Deleted Old gym" with Undo. It is a soft delete, like an entry's: it leaves Bills everywhere and never posts again, while everything it already posted stays as it was, in Activity and in the balance. The database refuses deleting a running one, resuming a deleted one, and a delete or restore that changes anything else. Backups keep it, marked deleted.
 - **Start dates** (owner: "can you make start dates for recurring payments editable after you upload one"). After one has posted, Starts can now change (How often stays fixed: the amount is per payment, so a new rhythm usually needs a new amount and is a new regular payment). Under Starts the sheet says what will happen, e.g. "From now on it posts on the 5th. Next: Sat 5 Dec (instead of Tue 1 Dec). Past payments stay as they are." Nothing already posted moves, and the next payment is the new day nearest to the old next one, so no month is skipped or paid twice. The database decides this, so an old or offline phone can't get round it.

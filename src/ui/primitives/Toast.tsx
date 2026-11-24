@@ -144,7 +144,11 @@ export function ToastStack({ toasts, onDismiss }: { toasts: ToastEntry[]; onDism
       aria-label={strings.ui.notifications}
       data-toast-layer=""
       style={place.top !== null ? { top: `${String(place.top)}px` } : { bottom: `max(${String(place.bottom)}px, calc(env(safe-area-inset-bottom) + 1rem))` }}
-      className="pointer-events-none fixed inset-x-0 z-[90] flex flex-col items-center gap-2 px-4"
+      // `transition-none`: the layer goes to its place in the frame it is placed, never on its way there, whatever
+      // else styles it. CI run 45387654645: under reduced motion app.css gave every element a 0.01 ms transition (of
+      // every property, as none was named), so the layer's new `bottom` waited for the next frame, and for that frame
+      // a new toast stood where the last one had (at first, the screen's foot), over Quick add and the tab bar.
+      className="pointer-events-none fixed inset-x-0 z-[90] flex flex-col items-center gap-2 px-4 transition-none"
     >
       {slot ? <ToastSlot toast={slot} present={current !== undefined} onDismiss={onDismiss} announced={announced} /> : null}
     </div>
@@ -186,15 +190,16 @@ const SETTLE_MS = 700;
 
 /**
  * Where the toast goes so it never covers what must stay in view (Q-L4): anything marked `data-toast-avoid`
- * (the tab bar, the Quick add box, an open sheet's footer). It starts at the bottom and steps up over each
- * marked thing it would cover; if that would push it off the top, it sits at the top instead. While a sheet
- * is open the toast never covers the sheet at all (S9b, ADD-6: `besideSheet`); a sheet that is closing counts
- * for nothing, so the tab bar is avoided again the moment Save is pressed.
+ * (the tab bar, the Quick add box, an open sheet's footer). It sits as low as it can without coming near any of
+ * them: at the bottom, else above the lowest marked thing it would cover, else higher, in the first gap tall
+ * enough (`lowestClearFoot`); with no gap anywhere it waits, hidden, until there is one. While a sheet is open the
+ * toast never covers the sheet at all (S9b, ADD-6: `besideSheet`); a sheet that is closing counts for nothing, so
+ * the tab bar is avoided again the moment Save is pressed.
  *
  * Measured before the first paint, then only when something changes: the window or the visual viewport
- * resizes or scrolls, a marked element or the toast changes size, or a sheet opens or closes. After each
- * change it follows every frame for a short while (sheets slide), then stops, so a toast that stays (the
- * update prompt) costs nothing while nothing moves.
+ * resizes or scrolls, a marked element, the toast or the page itself changes size, the fonts finish loading,
+ * or a sheet opens or closes. After each change it follows every frame for a short while (sheets slide), then
+ * stops, so a toast that stays (the update prompt) costs nothing while nothing moves.
  */
 function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean, about: string | undefined): Place {
   const [place, setPlace] = useState<Place>({ bottom: EDGE, top: null, hidden: false });
@@ -231,6 +236,8 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean,
       for (const m of document.querySelectorAll('[data-toast-avoid]')) sized.observe(m);
       const card = layer.current?.firstElementChild;
       if (card) sized.observe(card);
+      // The page growing or shrinking (a banner, a line that wraps above Quick add) moves marks without resizing them.
+      sized.observe(document.documentElement);
     };
     const mutated = new MutationObserver(() => {
       watchMarks();
@@ -244,6 +251,9 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean,
     window.addEventListener('scroll', changed, { capture: true, passive: true });
     viewport?.addEventListener('resize', changed);
     viewport?.addEventListener('scroll', changed);
+    // A font arriving re-flows text, which can move what the toast avoids without changing its size.
+    const fonts = typeof document.fonts === 'undefined' ? null : document.fonts;
+    fonts?.addEventListener('loadingdone', changed);
     watchMarks();
     // Before the first paint, so a toast never flashes over the tab bar; then follow whatever is settling.
     measure();
@@ -256,6 +266,7 @@ function useClearPlace(layer: RefObject<HTMLDivElement | null>, active: boolean,
       window.removeEventListener('scroll', changed, { capture: true });
       viewport?.removeEventListener('resize', changed);
       viewport?.removeEventListener('scroll', changed);
+      fonts?.removeEventListener('loadingdone', changed);
     };
   }, [layer, active, about]);
   // With no toast to place, nothing is hidden (a hidden one comes back in full when the sheet goes).
@@ -321,23 +332,30 @@ function clearPlace(card: { height: number; left: number; right: number }, about
   const rects = marked.filter((m) => !m.closest('[role="dialog"]'))
     .map((m) => m.getBoundingClientRect())
     .filter((r) => r.height > 0 && r.width > 0 && r.bottom > 0 && r.top < height && r.left < card.right && card.left < r.right);
-  let bottom = EDGE;
-  for (let moved = true, rounds = 0; moved && rounds < 8; rounds += 1) {
-    moved = false;
-    for (const r of rects) {
-      const toastBottom = height - bottom;
-      const toastTop = toastBottom - tall;
-      if (r.top < toastBottom + CLEARANCE && r.bottom > toastTop - CLEARANCE && height - r.top + CLEARANCE > bottom) {
-        bottom = Math.ceil(height - r.top + CLEARANCE);
-        moved = true;
-      }
-    }
-  }
   const viewTop = window.visualViewport?.offsetTop ?? 0;
-  // `bottom` is measured from the visible bottom; the layer is placed from the page's.
-  return height - bottom - tall < viewTop + EDGE
-    ? { bottom: EDGE, top: Math.round(viewTop) + EDGE, hidden: false }
-    : { bottom: bottom + Math.max(0, Math.round(page - height)), top: null, hidden: false };
+  const foot = lowestClearFoot(rects, tall, height - EDGE, viewTop + EDGE);
+  // No gap tall enough anywhere on the visible page (a phone on its side with the keyboard up): like beside a sheet,
+  // the toast waits, hidden, until there is room, and then shows for its whole time.
+  if (foot === null) return { bottom: EDGE, top: null, hidden: true };
+  // `foot` is in the page's coordinates, as the layer is placed.
+  return { bottom: Math.ceil(page - foot), top: null, hidden: false };
+}
+
+/**
+ * The lowest place for the toast's foot (in page coordinates) where the whole toast, `tall` high, fits between `top`
+ * and `bottom` without coming within CLEARANCE of any of `rects`: the screen's foot if that is clear, else just above
+ * one of the marks (the lowest that works), so a toast with no room above Quick add goes higher still, or into the
+ * gap between two marks, rather than onto either. Null when nothing fits.
+ */
+export function lowestClearFoot(rects: readonly { top: number; bottom: number }[], tall: number, bottom: number, top: number): number | null {
+  const bands = rects.map((r) => ({ top: r.top - CLEARANCE, bottom: r.bottom + CLEARANCE }));
+  const feet = [bottom, ...bands.map((b) => b.top).filter((t) => t < bottom)].sort((a, b) => b - a);
+  for (const foot of feet) {
+    const head = foot - tall;
+    if (head < top) return null;
+    if (bands.every((b) => b.bottom <= head || b.top >= foot)) return foot;
+  }
+  return null;
 }
 
 /**
