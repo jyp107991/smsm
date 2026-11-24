@@ -3,6 +3,7 @@ import { pence } from '../core/money';
 import type { InsightEntry, InsightSettlement, NoteTemplate } from '../core/insights';
 import type { SplitMode } from '../core/split';
 import type { ExpenseRow, RecurringRow, SettlementRow } from './api';
+import { isDeleted } from './writes';
 
 const map = (j: unknown): Record<string, number> => (j && typeof j === 'object' && !Array.isArray(j) ? j as Record<string, number> : {});
 
@@ -22,6 +23,7 @@ export function toSettle(s: SettlementRow): InsightSettlement {
 export function toTemplate(t: RecurringRow): NoteTemplate {
   return {
     id: t.id, description: t.description, amount: pence(t.amount_pence), frequency: t.frequency as NoteTemplate['frequency'], every: t.every,
-    startDate: t.start_date, isSubscription: t.is_subscription, active: t.active,
+    // S10: a deleted one is never "new" (what it posted still counts as entries).
+    startDate: t.start_date, isSubscription: t.is_subscription, active: t.active && !isDeleted(t),
   };
 }

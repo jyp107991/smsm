@@ -14,14 +14,14 @@ import * as ToggleGroup from '@radix-ui/react-toggle-group';
 import { Minus, Plus } from 'lucide-react';
 import { startTransition, useEffect, useId, useMemo, useRef, useState, type RefObject, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, formatShortDate } from '../../core/dates';
-import { keepsAnchor, pastOccurrences } from '../../core/recurring';
+import { isRunning, keepsAnchor, pastOccurrences } from '../../core/recurring';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
 import { splitForNewPayer } from '../../core/split';
 import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, editExpense, endRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
+  addExpense, deleteExpense, deleteRecurring, hasStarted, isDeleted, editExpense, endRecurring, restoreRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
   currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, forgetPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
   useSmartFeatures, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
@@ -46,7 +46,7 @@ import { ForeignAmount, PlaceRow } from '../places/EntryPlace';
 import { Itemise, PhotoButton, ReceiptPhoto, type ReadingState } from './ReceiptParts';
 import { RecurringHistory, Toggle } from './RecurringParts';
 import { TagsField } from './TagsField';
-import { blankSchedule, everyOf, formFromTemplate, scheduleOf, type ScheduleState } from './schedule';
+import { blankSchedule, everyOf, formFromTemplate, restartLine, scheduleOf, type ScheduleState } from './schedule';
 import {
   backSoFar, blankForm, draftOf, followExact, formFromRow, movesBalance, parsedAmount, refundForm, remainderWords, setShareOf, SHEET_PRESETS, stepShare, stillToComeBack, sumWords, summaryWords,
   withExactText, withSplit, yesterdayOf, type FormState, type SplitChoice,
@@ -222,7 +222,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     && (rec.frequency !== template.frequency || recEvery !== template.every || rec.startDate !== template.start_date || rec.endDate !== template.end_date);
   const amountNow = parsedAmount(s);
   const pastSchedule = rec && recEvery !== null ? { frequency: rec.frequency, every: recEvery, startDate: rec.startDate, endDate: rec.endDate } : null;
-  const past = pastSchedule && (template === undefined || (template.active && template.posted_count === 0 && scheduleChanged))
+  // S10 review 1: "has posted" is the server's ever_posted (a start moved into the future leaves posted_count at 0).
+  const past = pastSchedule && (template === undefined || (template.active && !hasStarted(template) && scheduleChanged))
     ? pastOccurrences({ schedule: pastSchedule, amount: amountNow ?? pence(0) }, today)
     : null;
   // "Start from <next>" keeps the day only when the next date is on it; when it isn't (30 Nov from the 31st), online
@@ -271,6 +272,15 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       },
     };
   })() : null;
+
+  // S10: Delete is for one that has stopped (paused, or ended on or before today); the database refuses the rest.
+  const stopped = template !== undefined && !isRunning({ active: template.active, endDate: template.end_date }, today);
+  // S10: a new start on one that has posted (the same rhythm): the core says what it does from now on.
+  const restartText = template !== undefined && hasStarted(template) && rec !== null && recEvery !== null && rec.startDate !== template.start_date
+    ? restartLine({ frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: rec.endDate }, template.posted_count, rec.startDate, today)
+    : null;
+  // S10 review 4: deleted (on the other phone, say) while this sheet is open: it says so, and offers nothing to undo.
+  const goneNow = template !== undefined && (templates ?? []).some((t) => t.id === template.id && isDeleted(t));
 
   /** A new description: the category and split follow the household's guess until the person picks them. */
   const describe = (description: string) => {
@@ -586,6 +596,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         description: d.description, amount: d.amount, categoryId: d.categoryId, payer: d.payer, split: d.split, notes: d.notes ?? null,
         frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: r.amountVaries, isSubscription: r.isSubscription,
         ...(skipping && !template ? { active: false } : {}),
+        // Review 2: only what this form changed of the schedule is sent (never the values it opened with).
+        ...(template ? { opened: { frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: template.end_date } } : {}),
       });
       if (skipping) resumeRecurring(savedId);
     } catch (err) {
@@ -603,20 +615,34 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     });
     onDone();
   };
-  /** REC-1: pause, resume or end a template from its sheet; nothing is deleted. */
-  const lifecycle = (what: 'pause' | 'resume' | 'end') => {
+  /** REC-1: pause, resume or end a template from its sheet; S10: delete one that has stopped (soft, with Undo). */
+  const lifecycle = (what: 'pause' | 'resume' | 'end' | 'delete') => {
     if (!template || done.current) return;
+    let changed = true;
     try {
       if (what === 'pause') pauseRecurring(template.id);
       else if (what === 'resume') resumeRecurring(template.id);
-      else endRecurring(template.id);
+      else if (what === 'end') endRecurring(template.id);
+      else changed = deleteRecurring(template.id);
     } catch (err) {
       setErrors([plainError(err)]);
       return;
     }
     done.current = true;
-    const word = what === 'pause' ? strings.recurring.pausedToast : what === 'resume' ? strings.recurring.resumedToast : strings.recurring.endedToast;
-    toast.show({ message: word(template.description) });
+    if (what === 'delete' && !changed) {
+      // Review 4: already deleted (by the partner): nothing of ours to undo.
+      toast.show({ message: strings.recurring.alreadyDeleted(template.description) });
+    } else if (what === 'delete') {
+      const { id, description } = template;
+      toast.show({
+        message: strings.recurring.deletedToast(description),
+        action: { label: strings.entry.undo, onAction: () => { try { restoreRecurring(id); } catch (err) { toast.show({ message: plainError(err) }); } } },
+        duration: 5000,
+      });
+    } else {
+      const word = what === 'pause' ? strings.recurring.pausedToast : what === 'resume' ? strings.recurring.resumedToast : strings.recurring.endedToast;
+      toast.show({ message: word(template.description) });
+    }
     onDone();
   };
 
@@ -823,7 +849,8 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         <ScheduleFields
           rec={rec}
           today={today}
-          startLocked={template !== undefined && template.posted_count > 0}
+          rhythmLocked={template !== undefined && hasStarted(template)}
+          restart={restartText}
           past={pastChoice}
           startsRef={startsRef}
           onChange={changeSchedule}
@@ -902,7 +929,12 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           </div>
         ) : null}
       </Disclosure>
-      {template ? (
+      {template && goneNow ? (
+        <div className="flex flex-col gap-4">
+          <p className="text-secondary text-ink-2 m-0">{strings.recurring.deletedNote}</p>
+          <RecurringHistory template={template} />
+        </div>
+      ) : template ? (
         <div className="flex flex-col gap-4">
           {!template.active ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.pausedNote}</p> : null}
           {template.end_date !== null && template.end_date <= today ? (
@@ -915,7 +947,14 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
             {template.end_date === null || template.end_date > today
               ? <Button variant="plain" onClick={() => { lifecycle('end'); }}>{strings.recurring.end}</Button>
               : null}
+            {/* S10: Delete only once it has stopped (paused or ended), on its own line, as on an entry's page (Q-L11). */}
+            {stopped ? (
+              <div className="basis-full">
+                <Button variant="destructive" leading onClick={() => { lifecycle('delete'); }}>{strings.recurring.delete}</Button>
+              </div>
+            ) : null}
           </div>
+          {!stopped ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.deleteFirst}</p> : null}
           <RecurringHistory template={template} />
         </div>
       ) : null}
@@ -1025,7 +1064,8 @@ function PayerToggle({ label, people, value, onChange }: { label: string; people
 
 /**
  * S3 (REC-1): how often, every, starts (any day: the owner picks the day it recurs on), ends, and the two
- * switches. The start can't move once something has posted, so posted days never shift.
+ * switches. S10: once something has posted, how often is fixed; the start can still move, and the line under it
+ * (`restart`, the core's) says what that does: posted days never shift, nothing past posts.
  */
 /** S9: what a start in the past adds, and the two ways on (worked out by the core, chosen by the person). */
 interface PastChoice {
@@ -1041,31 +1081,30 @@ interface PastChoice {
   onMove: () => void;
 }
 
-function ScheduleFields({ rec, today, startLocked, past, startsRef, onChange, onPick }: {
+function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, onChange, onPick }: {
   rec: ScheduleState;
   today: string;
-  startLocked: boolean;
+  /** S10: one has posted, so how often is fixed (a new rhythm is a new payment); the start can still move. */
+  rhythmLocked: boolean;
+  /** S10: what a new start on one that has posted does, from the core (null when the start hasn't moved). */
+  restart: string | null;
   past: PastChoice | null;
   startsRef: RefObject<HTMLDivElement | null>;
   onChange: (next: Partial<ScheduleState>) => void;
   onPick: (which: 'start' | 'end') => void;
 }) {
   const n = everyOf(rec.everyText) ?? 1;
-  if (startLocked) {
-    // Once one has posted, its days are fixed (DECISIONS: posted days never move); a new rhythm is a new payment.
-    const often = rec.frequency === 'weekly' ? strings.recurring.weekly : rec.frequency === 'monthly' ? strings.recurring.monthly : strings.recurring.yearly;
-    return (
-      <>
-        <Group label={strings.recurring.howOften}>
-          <p className="text-body m-0">{strings.recurring.lockedRhythm(often, n, strings.recurring.unit(rec.frequency, n), formatDate(rec.startDate, today))}</p>
-          <p className="text-secondary text-ink-2 m-0">{strings.recurring.lockedHint}</p>
-        </Group>
-        <EndsAndSwitches rec={rec} today={today} onChange={onChange} onPick={onPick} />
-      </>
-    );
-  }
+  const often = rec.frequency === 'weekly' ? strings.recurring.weekly : rec.frequency === 'monthly' ? strings.recurring.monthly : strings.recurring.yearly;
   return (
     <>
+      {rhythmLocked ? (
+        <Group label={strings.recurring.howOften}>
+          <div role="group" aria-label={strings.recurring.howOften} className="flex flex-col gap-1">
+            <p className="text-body m-0">{strings.recurring.lockedOften(often, n, strings.recurring.unit(rec.frequency, n))}</p>
+            <p className="text-secondary text-ink-2 m-0">{strings.recurring.lockedOftenHint}</p>
+          </div>
+        </Group>
+      ) : (
       <Group label={strings.recurring.howOften}>
         <Choices
           label={strings.recurring.howOften}
@@ -1089,6 +1128,7 @@ function ScheduleFields({ rec, today, startLocked, past, startsRef, onChange, on
           <span className="text-body text-ink-2 pb-3">{strings.recurring.unit(rec.frequency, n)}</span>
         </div>
       </Group>
+      )}
 
       <Group label={strings.recurring.starts}>
         <div ref={startsRef} className="flex flex-col gap-3" role="group" aria-label={strings.recurring.starts}>
@@ -1103,6 +1143,7 @@ function ScheduleFields({ rec, today, startLocked, past, startsRef, onChange, on
           {/* Read out as it appears or changes (a new start, amount or rhythm). Always in the page (never display:none,
               which some screen readers don't announce from); empty, it takes no room (the gap above is taken back). */}
           <div aria-live="polite" className="flex flex-col gap-2 empty:-mt-3">
+            {restart !== null ? <p className="text-body text-ink nums-list m-0 break-words">{restart}</p> : null}
             {past ? <p className="text-body text-ink nums-list m-0 break-words">{past.line}</p> : null}
             {past?.choice === 'add' ? <p className="text-secondary text-ink-2 m-0">{past.addedNote}</p> : null}
           </div>
@@ -1115,7 +1156,8 @@ function ScheduleFields({ rec, today, startLocked, past, startsRef, onChange, on
             </div>
           ) : null}
         </div>
-        <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p>
+        {/* S10: a moved start's own line says when it posts; the general hint would repeat it. */}
+        {restart === null ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p> : null}
       </Group>
       <EndsAndSwitches rec={rec} today={today} onChange={onChange} onPick={onPick} />
     </>

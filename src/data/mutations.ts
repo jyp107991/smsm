@@ -12,7 +12,7 @@ import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
-import { occurrence } from '../core/recurring';
+import { isRunning, occurrence, restart } from '../core/recurring';
 import type { Pence } from '../core/money';
 import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
@@ -23,7 +23,7 @@ import { OtherWindowError } from './windows';
 import { locateWith, rateWith, setStoredCountry, setStoredUseLocation, storedCountry, storedUseLocation, type Located } from './places';
 import {
   buildExpense, buildProvisionalExpense, buildSettlement, categoryWrite, chapterWrite, completeSplit, defaultRatioOf, EntryInvalidError, expenseLabel, inputFromRow,
-  newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
+  hasStarted, isDeleted, newId, overlay, recurringWrite, PartnerNotJoinedError, settlementLabel, touchesMoney, withDetails, type ExpenseDraft, type InvalidReason, type MoneyOp,
   type SettlementDraft,
 } from './writes';
 import type { Json as JsonValue } from './database.types';
@@ -527,9 +527,12 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
  * future occurrences only. A second submit of the same form changes nothing (Q-F1). Once stored, the phone
  * posts what is due (REC-2), so a payment due today is money at once. `active: false` adds a new one paused (S9:
  * "Start from <next> instead" keeping its day is a paused add, then `resumeRecurring`); an edit never sends `active`.
+ * S10 (review 2): an edit sends how often, every, the start and the end only when the form changed them from the
+ * values it opened with (`opened`; without it, this phone's own copy), so a stale phone or a sheet left open never
+ * writes back an old schedule over the partner's new start or end.
  */
-export function saveRecurring(input: RecurringDraft & { id?: string; active?: boolean }, layer = activeDataLayer()): string {
-  const { id, active, ...draft } = input;
+export function saveRecurring(input: RecurringDraft & { id?: string; active?: boolean; opened?: ScheduleWas }, layer = activeDataLayer()): string {
+  const { id, active, opened, ...draft } = input;
   const ctx = context(layer);
   const existing = id === undefined ? undefined : shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
   // An end before the start is refused when it is picked; one already stored (End tapped before the first day) is kept.
@@ -546,29 +549,63 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
     description: draft.description, amount: draft.amount, date: layer.today(), categoryId: draft.categoryId, payer: draft.payer, split: draft.split,
   }).row;
   const stamp = layer.now().toISOString();
+  // Review 2: the schedule fields the form changed (all of them for a new one); the rest stay as this phone holds them.
+  const was: ScheduleWas | undefined = opened ?? (existing && {
+    frequency: existing.frequency as RecurringDraft['frequency'], every: existing.every, startDate: existing.start_date, endDate: existing.end_date,
+  });
+  const changed = {
+    frequency: !was || draft.frequency !== was.frequency, every: !was || draft.every !== was.every,
+    start_date: !was || draft.startDate !== was.startDate, end_date: !was || draft.endDate !== was.endDate,
+  };
+  const schedule = {
+    frequency: changed.frequency || !existing ? draft.frequency : existing.frequency,
+    every: changed.every || !existing ? draft.every : existing.every,
+    start_date: changed.start_date || !existing ? draft.startDate : existing.start_date,
+    end_date: changed.end_date || !existing ? draft.endDate : existing.end_date,
+  };
   const row: RecurringRow = {
     id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
-    shares: money.shares, is_subscription: draft.isSubscription, frequency: draft.frequency, every: draft.every, start_date: draft.startDate,
-    end_date: draft.endDate, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
-    posted_count: existing?.posted_count ?? 0, created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
+    shares: money.shares, is_subscription: draft.isSubscription, ...schedule, active: existing?.active ?? active ?? true, notes: draft.notes ?? existing?.notes ?? null,
+    posted_count: expectedCount(existing, schedule), ever_posted: existing ? hasStarted(existing) : false,
+    created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
+    deleted_at: existing?.deleted_at ?? null,
   };
   // Q-F1: the same form saved twice (a double tap) changes nothing.
   if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
-  // An edit writes what the form owns, never `active` (a partner's pause stays paused).
+  // An edit writes what the form owns, never `active` (a partner's pause stays paused), and of the schedule only what it changed.
+  const columns = EDIT_COLUMNS.filter((k) => !(k in changed) || changed[k as keyof typeof changed]);
   layer.enqueue({
     opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
-    ...(existing ? { columns: EDIT_COLUMNS } : {}),
+    ...(existing ? { columns } : {}),
   });
   return row.id;
 }
 
+/** S10 (review 2): a regular payment's schedule as the form opened with it. */
+export interface ScheduleWas { frequency: RecurringDraft['frequency']; every: number; startDate: IsoDate; endDate: IsoDate | null }
+
+/**
+ * S10: the phone's waiting copy of a template, until the server answers: a new start on one that has posted (the same
+ * rhythm) takes the count the server will make (core restart, the database's rule: the next payment is the new day
+ * nearest to the old next day), so Bills shows the right next day meanwhile. Otherwise the stored count (the
+ * server's; never sent).
+ */
+function expectedCount(existing: RecurringRow | undefined, s: Pick<RecurringRow, 'frequency' | 'every' | 'start_date' | 'end_date'>): number {
+  if (!existing) return 0;
+  const restarts = hasStarted(existing) && s.start_date !== existing.start_date && s.frequency === existing.frequency && s.every === existing.every;
+  if (!restarts) return existing.posted_count;
+  const old = { frequency: existing.frequency as RecurringDraft['frequency'], every: existing.every, startDate: existing.start_date, endDate: s.end_date };
+  return restart(old, existing.posted_count, s.start_date).done;
+}
+
+/** An edit writes what the form owns: never `active` (a partner's pause stays paused), never `deleted_at` (only Delete and Undo). */
 const EDIT_COLUMNS: readonly RecurringColumn[] = RECURRING_WRITE_COLUMNS.filter(
-  (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active',
+  (k): k is RecurringColumn => k !== 'id' && k !== 'household_id' && k !== 'active' && k !== 'deleted_at',
 );
 
 function changeRecurring(
-  id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date'>>, layer: DataLayer,
+  id: string, change: Partial<Pick<RecurringRow, 'active' | 'end_date' | 'deleted_at'>>, layer: DataLayer,
   /** What the server will make of it, for the phone's waiting copy only (never sent). */
   expected: Partial<Pick<RecurringRow, 'posted_count'>> = {},
 ): boolean {
@@ -596,6 +633,8 @@ export function pauseRecurring(id: string, layer = activeDataLayer()): boolean {
  */
 export function resumeRecurring(id: string, layer = activeDataLayer()): boolean {
   const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  // S10: a deleted one never runs again (the database refuses it too).
+  if (current && isDeleted(current)) throw new EntryInvalidError(['deletedRegular']);
   if (!current || current.active) return changeRecurring(id, { active: true }, layer);
   const schedule = { frequency: current.frequency as 'weekly' | 'monthly' | 'yearly', every: current.every, startDate: current.start_date, endDate: null };
   const today = layer.today();
@@ -607,6 +646,24 @@ export function resumeRecurring(id: string, layer = activeDataLayer()): boolean 
 /** REC-1: end on a day (today unless told); the template and its history stay. */
 export function endRecurring(id: string, endDate?: IsoDate, layer = activeDataLayer()): boolean {
   return changeRecurring(id, { end_date: endDate ?? layer.today() }, layer);
+}
+
+/**
+ * S10: delete a regular payment that is paused or ended (a soft delete, as for an entry: deleted_at alone, through
+ * the queue; logged). It leaves Bills and never posts again; what it posted stays. A running one is refused here, as
+ * the database refuses it: pause or end it first. True when something changed.
+ */
+export function deleteRecurring(id: string, layer = activeDataLayer()): boolean {
+  const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
+  if (!current) throw new EntryNotFoundError(id);
+  if (isDeleted(current)) return false;
+  if (isRunning({ active: current.active, endDate: current.end_date }, layer.today())) throw new EntryInvalidError(['stillRunning']);
+  return changeRecurring(id, { deleted_at: layer.now().toISOString() }, layer);
+}
+
+/** S10: Undo of Delete: deleted_at cleared, alone; it comes back as it was (paused or ended). True when something changed. */
+export function restoreRecurring(id: string, layer = activeDataLayer()): boolean {
+  return changeRecurring(id, { deleted_at: null }, layer);
 }
 
 /**

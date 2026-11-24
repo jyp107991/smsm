@@ -19,7 +19,7 @@ export {
   dismissProblem, sendCode, verifyCode, signOut, createHousehold, joinHousehold, setIdentity, setMonzoMe, monzoNameOf, requestChange,
   decideChange, rememberChoice, OfflineError, NotSignedInError, NotInHouseholdError, NotReadyError, EntryNotFoundError, ChangesWaitingError,
   NAME_MAX, OtherWindowError, JOINT_MONEY_EDIT, SPLIT_AGAIN, type ChangeRequest,
-  saveRecurring, pauseRecurring, resumeRecurring, endRecurring, keepInboxItem, dismissInboxItem, reopenInboxItem, unkeepInboxItem, saveCategory, archiveCategory, reorderCategories,
+  saveRecurring, pauseRecurring, resumeRecurring, endRecurring, deleteRecurring, restoreRecurring, keepInboxItem, dismissInboxItem, reopenInboxItem, unkeepInboxItem, saveCategory, archiveCategory, reorderCategories,
   CATEGORY_COLOURS, type CategoryColour, type CategoryDraft, type RecurringDraft,
   saveChapter, closeChapter, setCurrentChapter, currentChapterId, currentOpenChapter, type ChapterDraft,
   currentCountry, homeCountry, setCurrentCountry, setUseLocation, locate, rateFor, askLocation,
@@ -38,7 +38,7 @@ export {
 } from './notifications';
 export { setSmartFeatures, readReceipt, attachPhoto, keepPhoto, queuePhotoUpload, forgetPhoto, photoBlob, photoUrl, sortLater, sortPhotoLater, recapWording, askSmsm, takeShared, parseLoose, guessCategory, type LooseReading } from './smartActions';
 export { offAi, workerAi, idbPhotos, memoryPhotoStore, type AiService, type AiResult, type AiReason, type PhotoStore, type Downscale } from './smart';
-export { EntryInvalidError, PartnerNotJoinedError, inputFromRow, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
+export { EntryInvalidError, PartnerNotJoinedError, hasStarted, inputFromRow, isDeleted, newId, type ExpenseDraft, type ForeignOriginal, type ReceiptItem, type InvalidReason, type SettlementDraft } from './writes';
 export {
   ApiError, type Api, type ExpenseRow, type SettlementRow, type MemberRow, type HouseholdRow, type CategoryRow, type ChangeRequestRow,
   type ActivityRow, type CategoryMemoryRow, type RecurringRow, type InboxItemRow, type ChapterRow, type CommentRow, type ImportRuleRow, type RestoreCounts,

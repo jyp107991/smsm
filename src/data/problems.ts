@@ -10,7 +10,7 @@ import { strings } from '../ui/strings';
 import { opLabel, opRowId, type MoneyOp, type QueuedRow } from './writes';
 
 /** Why the server said no, in categories the interface can explain (strings.sync.reasons). */
-export type RefusalReason = 'money' | 'money-back' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'other';
+export type RefusalReason = 'money' | 'money-back' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'still-running' | 'deleted-regular' | 'other';
 
 /** What the person is told (DESIGN §5: plain words, no codes); the words live with the interface's (TXT-7). */
 export const REFUSAL_MESSAGES: Record<RefusalReason, string> = strings.sync.reasons;
@@ -73,6 +73,9 @@ export function refusalReason(message: string, code: string): RefusalReason {
   if (MONEY_REFUSAL.test(message)) return 'money';
   if (MONEY_BACK_REFUSAL.test(message)) return 'money-back';
   if (code === 'PGRST116' || /no row/i.test(message)) return 'missing';
+  // S10: recurring_guard's rules for Delete (migration 20261124000000).
+  if (/still running can.t be deleted/i.test(message)) return 'still-running';
+  if (/deleted regular payment can.t run again/i.test(message)) return 'deleted-regular';
   // check_entry_chapter (migration 9), or a chapter that was itself refused.
   if (/chapter is not one of yours|chapter_id_fkey/i.test(message)) return 'chapter';
   if (code === '23503' || /foreign key/i.test(message)) return 'category';

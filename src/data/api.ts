@@ -73,10 +73,13 @@ export interface SoftDeletePatch { deleted_at: string | null }
 /** An entry's soft delete or restore; S7's Undo of Keep also clears the bank's id, so the row can be imported again. */
 export interface ExpensePatch extends SoftDeletePatch { external_id?: null }
 
-/** The columns the phone owns on a regular payment (S3); the server owns posted_count and the stamps (REC-6). */
+/**
+ * The columns the phone owns on a regular payment (S3); the server owns posted_count and the stamps (REC-6). S10:
+ * deleted_at, set and cleared only by Delete and its Undo, alone (recurring_guard).
+ */
 export const RECURRING_WRITE_COLUMNS = [
   'id', 'household_id', 'description', 'amount_pence', 'amount_varies', 'category_id', 'paid', 'paid_via', 'split_mode',
-  'split_params', 'shares', 'is_subscription', 'frequency', 'every', 'start_date', 'end_date', 'active', 'notes',
+  'split_params', 'shares', 'is_subscription', 'frequency', 'every', 'start_date', 'end_date', 'active', 'notes', 'deleted_at',
 ] as const satisfies readonly (keyof RecurringRow)[];
 export type RecurringWrite = Pick<RecurringRow, (typeof RECURRING_WRITE_COLUMNS)[number]>;
 export type RecurringColumn = Exclude<(typeof RECURRING_WRITE_COLUMNS)[number], 'id' | 'household_id'>;
