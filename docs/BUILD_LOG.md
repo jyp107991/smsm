@@ -343,3 +343,10 @@ Newest first. Each entry: what was built, what was tested, what failed, what's n
 - **Data-safety drill** (`tests/unit/data-safety.test.ts`, runs in CI): a 543-entry household exported both ways, wiped, restored, compared row by row and to the penny. One fault fixed: a category still waiting to sync was left out of the backup file.
 - **OPEN_ITEMS** brought up to date; trace: 107 of 107 criteria tested, one deferral (TXT-6 fallback fonts).
 - **In progress:** pin the GitHub Actions to exact versions; a second keep-alive from the app's own Worker; a choice when a regular payment starts in the past. **Then:** v1.0.0.
+
+## 2026-11-24 ~00:10 UTC: v1.0 LIVE
+- **Live** (PR #20, `c6b7c69`, deploy run 45288500912 green: migrations, keep-alive Cron Trigger deployed, app and demo, smoke test). `version.json` shows it on the app and the demo.
+- In this release: the data-safety drill in CI; GitHub Actions pinned to commit SHAs; a daily keep-alive from the app's own Worker (05:37 UTC); a regular payment started in the past asks "Add them" or "Start from …" (a 31st keeps its day).
+- CI: mutation tests run as their own job beside checks; the two-phone tests' airplane mode now also cuts requests to other hosts (Chromium's offline switch covers only the current page; the app was never at fault).
+- **Tag v1.0.0:** the session's git proxy refuses tag pushes. Owner: GitHub → Releases → Draft a new release → tag `v1.0.0` on `main` → Publish.
+- **Still for the owner:** real-phone checks on two phones (install, a day of use, airplane mode, a Monzo settle-up, a notification, an update); Workers AI Read and Edit on the Cloudflare token for the live AI eval; a real Monzo CSV when convenient; delete branch `s6a-wip`.
