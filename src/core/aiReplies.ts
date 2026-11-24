@@ -85,7 +85,8 @@ const askQuery = z.strictObject({
     tags: z.optional(z.array(z.string().check(z.maxLength(40))).check(z.maxLength(10))),
     mode: z.optional(z.array(z.enum(['ratio', 'exact', 'for_other', 'treat'])).check(z.maxLength(4))),
   }),
-  group_by: z.optional(z.enum(['category', 'month', 'country', 'payer', 'chapter'])),
+  // Live eval, 24 Nov: gpt-oss writes `"group_by": null` for no grouping; it means the same as leaving it out.
+  group_by: z.optional(z.nullable(z.enum(['category', 'month', 'country', 'payer', 'chapter']))),
 });
 export const askSchema = z.union([askQuery, z.strictObject({ unsupported: z.literal(true) })]);
 export type AskReply = z.infer<typeof askSchema>;

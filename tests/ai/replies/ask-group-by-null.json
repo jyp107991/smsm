@@ -1,0 +1,15 @@
+{
+  "id": "chatcmpl-eval",
+  "object": "chat.completion",
+  "model": "@cf/openai/gpt-oss-120b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"measure\": \"largest\",\n  \"filters\": {\n    \"categories\": [\"Groceries\"]\n  },\n  \"group_by\": null\n}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

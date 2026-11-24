@@ -9,7 +9,7 @@
 
 ## 2. How it is wired
 - **Cloudflare Workers AI through the app's own Worker** (owner, 17 Nov 2026: free, no API key, no new secret, as in MacroPy; this replaced the earlier Gemini plan). `POST /api/ai` with a `task` field: `scan`, `parse`, `categorise` (S6a), `recap`, `ask` (S6b). The Worker calls `env.AI.run` through the `AI` binding; the phone holds nothing.
-- Models are asked in order, the next on error or when too slow (`MODELS` in `worker/ai-core.ts`; see `docs/slices/S6.md`). Image reading uses a vision model; JSON is asked for in the prompt (Workers AI's JSON mode covers only some text models) and every reply is validated.
+- Models are asked in order, the next on error or when too slow (`MODELS` in `worker/ai-core.ts`; see `docs/slices/S6.md`). Text tasks (categorise, parse, recap, ask) ask a gpt-oss model first and `@cf/qwen/qwen3.8-27b` second (reasoning effort low); `@cf/qwen/qwen3-30b-a3b-fp8` was retired by Cloudflare on 20 Nov 2026 and is no longer asked. A model Cloudflare has retired (HTTP 410, "deprecated") is skipped like any failing one, and the Worker logs one plain line naming it (`ai: <model> is retired …`), nothing else about the call; check the Worker's logs and the model pages (developers.cloudflare.com/workers-ai/models) before each release. Image reading uses a vision model; JSON is asked for in the prompt (Workers AI's JSON mode covers only some text models) and every reply is validated.
 - The route checks the caller's sign-in by counting the call through the `increment_ai_usage` RPC with the caller's own token, enforces daily caps from `ai_usage` (scan 30, parse 100, categorise 100, ask 50 per household per day; recap once per month), sets a time limit (scan 25 s across its models, others 8 s), validates, and returns either `{ok: true, data}` or `{ok: false, reason}` where reason is `off | limit | timeout | invalid | error`. The phone maps every `ok: false` to the fallback without an error dialog (a small "couldn't read that, fill it in by hand" line at most).
 - Photos are downscaled on the phone to 1280 px on the long side, JPEG, before upload.
 - Each call adds one to the day's count in `ai_usage`. No prompts, images or replies are logged.
@@ -61,7 +61,7 @@ Input: the question, category names, chapter names, the list of countries presen
 { measure: "total"|"count"|"average"|"largest",
   filters: { categories?: [name], chapters?: [name], countries?: [ISO2], payer?: "A"|"B",
              from?: date, to?: date, text?: string, tags?: [string], mode?: [split modes] },
-  group_by?: "category"|"month"|"country"|"payer"|"chapter" }
+  group_by?: "category"|"month"|"country"|"payer"|"chapter"|null }   // null or absent: not grouped
 ```
 The phone runs the filter with the same code as Activity and Insights, shows the figure, shows the filter as editable chips ("Eating out · Japan · all time"), and lists the matching entries. If the question can't be expressed, the reply is `{unsupported: true}` and the box says what it can answer.
 
@@ -73,6 +73,7 @@ The phone runs the filter with the same code as Activity and Insights, shows the
 | Timeout or error | The form stays as it was with the photo attached; one quiet line |
 | Daily limit reached | Same, with "that's enough reading for today" |
 | Invalid or low-confidence reply | Treated as no reply |
+| A model retired by Cloudflare (HTTP 410) | Nothing: the next model answers; if none can, the same as an error |
 
 ## 5. Testing
 - **Contract tests (CI, no network):** recorded Workers AI replies, good and bad (wrong types, extra fields, prompt-injection text on a receipt, totals that don't add up, a future date), run through validation and guards. Every row of §4 has a test.

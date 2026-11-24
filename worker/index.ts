@@ -7,9 +7,9 @@
  * The caller must be signed in: the household's daily count goes through the `increment_ai_usage` RPC with the
  * caller's own token, which also proves who they are and that they are in a household. Only the app's own origin may
  * call. Always 200 with `{ok: true, data}` or `{ok: false, reason}` once signed in, so the phone falls back quietly.
- * Nothing about the request or the reply is logged.
+ * Nothing about the request or the reply is logged; a retired model is logged by name only.
  */
-import { buildRequest, capFor, recapStatsSchema, isDailyLimit, MODELS, readReply, timeoutFor, type Outcome, type Task, type TaskInput } from './ai-core';
+import { buildRequest, capFor, recapStatsSchema, isDailyLimit, isRetired, MODELS, readReply, timeoutFor, type Outcome, type Task, type TaskInput } from './ai-core';
 
 export interface AiBinding { run(model: string, input: Record<string, unknown>): Promise<unknown> }
 /** What the AI route needs: the binding, Supabase's URL and public key (deploy vars), the app's own origin. */
@@ -80,7 +80,11 @@ async function ask(env: Required<Pick<AiEnv, 'AI'>>, model: string, request: Rec
   }
 }
 
-export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch = fetch): Promise<Response> {
+/**
+ * `log` takes one plain line, only for a retired model (its name and that it was skipped): never the request, the
+ * reply, the error's own words or anything about the caller.
+ */
+export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch = fetch, log: (line: string) => void = (line) => { console.log(line); }): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
   // Only the app itself may use the allowance: browsers always send Origin on a POST.
   if (req.headers.get('origin') !== (env.APP_ORIGIN ?? new URL(req.url).origin)) return json({ error: 'forbidden' }, 403);
@@ -120,6 +124,12 @@ export async function handleAi(req: Request, env: AiEnv, fetchImpl: typeof fetch
     const share = i === models.length - 1 ? left : Math.ceil(left / (models.length - i));
     const got = await ask({ AI: ai }, model, buildRequest(input, model), share);
     if ('error' in got) {
+      // A retired model (HTTP 410) is skipped like any failure; the person only ever sees the usual fallback.
+      if (isRetired(got.error)) {
+        log(`ai: ${model} is retired (HTTP 410); asked the next model for ${task}. Update MODELS in worker/ai-core.ts.`);
+        threw += 1;
+        continue;
+      }
       if (isDailyLimit(got.error)) return json({ ok: false, reason: 'limit' } satisfies Outcome<never>);
       if (got.error === 'timeout') {
         if (i === models.length - 1) return json({ ok: false, reason: 'timeout' } satisfies Outcome<never>);

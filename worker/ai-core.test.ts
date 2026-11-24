@@ -16,8 +16,8 @@
  *
  *   MODELS: Record<Task, string[]>       ordered fallbacks (first tried first):
  *     scan       '@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'
- *     parse      '@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'
- *     categorise '@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'
+ *     parse      '@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'          (24 Nov: qwen3-30b-a3b-fp8 retired, worker/ai-models.test.ts)
+ *     categorise '@cf/openai/gpt-oss-20b', '@cf/qwen/qwen3.8-27b'
  *   capFor(task): number                 per household per UK day: scan 30, parse 100, categorise 100
  *   timeoutFor(task): number             ms, in total across the fallbacks: scan 25000, parse 8000, categorise 8000
  *   isDailyLimit(message: string): boolean   true for /4006|daily free allocation|neurons/i (Workers AI's free allocation)
@@ -124,10 +124,12 @@ const userText = (req: AiRequest): string => {
 
 describe('models, caps and time (SCAN-5; AI.md §2)', () => {
   it('SCAN-5: the models, in the order they are tried', () => {
-    expect(core().MODELS).toMatchObject({ // S6b adds recap and ask; these three are unchanged
+    // S6b adds recap and ask. 24 Nov: qwen3-30b-a3b-fp8 was retired on 20 Nov (HTTP 410) and replaced by qwen3.8-27b
+    // (worker/ai-models.test.ts; DECISIONS).
+    expect(core().MODELS).toMatchObject({
       scan: ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'],
-      parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
-      categorise: ['@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'],
+      parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'],
+      categorise: ['@cf/openai/gpt-oss-20b', '@cf/qwen/qwen3.8-27b'],
     });
   });
 

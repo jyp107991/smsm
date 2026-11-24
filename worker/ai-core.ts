@@ -29,19 +29,31 @@ export type Outcome<T> = { ok: true; data: T } | { ok: false; reason: Reason };
  */
 export const MODELS: Record<Task, readonly string[]> = {
   scan: ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/qwen/qwen3.8-27b'],
-  parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
-  categorise: ['@cf/qwen/qwen3-30b-a3b-fp8', '@cf/openai/gpt-oss-20b'],
+  // 24 Nov: `@cf/qwen/qwen3-30b-a3b-fp8` was retired on 20 Nov (HTTP 410); `@cf/qwen/qwen3.8-27b` (live, and already the
+  // scan's third model) takes its place, so each task's second model is from another family than its first.
+  parse: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'],
+  categorise: ['@cf/openai/gpt-oss-20b', '@cf/qwen/qwen3.8-27b'],
   // S6b: wording that only copies figures, and a question read into a closed filter (accurate with numbers first).
-  recap: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
-  ask: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8'],
+  recap: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'],
+  ask: ['@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3.8-27b'],
 };
-/** Options a model needs (thinking off or low where a model thinks; MacroPy's settings). */
+/**
+ * Options a model needs (thinking off or low where a model thinks; MacroPy's settings). qwen3.8-27b's page documents
+ * `reasoning_effort` (low | medium | xhigh, default xhigh), so it is asked for low as well.
+ */
 export const MODEL_OPTIONS: Record<string, Record<string, unknown>> = {
-  '@cf/qwen/qwen3-30b-a3b-fp8': { chat_template_kwargs: { enable_thinking: false } },
-  '@cf/qwen/qwen3.8-27b': { chat_template_kwargs: { enable_thinking: false } },
+  '@cf/qwen/qwen3.8-27b': { chat_template_kwargs: { enable_thinking: false }, reasoning_effort: 'low' },
   '@cf/openai/gpt-oss-120b': { reasoning_effort: 'low' },
   '@cf/openai/gpt-oss-20b': { reasoning_effort: 'low' },
 };
+
+/**
+ * A model Cloudflare has retired (HTTP 410: "Model has been deprecated: … was deprecated on 2026-11-20"). It is skipped
+ * like any failing model; the Worker logs it so the model list can be updated. Checked before isDailyLimit.
+ */
+export function isRetired(message: string): boolean {
+  return /\b410\b|deprecated|retired/i.test(message);
+}
 
 /** The free daily allowance is used up (Workers AI error 4006). */
 export function isDailyLimit(message: string): boolean {
