@@ -509,7 +509,7 @@ describe('exportEntriesCsv (EXP-1, OFF-3)', () => {
     const text = await fn('exportEntriesCsv')({ from: '2026-11-01', to: '2026-11-30' }, c.layer);
     expect(text.startsWith('\uFEFF')).toBe(true);
     const lines = text.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '');
-    expect(lines[0]).toBe('Date,Type,Description,Category,Chapter,Country,Amount,Paid by,Jae\'s share,Sam\'s share,Notes,Deleted');
+    expect(lines[0]).toBe('Date,Type,Description,Category,Chapter,Country,Amount,Paid by,Jae\'s share,Sam\'s share,Notes,Deleted,Whose'); // S10 (REC-9): Whose added
     expect(lines).toHaveLength(3);
     expect(text).toContain('Lamp');
     expect(text).toContain('Household');

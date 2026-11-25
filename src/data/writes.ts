@@ -96,7 +96,7 @@ export type InvalidReason =
   | EntryIssue
   | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100'
   | 'schedule' | 'colour' | 'chapterName' | 'chapterDates' | 'comment' | 'notYours' | 'settleDay' | 'originalDeleted'
-  | 'stillRunning' | 'deletedRegular';
+  | 'stillRunning' | 'deletedRegular' | 'notTheirs' | 'personalVaries';
 
 /** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
@@ -139,7 +139,11 @@ export type MoneyOp = OpBase & (
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   /** S3: a regular payment (added, edited, paused, resumed, ended: always the whole template, never deleted). */
   /** `columns`: only these are written to an existing template (pause, resume, end, an edit), never the rest. */
-  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[] }
+  /**
+   * `ownerWas` (S10 review 8): whose it was when the edit was made (null, shared); the server refuses the edit if whose
+   * it is has changed since (another phone of the same person), rather than write money of the old shape over it.
+   */
+  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[]; ownerWas?: string | null }
   /** S3: an Inbox decision (INB-2). */
   | { table: 'inbox_items'; op: 'patch'; id: string; patch: InboxPatch; label: string }
   /** S6a (SCAN-4): a receipt to sort later, added to the Inbox. */
@@ -193,7 +197,7 @@ function blankExpense(householdId: string, userId: UserId, date: IsoDate, stamp:
     items: null, bill_total_pence: null, country: 'GB', place: null, lat: null, lng: null, original_amount: null,
     original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, category_guess: false, source: 'manual', external_id: null,
     merchant: null, external_category: null, account_id: null, recurring_id: null, occurrence_date: null, refund_of: null,
-    created_by: userId, created_at: stamp, updated_by: userId, updated_at: stamp, deleted_at: null,
+    created_by: userId, created_at: stamp, updated_by: userId, updated_at: stamp, deleted_at: null, owner_id: null,
   };
 }
 

@@ -175,8 +175,19 @@ export function useLocationSetting(): boolean {
   return useSyncExternalStore(subscribePlaces, storedUseLocation, () => false);
 }
 
-/** S3: every regular payment (paused and ended ones too), with the waiting changes applied (REC-1). */
+/**
+ * S3: every shared regular payment (paused and ended ones too), with the waiting changes applied (REC-1). S10
+ * (REC-12): one person's own regular payments are never among them (useAllRecurring has those too), so nothing shared
+ * (What home costs, the calendar, Subscriptions, notes, the recap) can count one.
+ */
 export function useRecurring(): DataResult<RecurringRow[]> {
+  const all = useAllRecurring();
+  const data = useMemo(() => all.data?.filter((t) => (t.owner_id ?? null) === null), [all.data]);
+  return { ...all, data };
+}
+
+/** S10 (REC-9, REC-10): every regular payment, shared and each person's own (Bills' own sections, the sheet). */
+export function useAllRecurring(): DataResult<RecurringRow[]> {
   const { api } = useDataLayer();
   const { uid, hid } = useHid();
   const q = useQuery(recurringQuery(api, uid, hid));
@@ -215,10 +226,19 @@ function newestFirst<R extends { date: string; created_at: string; id: string }>
 }
 
 /**
- * Every expense and money-back entry, newest first, deleted ones included (`deleted_at` set; ACT-3). An
- * entry made before the partner joined shows its shares as soon as both people are known (BAL-6).
+ * Every shared expense and money-back entry, newest first, deleted ones included (`deleted_at` set; ACT-3). An
+ * entry made before the partner joined shows its shares as soon as both people are known (BAL-6). S10 (REC-12): one
+ * person's own entries (what their own regular payments posted) are never among them: every shared screen and
+ * figure reads these. Activity and an entry's page read useAllEntries.
  */
 export function useEntries(): DataResult<ExpenseRow[]> {
+  const all = useAllEntries();
+  const data = useMemo(() => all.data?.filter((e) => (e.owner_id ?? null) === null), [all.data]);
+  return { ...all, data };
+}
+
+/** S10 (REC-9, REC-10): every entry, shared and each person's own, newest first, deleted ones included. */
+export function useAllEntries(): DataResult<ExpenseRow[]> {
   const { api } = useDataLayer();
   const { uid, hid } = useHid();
   const q = useQuery(expensesQuery(api, uid, hid));

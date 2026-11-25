@@ -550,12 +550,12 @@ describe('Settings → "Export" (EXP-1, OFF-3)', () => {
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const body = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes).replace(/^\uFEFF/, '');
     const lines = body.split('\r\n').filter((l) => l !== '');
-    expect(lines[0]).toBe('Date,Type,Description,Category,Chapter,Country,Amount,Paid by,Jae\'s share,Sam\'s share,Notes,Deleted');
+    expect(lines[0]).toBe('Date,Type,Description,Category,Chapter,Country,Amount,Paid by,Jae\'s share,Sam\'s share,Notes,Deleted,Whose'); // S10 (REC-9): Whose added
     for (const s of ['Rent', 'Weekly shop', 'Dishoom', 'Pizza', 'Settle-up', '1000.00', '240.50']) expect(body, s).toContain(s);
     for (const s of ['Sofa delivery', 'Lamp']) expect(body, s).not.toContain(s);
     // Five entries (Pizza marked deleted) and the settle-up.
     expect(lines).toHaveLength(6);
-    expect(lines.find((l) => l.includes('Pizza'))?.endsWith(',yes')).toBe(true);
+    expect(lines.find((l) => l.includes('Pizza'))?.endsWith(',yes,Shared')).toBe(true); // S10: Whose is now the last column
   });
 
   it('EXP-1 OFF-3: the CSV is made on the phone, offline too', async () => {

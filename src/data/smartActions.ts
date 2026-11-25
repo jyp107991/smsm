@@ -250,7 +250,8 @@ export async function guessCategory(expenseId: string, layer = activeDataLayer()
   if (!row || row.deleted_at !== null || !unset(row.category_id)) return;
   // Steps 1–3 first: memory, the household's history, the built-in list.
   const history = layer.entries()
-    .filter((e) => e.id !== expenseId && e.deleted_at === null && e.kind === 'expense')
+    // S10 (REC-12): the household's shared history only; one person's own entries are theirs.
+    .filter((e) => e.id !== expenseId && e.deleted_at === null && e.kind === 'expense' && (e.owner_id ?? null) === null)
     .map((e) => ({ description: e.description, categoryId: e.category_id }));
   const known = suggest(row.description, { memory: memoryMap(layer.memory()), history, seed: SEED, categories });
   if (known.categoryId !== null) return;
@@ -325,9 +326,11 @@ async function wordMonth(month: string, layer: DataLayer): Promise<Wording | nul
   const people = inJoinOrder(layer);
   if (!hid || !people || failed.has(month)) return null;
   const categories = liveCategories(layer);
-  const templates = layer.client.getQueryData<RecurringRow[]>(keys.recurring(layer.me() ?? '')) ?? [];
+  // S10 review 4 (REC-12): the shared entries and regular payments only: nothing of one person's own reaches the AI.
+  const shared = (r: { owner_id?: string | null }) => (r.owner_id ?? null) === null;
+  const templates = (layer.client.getQueryData<RecurringRow[]>(keys.recurring(layer.me() ?? '')) ?? []).filter(shared);
   const recap = recapOf(
-    layer.entries().map(toInsight), layer.settlements().map(toSettle), [people[0].id, people[1].id], month,
+    layer.entries().filter(shared).map(toInsight), layer.settlements().map(toSettle), [people[0].id, people[1].id], month,
     { today, names: { [people[0].id]: people[0].name, [people[1].id]: people[1].name }, categories: categories.map((c) => ({ id: c.id, name: c.name })), templates: templates.map(toTemplate) },
   );
   // AI.md rule 4: names in the notes (an entry's description) go as Person A / Person B, like everything else.
@@ -363,7 +366,8 @@ async function wordMonth(month: string, layer: DataLayer): Promise<Wording | nul
 /** INS-9: a question read by the AI into a closed filter (the app works out the figure); or why not. */
 export async function askSmsm(question: string, layer = activeDataLayer()): Promise<Result<AskReply>> {
   if (!ready(layer)) return { ok: false, reason: 'off' };
-  const countries = [...new Set(layer.entries().filter((e) => e.deleted_at === null).map((e) => e.country))].sort();
+  // S10 (REC-12): Ask answers about shared spending; one person's own entries are invisible to it.
+  const countries = [...new Set(layer.entries().filter((e) => e.deleted_at === null && (e.owner_id ?? null) === null).map((e) => e.country))].sort();
   // A chapter named after a person ("Alex's birthday") goes masked like the question, and comes back by its own name.
   const chapterNames = rowsOf<ChapterRow>(layer, keys.chapters(layer.me() ?? ''), 'chapters').map((c) => c.name);
   const sentChapters = chapterNames.map((n) => masked(n, layer));

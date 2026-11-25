@@ -37,6 +37,11 @@ function Tag({ children }: { children: ReactNode }) {
   return <span className="text-caption text-ink-2 bg-sunk shrink-0 rounded-[8px] px-1.5 py-px">{children}</span>;
 }
 
+/** S10 (REC-9): "Jae's own", outlined so it reads apart from the shared tags. */
+function OwnTag({ children }: { children: ReactNode }) {
+  return <span className="text-caption text-ink-2 border-walnut shrink-0 rounded-[8px] border px-1.5 py-px">{children}</span>;
+}
+
 /** S9: the payer's head as the rig (`Head`), or as a `<use>` of the page's shared head symbols (a long list). */
 function PayerHead({ animal, size, shared }: { animal: 'cat' | 'dog'; size: number; shared: boolean }) {
   return shared ? <span aria-hidden="true" className="inline-flex shrink-0"><SharedHead kind={animal} size={size} /></span> : <Head animal={animal} size={size} />;
@@ -57,9 +62,13 @@ export const EntryRowView = memo(function EntryRowView({ row, categories, people
   const beneficiary = people.find((p) => p.id !== payer?.id && penceOf(row.shares, p.id) > 0);
   const back = row.kind === 'money_back';
   const amount = formatPence(pence(back ? -row.amount_pence : row.amount_pence));
-  const tag = back ? strings.entry.moneyBackTag
+  // S10 (REC-9): one person's own entry is marked as theirs (never "treat").
+  const ownerId = row.owner_id ?? null;
+  const owner = ownerId === null ? null : people.find((p) => p.id === ownerId);
+  const ownTag = owner ? strings.entry.ownTag(owner.name) : null;
+  const tag = ownTag ?? (back ? strings.entry.moneyBackTag
     : row.split_mode === 'for_other' && beneficiary ? strings.entry.forTag(beneficiary.name)
-    : row.split_mode === 'treat' ? strings.entry.treatTag : null;
+    : row.split_mode === 'treat' ? strings.entry.treatTag : null);
   const who = payer ? (back ? strings.reading.gotBack(payer.name) : strings.reading.paid(payer.name)) : null;
   const name = strings.activity.row([
     row.description, amount, ...(tag ? [tag] : []), ...(who ? [who] : []), ...(comments > 0 ? [strings.comments.count(comments)] : []),
@@ -77,7 +86,8 @@ export const EntryRowView = memo(function EntryRowView({ row, categories, people
         <span className="min-w-0 truncate">{row.description}</span>
         {back ? <Tag>{strings.entry.moneyBackTag}</Tag> : null}
         {!back && row.split_mode === 'for_other' && beneficiary ? <Tag>{strings.entry.forTag(beneficiary.name)}</Tag> : null}
-        {!back && row.split_mode === 'treat' ? <Tag>{strings.entry.treatTag}</Tag> : null}
+        {!back && row.split_mode === 'treat' && !ownTag ? <Tag>{strings.entry.treatTag}</Tag> : null}
+        {ownTag ? <OwnTag>{ownTag}</OwnTag> : null}
         {comments > 0 ? <span aria-hidden="true" className="text-caption text-ink-2 nums-list inline-flex shrink-0 items-center gap-0.5"><MessageCircle size={13} strokeWidth={2} />{comments}</span> : null}
         {pending ? <span aria-hidden="true" className="bg-oak size-1.5 shrink-0 rounded-full" /> : null}
       </span>

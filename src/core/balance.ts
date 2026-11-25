@@ -4,7 +4,8 @@
  *
  *   net(P) = Σ expenses (paid[P] − shares[P]) − Σ money_back (paid[P] − shares[P])
  *          + Σ settle-ups P paid − Σ settle-ups P received
- * Positive = this person is owed. The two nets always sum to zero.
+ * Positive = this person is owed. The two nets always sum to zero. S10 (REC-12): a personal entry (one person's own
+ * regular payment) is never in the balance, whatever its maps say, as member_net leaves it out.
  */
 import { pence, type Pence } from './money';
 import type { PenceMap, UserId } from './split';
@@ -13,6 +14,8 @@ export interface LedgerEntry {
   kind: 'expense' | 'money_back'; paid: PenceMap; shares: PenceMap; deleted: boolean;
   /** S9a (MB-3): the row's id, and for money back the entry it refunds (null: none). */
   id?: string; refundOf?: string | null;
+  /** S10 (REC-12): whose it is: null or absent, shared; a person's id, their own (never in the balance). */
+  ownerId?: UserId | null;
 }
 export interface LedgerSettlement { from: UserId; to: UserId; amount: Pence; deleted: boolean }
 
@@ -27,6 +30,11 @@ export function withoutOrphans<T extends { kind: string; deleted: boolean; id?: 
   return entries.map((e) => (!e.deleted && e.kind === 'money_back' && e.refundOf != null && gone.has(e.refundOf) ? { ...e, deleted: true } : e));
 }
 
+/** S10 (REC-12): one person's own entry (a personal regular payment's), never in a shared figure. */
+export function isPersonal(e: { ownerId?: string | null }): boolean {
+  return e.ownerId !== undefined && e.ownerId !== null;
+}
+
 export function netPositions(
   members: readonly [UserId, UserId],
   entries: readonly LedgerEntry[],
@@ -34,7 +42,7 @@ export function netPositions(
 ): Record<UserId, Pence> {
   const net: Record<UserId, number> = {};
   for (const e of withoutOrphans(entries)) {
-    if (e.deleted) continue;
+    if (e.deleted || isPersonal(e)) continue;
     const sign = e.kind === 'money_back' ? -1 : 1;
     for (const m of members) net[m] = (net[m] ?? 0) + sign * ((e.paid[m] ?? 0) - (e.shares[m] ?? 0));
   }

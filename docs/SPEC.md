@@ -4,7 +4,7 @@
 
 smsm is a phone app for two people who share a home. It records money either of them spends on shared things and keeps one running answer to "who owes whom". It is built for exactly two people and for pounds, and that narrowness is the advantage: everything a group app spends its complexity on (who is in which group, simplifying debts between many people, many currencies) disappears, and the space goes to things a couple wants.
 
-**Scope rule.** smsm tracks shared spending and the debt between the two people. It holds nothing about either person's own finances: no incomes, no personal spending, no budgets, no savings goals. If a feature needs individual finances to make sense, it is out of scope.
+**Scope rule.** smsm tracks shared spending and the debt between the two people. It holds nothing about either person's own finances: no incomes, no personal spending, no budgets, no savings goals. If a feature needs individual finances to make sense, it is out of scope. **One exception (owner, 25 Nov 2026):** each person's own regular payments (bills and subscriptions that are not shared, REC-9…REC-12, INS-10), seen by both, kept apart and out of every shared figure.
 
 **Three rules for every feature**
 1. *Code computes, people decide.* Every figure is calculated by tested code from recorded entries. AI may read, suggest and phrase; it never calculates, and nothing it produces becomes money without a person's tap.
@@ -103,6 +103,10 @@ The first screen answers "are we square?" and lets you add.
 - REC-6 Editing a template changes future occurrences only; a price change is noted in its history ("Rent £1,450 → £1,500 from March").
 - REC-7 **Bills** tab: this month as a calendar (posted and upcoming, with the month's total), the next 30 days as a list, and **Subscriptions**: every active subscription with its monthly and yearly cost and a yearly total.
 - REC-8 **What home costs:** the sum of active recurring items as "£2,140 a month to run", shown on Bills.
+- REC-9 **Own regular payments** (owner, 25 Nov). The regular payment sheet asks "Whose is it?": Shared (the default) or Mine. One of my own is all mine (no payer or split to choose; a fixed amount, so not "Amount varies"). Both people see each other's own payments and entries; only the owner adds, changes, pauses, ends or deletes theirs, and the database enforces it. Own entries are clearly marked ("Jae's own") and filterable apart: Activity's Whose filter (Shared, Jae's own, Sam's own); the export has a "Whose" column; backup and restore keep whose each row is.
+- REC-10 What an own payment posts is an own entry (all the owner's), with no notification to anyone. Bills shows "Jae's own" and "Sam's own" apart from the shared sections, each with its cost a month and a year, its running payments, its own subscriptions (with the year's total) and any paused or ended; the other person's are read-only.
+- REC-11 Changing whose a payment is applies from its next payment on: whatever is already due posts first as it was, entries already posted never change owner, only I can make a payment mine, only its owner can make it shared again (no approval: future payments only, with a history line, "Jae made it Jae's own"), and it is never handed to the other person.
+- REC-12 Own entries and payments are never in a shared figure: the balance (and settle-up, the statement, the standing-order hint), shared spending in Insights, the recap and year in review, pace, notes, What home costs, the Bills calendar and shared Subscriptions, Ask smsm, and Activity's filtered shared total.
 
 ### 4.2 Chapters [CHP]
 A chapter is a named run of spending kept apart from everyday life: a holiday, the wedding, moving house. It replaces "make a separate group".
@@ -146,6 +150,7 @@ All figures cover shared spending: live entries in `ratio`, `exact` and `treat`,
 - INS-6 **Standing-order hint.** If the same person has owed at the end of each of the last three months, by £50 or more on average, a note suggests the monthly amount that would keep you about square.
 - INS-7 **Year in review** for any calendar year, as a short set of cards; offered through January.
 - INS-8 **On this day.** Occasionally, a card for an entry from a year ago that has a photo, a comment or a chapter ("A year ago: Dishoom, £86, in London").
+- INS-10 **Each person's own** (owner, 25 Nov: "insights must include and be separately produced for each individual"). Insights ends with a section for each person who has regular payments of their own ("Jae's own"), never mixed with the shared figures: the period's total compared by the same rules as shared (this month against their usual pace; other periods against the same stretch before), what their running own payments cost a month and a year, this month's own payments and their total, and by category. A chapter period shows this month (own payments are never in a chapter).
 - INS-9 **Ask smsm.** A question box in Insights: "how much did we spend on eating out in Japan?", "what did the wedding cost so far?". AI turns the question into a filter; code runs it and shows the figure with the filter as editable chips and the matching entries beneath (`docs/AI.md` §3.5).
 
 ## 5. Smart features (Cloudflare Workers AI)
@@ -208,7 +213,7 @@ Plan:
 - v1 already contains the fields, the Inbox, the rules and the ignore-hashes this needs. v1 must not add anything that assumes typing is the only source of entries.
 
 ## 10. Not doing
-Groups of more than two; importing from Splitwise (owner, 17 Nov); balances in several currencies; bank linking in v1; budgets, savings goals, personal spending, incomes; moving money inside the app; maps; ads; accounts for anyone else.
+Groups of more than two; importing from Splitwise (owner, 17 Nov); balances in several currencies; bank linking in v1; budgets, savings goals, personal spending (beyond each person's own regular payments, REC-9), incomes; moving money inside the app; maps; ads; accounts for anyone else.
 
 ## 11. Things that must hold everywhere
 

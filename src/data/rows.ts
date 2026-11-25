@@ -46,6 +46,8 @@ export function expenseToLedger(row: ExpenseRow): LedgerEntry {
     // MB-3 (S9a): money back whose original is deleted never counts.
     id: row.id,
     refundOf: row.refund_of,
+    // S10 (REC-12): a personal entry is never in the balance.
+    ownerId: row.owner_id ?? null,
   };
 }
 

@@ -439,7 +439,7 @@ export function createDataLayer(opts: DataLayerOptions): DataLayer {
       case 'settlements':
         return op.op === 'upsert' ? api.upsertSettlement(settlementWrite(op.row)) : api.patchSettlement(op.id, op.patch);
       case 'recurring':
-        return api.upsertRecurring(recurringWrite(op.row), op.isNew ? undefined : op.columns);
+        return api.upsertRecurring(recurringWrite(op.row), op.isNew ? undefined : op.columns, op.isNew ? undefined : op.ownerWas);
       case 'inbox_items':
         return op.op === 'patch' ? api.patchInboxItem(op.id, op.patch) : api.insertInboxItem({ id: op.row.id, household_id: op.row.household_id, source: op.row.source, status: op.row.status, payload: op.row.payload, receipt_path: op.row.receipt_path });
       case 'receipts': {

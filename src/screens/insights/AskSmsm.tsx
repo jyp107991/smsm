@@ -68,7 +68,7 @@ function AskBox() {
     row: r, id: r.id, amount: pence(r.amount_pence), paid: map(r.paid) as AskEntry['paid'], deleted: r.deleted_at !== null,
     kind: r.kind === 'money_back' ? 'money_back' : 'expense', description: r.description, notes: r.notes, tags: r.tags, place: r.place,
     payer: payerOf(r.paid, people.list), categoryId: r.category_id, chapterId: r.chapter_id, country: r.country, date: r.date,
-    splitMode: r.split_mode as SplitMode,
+    splitMode: r.split_mode as SplitMode, ownerId: r.owner_id ?? null,
   })), [rows, people.list]);
   const lookups = useMemo<AskLookups | null>(() => (me && partner ? {
     categories: categories.map((c) => ({ id: c.id, name: c.name })),

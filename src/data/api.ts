@@ -61,6 +61,8 @@ export const EXPENSE_WRITE_COLUMNS = [
   // S6a: the receipt photo, its lines (each marked shared or not), the receipt's own total, and whether the category
   // was an AI guess.
   'receipt_path', 'items', 'bill_total_pence', 'category_guess',
+  // S10 (REC-9): whose it is (null: shared). Set by the server's posting; never changed (check_personal).
+  'owner_id',
 ] as const satisfies readonly (keyof ExpenseRow)[];
 export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]>;
 
@@ -80,6 +82,8 @@ export interface ExpensePatch extends SoftDeletePatch { external_id?: null }
 export const RECURRING_WRITE_COLUMNS = [
   'id', 'household_id', 'description', 'amount_pence', 'amount_varies', 'category_id', 'paid', 'paid_via', 'split_mode',
   'split_params', 'shares', 'is_subscription', 'frequency', 'every', 'start_date', 'end_date', 'active', 'notes', 'deleted_at',
+  // S10 (REC-9, REC-11): whose it is (null: shared); only to or from the person writing.
+  'owner_id',
 ] as const satisfies readonly (keyof RecurringRow)[];
 export type RecurringWrite = Pick<RecurringRow, (typeof RECURRING_WRITE_COLUMNS)[number]>;
 export type RecurringColumn = Exclude<(typeof RECURRING_WRITE_COLUMNS)[number], 'id' | 'household_id'>;
@@ -140,7 +144,11 @@ export interface Api {
   recurring(householdId: string): Promise<RecurringRow[]>;
   inboxItems(householdId: string): Promise<InboxItemRow[]>;
   /** With `columns`, an existing template's other columns are left as the server has them (a partner's edit stays). */
-  upsertRecurring(row: RecurringWrite, columns?: readonly RecurringColumn[]): Promise<RecurringRow>;
+  /**
+   * S10 review 8: with `ownerWas` (an edit made while it was shared, null, or someone's own), refused (code
+   * WHOSE_CHANGED) if whose it is on the server is no longer that: never written over a change of whose.
+   */
+  upsertRecurring(row: RecurringWrite, columns?: readonly RecurringColumn[], ownerWas?: string | null): Promise<RecurringRow>;
   patchInboxItem(id: string, patch: InboxPatch): Promise<InboxItemRow>;
   upsertCategory(row: CategoryWrite): Promise<CategoryRow>;
   /** S4a: the household's chapters (open and closed). */
@@ -191,6 +199,10 @@ export interface Api {
  * kept for the person to fix (OFF-5) and never retried as it is.
  */
 export type ApiErrorKind = 'network' | 'auth' | 'server' | 'refused' | 'stale' | 'waiting';
+
+/** S10 review 8: a queued edit of a regular payment whose owner changed on another phone since it was made. */
+export const WHOSE_CHANGED = 'whose-changed';
+export const WHOSE_CHANGED_MESSAGE = 'whose this regular payment is changed since this edit was made';
 
 export class ApiError extends Error {
   constructor(public readonly kind: ApiErrorKind, message: string, public readonly status = 0, public readonly code = '') {
@@ -312,12 +324,19 @@ export function supabaseApi(db: SupabaseClient<Database>): Api {
     postDueRecurring: async () => unwrap(await db.rpc('post_due_recurring', {})) ?? 0,
     recurring: async (hid) => unwrap(await db.from('recurring').select('*').eq('household_id', hid).order('start_date')) ?? [],
     inboxItems: async (hid) => unwrap(await db.from('inbox_items').select('*').eq('household_id', hid).order('created_at')) ?? [],
-    upsertRecurring: async (row, columns) => {
+    upsertRecurring: async (row, columns, ownerWas) => {
       if (columns) {
         // Only these columns: a stale phone pausing or editing never writes back the partner's other changes.
         const patch = Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<RecurringWrite>;
-        const updated = await db.from('recurring').update(patch).eq('id', row.id).select().maybeSingle();
+        const update = db.from('recurring').update(patch).eq('id', row.id);
+        // S10 review 8: only while whose it is is still what the edit was made against.
+        const guarded = ownerWas === undefined ? update : ownerWas === null ? update.is('owner_id', null) : update.eq('owner_id', ownerWas);
+        const updated = await guarded.select().maybeSingle();
         if (updated.error || updated.data) return must(updated, 'regular payment');
+        if (ownerWas !== undefined) {
+          const now = unwrap(await db.from('recurring').select('owner_id').eq('id', row.id).maybeSingle());
+          if (now && now.owner_id !== ownerWas) throw new ApiError('refused', WHOSE_CHANGED_MESSAGE, 409, WHOSE_CHANGED);
+        }
       }
       return must(await db.from('recurring').upsert(row, { onConflict: 'id' }).select().single(), 'regular payment');
     },

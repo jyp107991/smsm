@@ -13,6 +13,8 @@ export function toInsight(e: ExpenseRow): InsightEntry {
     paid: map(e.paid) as InsightEntry['paid'], shares: map(e.shares) as InsightEntry['shares'], splitMode: e.split_mode as SplitMode, date: e.date,
     categoryId: e.category_id, chapterId: e.chapter_id, country: e.country, recurringId: e.recurring_id, deleted: e.deleted_at !== null,
     refundOf: e.refund_of, createdAt: e.created_at,
+    // S10 (REC-12, INS-10): whose it is; a personal entry is never in a shared figure.
+    ownerId: e.owner_id ?? null,
   };
 }
 
@@ -25,5 +27,6 @@ export function toTemplate(t: RecurringRow): NoteTemplate {
     id: t.id, description: t.description, amount: pence(t.amount_pence), frequency: t.frequency as NoteTemplate['frequency'], every: t.every,
     // S10: a deleted one is never "new" (what it posted still counts as entries).
     startDate: t.start_date, isSubscription: t.is_subscription, active: t.active && !isDeleted(t),
+    ownerId: t.owner_id ?? null,
   };
 }

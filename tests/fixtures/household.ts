@@ -101,6 +101,8 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     kind?: 'expense' | 'money_back'; chapter?: string | null; country?: string; place?: string | null;
     notes?: string | null; tags?: string[]; source?: 'manual' | 'recurring'; recurringId?: string | null;
     original?: { amount: number; currency: string; rate: number }; refundOf?: string | null;
+    /** S10: whose it is (a personal regular payment's entry); null: shared. */
+    owner?: UserId | null;
   }): ExpenseRow {
     const amount: Pence = pence(o.amount);
     const split: SplitParams = o.split ?? { mode: 'ratio', ratio: { [JAE]: 50, [SAM]: 50 } };
@@ -116,6 +118,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
       source: o.source ?? 'manual', external_id: null, merchant: null, external_category: null, account_id: null,
       recurring_id: o.recurringId ?? null, occurrence_date: o.recurringId ? o.date : null, refund_of: o.refundOf ?? null,
       created_by: o.payer, created_at: stamp(o.date), updated_by: o.payer, updated_at: stamp(o.date), deleted_at: null,
+      owner_id: o.owner ?? null,
     };
     expenses.push(row);
     return row;
@@ -129,7 +132,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
       category_id: cat(category), paid: { ...paid }, paid_via: 'person', split_mode: 'ratio',
       split_params: { [JAE]: 50, [SAM]: 50 }, shares: { ...shares }, is_subscription: false, frequency: 'monthly',
       every: 1, start_date: addDays(start, 2), end_date: null, posted_count: 0, active: true, notes: null,
-      created_by: payer, created_at: stamp(start), updated_at: stamp(start), deleted_at: null, ever_posted: false, ...extra,
+      created_by: payer, created_at: stamp(start), updated_at: stamp(start), deleted_at: null, ever_posted: false, owner_id: null, ...extra,
     };
   };
   const recurring: RecurringRow[] = [
@@ -247,5 +250,30 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     { id: id(9101), household_id: DEMO_HOUSEHOLD_ID, expense_id: shop.id, author: SAM, body: 'Was this the big shop for the party?', created_at: stamp(shop.date), deleted_at: null },
     { id: id(9102), household_id: DEMO_HOUSEHOLD_ID, expense_id: shop.id, author: JAE, body: 'Yes, and the wine.', created_at: stamp(shop.date), deleted_at: null },
   ] : [];
+  // S10 (REC-9): each person's own regular payments (kept out of every shared figure), posted as the database posts them.
+  // Added last, from fixed amounts, so nothing drawn above moves.
+  const ownTmpl = (n: number, description: string, amount: number, category: string, owner: UserId, startDay: IsoDate, isSubscription: boolean): RecurringRow => ({
+    id: id(n), household_id: DEMO_HOUSEHOLD_ID, description, amount_pence: amount, amount_varies: false, category_id: cat(category),
+    paid: { [owner]: amount }, paid_via: 'person', split_mode: 'treat', split_params: null, shares: { [owner]: amount },
+    is_subscription: isSubscription, frequency: 'monthly', every: 1, start_date: startDay, end_date: null, posted_count: 0, active: true,
+    notes: null, created_by: owner, created_at: stamp(startDay), updated_at: stamp(startDay), deleted_at: null, ever_posted: false, owner_id: owner,
+  });
+  const own: RecurringRow[] = [
+    ownTmpl(9201, 'Climbing wall', 3500, 'Health', JAE, addDays(addMonths(today, -7), -4), false),
+    ownTmpl(9202, 'Duolingo', 799, 'Subscriptions', JAE, addDays(addMonths(today, -5), -9), true),
+    ownTmpl(9203, 'Phone contract', 1800, 'Utilities', SAM, addDays(addMonths(today, -8), -12), false),
+    ownTmpl(9204, 'Audible', 899, 'Subscriptions', SAM, addDays(addMonths(today, -4), -2), true),
+  ];
+  for (const r of own) {
+    const owner = r.owner_id ?? JAE;
+    for (const date of dueOccurrences({ frequency: 'monthly', every: 1, startDate: r.start_date, endDate: null }, 0, today)) {
+      r.posted_count += 1;
+      r.ever_posted = true;
+      add({ date, description: r.description, amount: r.amount_pence, category: r.category_id === cat('Health') ? 'Health' : r.is_subscription ? 'Subscriptions' : 'Utilities',
+        payer: owner, split: { mode: 'treat' }, source: 'recurring', recurringId: r.id, owner });
+    }
+    recurring.push(r);
+  }
+  expenses.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
   return { household, members, categories, chapters: [japan, sofa], recurring, inboxItems, comments, expenses, settlements };
 }

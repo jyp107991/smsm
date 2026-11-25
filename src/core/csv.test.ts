@@ -386,7 +386,7 @@ function settleUp(amount: number, date: IsoDate, from: UserId = SAM, over: Parti
   seq += 1;
   return { id: `s${String(seq)}`, from, to: from === JAE ? SAM : JAE, amount: pence(amount), date, deleted: false, note: null, ...over };
 }
-const HEADER = ['Date', 'Type', 'Description', 'Category', 'Chapter', 'Country', 'Amount', 'Paid by', 'Jae\'s share', 'Sam\'s share', 'Notes', 'Deleted'];
+const HEADER = ['Date', 'Type', 'Description', 'Category', 'Chapter', 'Country', 'Amount', 'Paid by', 'Jae\'s share', 'Sam\'s share', 'Notes', 'Deleted', 'Whose'];  // S10 (REC-9): Whose added (owner, 25 Nov)
 const OCTOBER = { from: '2026-10-01', to: '2026-10-31' };
 const col = (name: string) => HEADER.indexOf(name);
 

@@ -10,6 +10,8 @@ import { isRunning, occurrence, restart } from '../core/recurring';
 import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
+  WHOSE_CHANGED,
+  WHOSE_CHANGED_MESSAGE,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
   type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type MemberRow, type RecapRow,
   type RecurringRow, type RestoreCounts, type RestoreRows, type RestoreTable, type SettlementRow, type SettlementWrite, type WatchedTable,
@@ -229,6 +231,15 @@ export function createMemoryApi(
   function guardRecurring(old: RecurringRow, next: RecurringRow): RecurringRow {
     const out = { ...next, ever_posted: hasStarted(old) };
     const wasDeleted = (old.deleted_at ?? null) !== null;
+    // S10 (migration 20261125000000): whose it is changes only to or from the person writing, never to the other one.
+    const ownerWas = old.owner_id ?? null;
+    const ownerNow = out.owner_id ?? null;
+    const ownerMoves = ownerWas !== ownerNow;
+    if (ownerMoves) {
+      if (ownerWas !== null && ownerNow !== null) refuse('a personal regular payment can\'t be handed to the other person', '42501');
+      if ((ownerNow ?? ownerWas) !== me().userId) refuse('only its owner can change whose a regular payment is', '42501');
+      if (wasDeleted) refuse('a deleted regular payment can\'t change whose it is', '23514');
+    }
     if (wasDeleted !== ((out.deleted_at ?? null) !== null)) {
       const own = ['deleted_at', 'updated_at', 'posted_count', 'ever_posted'];
       const rest = (r: RecurringRow) => JSON.stringify(Object.entries(r).filter(([k]) => !own.includes(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -237,12 +248,19 @@ export function createMemoryApi(
       out.deleted_at = old.deleted_at;
     }
     refuseDeletedRunning(out, wasDeleted);
+    let done = old.posted_count;
     if (!wasDeleted && (out.deleted_at ?? null) !== null) out.posted_count = postOne(old);
+    else if (ownerMoves) {
+      // S10: what is already due posts first, as it was (shared, or the old owner's): from the next payment on.
+      done = postOne(old);
+      out.posted_count = done;
+    }
+    const started = hasStarted(old) || done > 0;
     const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'weekly' | 'monthly' | 'yearly', every: r.every, startDate: r.start_date, endDate: null });
-    if (hasStarted(old) && out.frequency === old.frequency && out.every === old.every && out.start_date !== old.start_date) {
-      out.posted_count = restart(sched(old), old.posted_count, out.start_date).done;
-    } else if (hasStarted(old) && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
-      const nxt = occurrence(sched(old), old.posted_count);
+    if (started && out.frequency === old.frequency && out.every === old.every && out.start_date !== old.start_date) {
+      out.posted_count = restart(sched(old), done, out.start_date).done;
+    } else if (started && (out.frequency !== old.frequency || out.every !== old.every || out.start_date !== old.start_date)) {
+      const nxt = occurrence(sched(old), done);
       out.start_date = out.start_date > nxt ? out.start_date : nxt;
       out.posted_count = 0;
     }
@@ -283,6 +301,46 @@ export function createMemoryApi(
     if (errors.length > 0) refuse(errors.map((e) => SERVER_WORDS[e]).join('; '));
   }
 
+  /**
+   * S10 (migration 20261125000000, check_personal): a personal row is all its owner's (paid and shares the whole amount,
+   * a treat by a person), its owner is one of the two; an entry is an expense in no chapter, never refunded; a template
+   * has a fixed amount. An entry's owner never changes.
+   */
+  function checkPersonal(row: ExpenseRow | RecurringRow, before?: { owner_id: string | null }) {
+    const owner = row.owner_id ?? null;
+    if ('kind' in row && before && (before.owner_id ?? null) !== owner) refuse('whose an entry is never changes (it would move money already counted)', '23514');
+    if (owner === null) return;
+    if (!tables.members.some((m) => m.household_id === row.household_id && m.user_id === owner)) refuse('a personal payment belongs to one of the two of you', '23514');
+    const paid = row.paid as Record<string, number>;
+    const shares = row.shares as Record<string, number>;
+    if (row.split_mode !== 'treat' || row.paid_via !== 'person' || paid[owner] !== row.amount_pence || shares[owner] !== row.amount_pence) {
+      refuse('a personal payment is all its owner\'s: paid and shares are the whole amount', '23514');
+    }
+    if ('kind' in row) {
+      if (row.kind !== 'expense' || row.chapter_id !== null || row.refund_of !== null) refuse('a personal entry is an expense, in no chapter', '23514');
+    } else if (row.amount_varies) refuse('a personal regular payment has a fixed amount', '23514');
+  }
+  /**
+   * S10 review (migration 20261125000100, check_entry_day): a phone never adds an own entry (only an own regular
+   * payment's posting makes one, and a restore); an entry takes a regular payment's day (set, or changed) only from that
+   * day's bill in the Inbox, as a shared entry. An upsert of a row already there is an edit, checked as one.
+   */
+  function checkEntryDay(row: ExpenseRow, before: ExpenseRow | undefined) {
+    const owner = row.owner_id ?? null;
+    if (!before && owner !== null) refuse('a personal entry comes only from its owner\'s own regular payment', '42501');
+    if (row.recurring_id === null) return;
+    if (before && before.recurring_id === row.recurring_id && before.occurrence_date === row.occurrence_date) return;
+    if (owner !== null) refuse('a personal entry keeps the day its own regular payment posted it on', '42501');
+    if (!tables.inboxItems.some((i) => i.household_id === row.household_id && i.recurring_id === row.recurring_id && i.occurrence_date === row.occurrence_date)) {
+      refuse('a regular payment\'s day is taken only by its own posting or its bill in the Inbox', '23514');
+    }
+  }
+  /** S10 (row-level security): only its owner writes a personal row; a shared one is anyone's in the household. */
+  function refuseNotOwner(row: { owner_id?: string | null } | undefined, table: string) {
+    const owner = row?.owner_id ?? null;
+    if (owner !== null && owner !== me().userId) refuse(`new row violates row-level security policy for table "${table}"`, '42501');
+  }
+
   function writeRow<R extends { id: string; household_id: string; updated_at: string; deleted_at: string | null }>(
     list: R[], write: Partial<R> & { id: string; household_id: string }, entity: string, fill: (w: typeof write) => R, check?: (r: R) => void,
   ): R {
@@ -320,7 +378,7 @@ export function createMemoryApi(
     }
     if (r.refund_of === null || r.deleted_at !== null) return;
     const original = tables.expenses.find((e) => e.id === r.refund_of);
-    if (!original || original.household_id !== r.household_id || original.kind !== 'expense') {
+    if (!original || original.household_id !== r.household_id || original.kind !== 'expense' || (original.owner_id ?? null) !== null) {
       refuse('money back can only be for an expense of yours', '23514');
       return;
     }
@@ -393,6 +451,8 @@ export function createMemoryApi(
           fx_rate: null, receipt_path: null, category_guess: false, external_id: null, merchant: null, external_category: null, account_id: null,
           recurring_id: r.id, occurrence_date: d, created_by: r.created_by, created_at: stamp, updated_by: r.created_by,
           updated_at: stamp, deleted_at: null,
+          // S10: what a personal template posts is its owner's own.
+          owner_id: r.owner_id ?? null,
         });
         log('expense', id, 'created', { after: { description: r.description, amount_pence: r.amount_pence } }, hid);
       }
@@ -518,10 +578,13 @@ export function createMemoryApi(
         ...(r as unknown as RecurringRow), id: newId(r['id'], 'recurring'), household_id: hid, active: false,
         category_id: ref(r['category_id'], 'categories'), paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {},
         split_params: remap(r['split_params'] ?? null), created_by: author(r['created_by']),
+        // S10: whose it was, the person mapped (a backup from before the column: shared).
+        owner_id: typeof r['owner_id'] === 'string' ? (people[r['owner_id']] ?? r['owner_id']) : null,
         // A backup from before ever_posted: what it had counted says (as recurring_guard).
         ever_posted: r['ever_posted'] === true || Number(r['posted_count'] ?? 0) > 0,
       };
       checkMoney(row as unknown as ExpenseRow);
+      checkPersonal(row);
       tables.recurring.push(row);
       log('recurring', row.id, 'created', { after: row as unknown as Json }, hid);
       added.recurring += 1;
@@ -538,10 +601,12 @@ export function createMemoryApi(
         receipt_path: receipt, paid: remap(r['paid'] ?? {}) ?? {}, shares: remap(r['shares'] ?? {}) ?? {}, split_params: remap(r['split_params'] ?? null),
         occurrence_date: recurringId === null ? null : ((r['occurrence_date'] as string | null | undefined) ?? null),
         created_by: author(r['created_by']), updated_by: author(r['updated_by'] ?? r['created_by']),
+        owner_id: typeof r['owner_id'] === 'string' ? (people[r['owner_id']] ?? r['owner_id']) : null,
         // A backup from before S6a has no category_guess (review fix 1): the column's default.
         category_guess: r['category_guess'] === true,
       };
       checkMoney(row);
+      checkPersonal(row);
       const clash = (row.recurring_id !== null && tables.expenses.some((e) => e.recurring_id === row.recurring_id && e.occurrence_date === row.occurrence_date))
         || (row.external_id !== null && tables.expenses.some((e) => e.household_id === hid && e.source === row.source && e.external_id === row.external_id));
       if (clash) { skipped.expenses += 1; continue; } // on conflict do nothing
@@ -638,8 +703,12 @@ export function createMemoryApi(
         return next;
       }),
     upsertExpense: (row: ExpenseWrite) =>
-      call('upsertExpense', row, () =>
-        writeRow(tables.expenses, row, 'expense', (w) => ({
+      call('upsertExpense', row, () => {
+        // S10 (row-level security): a personal entry is written only by its owner.
+        refuseNotOwner(tables.expenses.find((e) => e.id === row.id && e.household_id === row.household_id), 'expenses');
+        refuseNotOwner(row, 'expenses');
+        const before = tables.expenses.find((e) => e.id === row.id);
+        return writeRow(tables.expenses, row, 'expense', (w) => ({
           merchant: null, external_category: null, account_id: null,
           created_by: me().userId, created_at: now().toISOString(), updated_by: me().userId,
           updated_at: now().toISOString(), deleted_at: null, ...(w as ExpenseWrite),
@@ -657,9 +726,14 @@ export function createMemoryApi(
             refuse('duplicate key value violates unique constraint "expenses_external"', '23505');
           }
           checkRefundLimit(r, tables.expenses.find((e) => e.id === r.id));
-        })),
+          checkPersonal(r, before);
+          checkEntryDay(r, before);
+        });
+      }),
     patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => {
       const before = tables.expenses.find((e) => e.id === id && e.household_id === myHousehold());
+      // S10: the partner's update of a personal entry finds no row (row-level security).
+      if (before && (before.owner_id ?? null) !== null && before.owner_id !== me().userId) refuse('JSON object requested, multiple (or no) rows returned', 'PGRST116');
       // keep_first_deletion (S9a review): a deleted row "deleted" again keeps the moment it was first deleted, so
       // restoring its original still finds the money back deleted with it.
       const kept = before && before.deleted_at !== null && patch.deleted_at !== null ? { ...patch, deleted_at: before.deleted_at } : patch;
@@ -756,12 +830,17 @@ export function createMemoryApi(
     postDueRecurring: () => call('postDueRecurring', null, () => postDue()),
     recurring: (hid) => call('recurring', hid, () => mine(tables.recurring).sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0))),
     inboxItems: (hid) => call('inboxItems', hid, () => mine(tables.inboxItems).sort((a, b) => (a.created_at < b.created_at ? -1 : 1))),
-    upsertRecurring: (row, columns) =>
+    upsertRecurring: (row, columns, ownerWas) =>
       call('upsertRecurring', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         const i = tables.recurring.findIndex((r) => r.id === row.id);
         const existing = i === -1 ? undefined : tables.recurring[i];
         if (existing && existing.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
+        // S10 (row-level security): a personal template is written only by its owner; one is added only as your own.
+        // S10 review 8: an edit made against another owner than the server's now is refused, never written over it.
+        if (existing && columns && ownerWas !== undefined && (existing.owner_id ?? null) !== ownerWas) refuse(WHOSE_CHANGED_MESSAGE, WHOSE_CHANGED);
+        refuseNotOwner(existing, 'recurring');
+        if (!existing) refuseNotOwner(row, 'recurring');
         const stamp = now().toISOString();
         // The phone never sends posted_count: the server keeps counting where it was (REC-6).
         // A narrowed write (pause, resume, end, an edit) changes only its columns, as the Supabase update does.
@@ -776,6 +855,8 @@ export function createMemoryApi(
         if (next.amount_pence <= 0) refuse('new row violates check constraint "recurring_amount_pence_check"', '23514');
         if (next.every < 1 || next.every > 52) refuse('new row violates check constraint "recurring_every_check"', '23514');
         checkMoney(next as unknown as ExpenseRow);
+        checkPersonal(next);
+        if (existing) refuseNotOwner(next, 'recurring');
         if (existing) tables.recurring[i] = next;
         else tables.recurring.push(next);
         // As log_activity: a delete or restore says what it was; an edit, what changed (nothing changed: nothing logged).
@@ -811,7 +892,8 @@ export function createMemoryApi(
         // comments_upd: only the author; comments_guard: the author and the entry stay.
         if (existing && existing.author !== me().userId) refuse('new row violates row-level security policy for table "comments"', '42501');
         if (!existing && row.author !== me().userId) refuse('new row violates row-level security policy for table "comments"', '42501');
-        if (!existing && !tables.expenses.some((e) => e.id === row.expense_id && e.household_id === row.household_id)) refuse('that entry is not one of yours', '23503');
+        // S10 (check_comment_entry): comments are for shared entries.
+        if (!existing && !tables.expenses.some((e) => e.id === row.expense_id && e.household_id === row.household_id && (e.owner_id ?? null) === null)) refuse('that entry is not one of yours', '23503');
         const sent = existing && columns ? Object.fromEntries(columns.map((k) => [k, row[k]])) as Partial<CommentRow> : row;
         const body = (sent.body ?? existing?.body ?? '').trim();
         if (body.length < 1 || body.length > 500) refuse('new row violates check constraint "comments_body_check"', '23514');
@@ -858,6 +940,9 @@ export function createMemoryApi(
     insertInboxItem: (row) =>
       call('insertInboxItem', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy for table "inbox_items"', '42501');
+        // S10 review (check_inbox_day): a regular payment's bill comes only from its own posting.
+        const named = row as { recurring_id?: string | null; occurrence_date?: string | null };
+        if ((named.recurring_id ?? null) !== null || (named.occurrence_date ?? null) !== null) refuse('a regular payment\'s bill comes only from its own posting', '42501');
         const existing = tables.inboxItems.find((r) => r.id === row.id);
         if (existing) return existing;
         const stamp = now().toISOString();

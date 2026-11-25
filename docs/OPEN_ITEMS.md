@@ -14,6 +14,7 @@ Last checked against the code and tests on 23 Nov 2026 (S9 engineering items).
 - [x] S7 import and export
 - [x] S8 notifications
 - [ ] S9 hardening → v1.0.0. Done: performance pass (live, `docs/qa/S9-performance.md`), acceptance pass and its fixes (S9a, S9b, PR #19), the data-safety pass (`tests/unit/data-safety.test.ts`). Also done: the three S9 risks (Actions pinned to commits, a second keep-alive on the Worker, a regular payment started long ago asks first). Still to do: the rest of release QA (ENGINEERING §9: the whole browser suite with the live AI eval, and the two-phone day below), then tag `v1.0.0`.
+- [ ] S10 personal regular payments (owner, 25 Nov; D19): built on its branch, tests green locally (`docs/slices/S10.md`); still to do: fresh review, CI, merge, deploy, smoke-check.
 
 ## Needs the owner
 - [ ] Skim the remaining proposals in `docs/DECISIONS.md` (the main ones are confirmed).
@@ -38,6 +39,8 @@ Each line: ids, then where and why. `npm run trace` reads this list; remove an i
 Taken off on 23 Nov, each now tested under its own id: REC-1…REC-8, INB-1, INB-3, CAT-1 (S3: `src/core/bills.test.ts`, `src/data/bills.test.ts`, `src/screens/bills.test.tsx`, `tests/sql/recurring_test.sql`, `tests/e2e/bills.spec.ts`, `tests/e2e/recurring.spec.ts`); CHP-1…CHP-6, PLC-1…PLC-7 (S4: `src/{core,data,screens}/chapters.test.*`, `src/{data,screens}/places.test.*`, `tests/sql/chapters_test.sql`; PLC-5 by `src/screens/places.test.tsx` "regular payments abroad"); INS-1…INS-8, SET-4 (S5: `src/core/insights.test.ts`, `src/core/recap.test.ts`, `src/screens/insights.test.tsx`, `src/screens/recap.test.tsx`); ADD-8, ADD-9, SCAN-1…SCAN-5, INS-9, TXT-5 (S6: `src/core/itemise.test.ts`, `src/data/smart.test.ts`, `src/data/smart-s6b.test.ts`, `src/screens/smart.test.tsx`, `src/screens/smart-s6b.test.tsx`). INB-1's "later Monzo transactions" are SPEC §9, after v1 (BUILD_PLAN "Later"); a photo shared while offline reaches the Inbox through Sort it later (S6b brief, SCAN-4).
 
 ## Ideas (not in scope until promoted)
+- A personal regular payment whose amount varies (S10 refuses it: its bill would wait in the shared Inbox). If wanted, an owner-only Inbox card.
+- Personal one-off entries, typed or imported (S10 has own entries only from own regular payments).
 - Joint account as a payer (data model ready).
 - Push the itemised receipt onto the Monzo transaction (with live Monzo).
 - A small seasonal prop for the animals.

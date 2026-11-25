@@ -2,6 +2,7 @@
  * Filtering for Activity, chapters and (in S6) Ask smsm: one implementation, so every screen agrees.
  * Text search ignores case and character width and is Unicode-normalised (TXT-3).
  */
+import { isPersonal } from './balance';
 import type { IsoDate } from './dates';
 import { pence, type Pence } from './money';
 import type { SplitMode, UserId } from './split';
@@ -19,6 +20,8 @@ export interface FilterEntry {
   country: string;
   date: IsoDate;
   splitMode: SplitMode | null;
+  /** S10 (REC-9): whose it is: null or absent, shared; a person's id, their own. */
+  ownerId?: UserId | null;
 }
 
 export interface Filter {
@@ -33,6 +36,8 @@ export interface Filter {
   to?: IsoDate;
   tags?: readonly string[];
   kinds?: readonly FilterEntry['kind'][];
+  /** S10 (REC-9): 'shared' keeps what the two of you share (settle-ups too); a person's id (UserId), only their own entries. */
+  owner?: string;
 }
 
 function textMatches(r: FilterEntry, text: string): boolean {
@@ -55,6 +60,8 @@ export function applyFilter<T extends FilterEntry>(rows: readonly T[], f: Filter
       if (!f.tags.some((t) => have.includes(t.normalize('NFKC').toLowerCase()))) return false;
     }
     if (f.kinds && f.kinds.length > 0 && !f.kinds.includes(r.kind)) return false;
+    if (f.owner === 'shared' && isPersonal(r)) return false;
+    if (f.owner !== undefined && f.owner !== 'shared' && r.ownerId !== f.owner) return false;
     return true;
   });
 }
@@ -62,16 +69,30 @@ export function applyFilter<T extends FilterEntry>(rows: readonly T[], f: Filter
 /**
  * S9a (PLC-7, CHP-6): the line above a filtered Activity ("12 entries · £340.20"), from the whole filtered set, not
  * the rows drawn: expenses add, money back subtracts; settle-ups and deleted rows are in neither the count nor the total.
+ * S10 (REC-9, REC-12): the shared total never counts one person's own entries; with `owner`, the total of that
+ * person's own entries alone.
  */
-export function filteredTotal(rows: readonly (FilterEntry & { amount: Pence; deleted?: boolean })[]): { count: number; total: Pence } {
+export function filteredTotal(rows: readonly (FilterEntry & { amount: Pence; deleted?: boolean })[], owner?: UserId): { count: number; total: Pence } {
   let count = 0;
   let total = 0;
   for (const r of rows) {
     if (r.kind === 'settlement' || r.deleted === true) continue;
+    if (owner === undefined ? isPersonal(r) : r.ownerId !== owner) continue;
     count += 1;
     total += r.kind === 'money_back' ? 0 - r.amount : r.amount;
   }
   return { count, total: pence(total) };
+}
+
+/**
+ * S10 review 2: the line over Activity with Whose on its default ("Shared and own"): the shared count and total (as
+ * filteredTotal) and, apart, each person's own count and total, by owner id, from the same whole filtered set.
+ */
+export function filteredTotals(rows: readonly (FilterEntry & { amount: Pence; deleted?: boolean })[]): {
+  shared: { count: number; total: Pence }; own: { owner: UserId; count: number; total: Pence }[];
+} {
+  const owners = [...new Set(rows.filter((r) => r.kind !== 'settlement' && r.deleted !== true && isPersonal(r)).map((r) => r.ownerId as UserId))].sort();
+  return { shared: filteredTotal(rows), own: owners.map((owner) => ({ owner, ...filteredTotal(rows, owner) })) };
 }
 
 /** S9a (ACT-1): what the one order reads: the entry's date, when it was added (an ISO timestamp) and its id. */

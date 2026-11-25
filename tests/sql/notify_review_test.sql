@@ -36,6 +36,11 @@ set request.jwt.claim.sub = :'X';
 insert into recurring(household_id, description, amount_pence, amount_varies, paid, shares, frequency, start_date)
 values (my_household(), 'Energy', 8000, true, jsonb_build_object(:'X', 8000), jsonb_build_object(:'X', 4000, :'Y', 4000), 'monthly', '2025-01-03')
 returning id as energy \gset
+-- Its bill, as the posting puts it in the Inbox (S10 review: a day is kept only from its bill; migration 20261125000100).
+reset role;
+insert into inbox_items(household_id, source, recurring_id, occurrence_date, payload)
+select household_id, 'bill', :'energy', '2025-01-03', '{}'::jsonb from members where user_id = :'X';
+set role authenticated;
 insert into expenses(household_id, description, amount_pence, paid, shares, source, recurring_id, occurrence_date)
 values (my_household(), 'Energy', 8312, jsonb_build_object(:'X', 8312), jsonb_build_object(:'X', 4156, :'Y', 4156), 'recurring', :'energy', '2025-01-03')
 returning id as kept \gset

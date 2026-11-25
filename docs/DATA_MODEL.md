@@ -10,8 +10,8 @@
 | `members` | the two people | `display_name`, `animal`, `locked_at`, `monzo_me`. No direct writes: `set_identity()`, `set_monzo_me()`, change requests |
 | `categories` | 12 defaults + custom | `colour` is a palette token name; `default_ratio`; `archived`; `sort`; `seed_key` (the server's: which starting category it is, e.g. `subscriptions`; kept through a rename; null for a person's own; never written by a phone) |
 | `chapters` | trips and projects | `kind`, `country`, dates, `closed` |
-| `expenses` | every entry | `kind` expense / money_back; `paid` and `shares` (jsonb, pence); `paid_via`; `split_mode`, `split_params`; `chapter_id`; `country`, `place`, `lat`, `lng` (3 decimals); itemised `items`; original currency fields (reference only); `receipt_path`; source fields; `refund_of`; soft delete |
-| `recurring` | templates | `amount_varies`; `is_subscription` ("Show in Subscriptions"; picking the Subscriptions category turns it on); `notes` (copied onto each entry, or each "amount varies" Inbox bill's payload, it posts from then on); schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). `ever_posted` (the server's: "has posted", never cleared). A new start after one has posted: the next payment is the new occurrence nearest to the old next day (`recurring_guard`, `recurring_restart_index`) |
+| `expenses` | every entry | `owner_id` (S10: null = shared; a member = what their own regular payment posted, all theirs, never changes); `kind` expense / money_back; `paid` and `shares` (jsonb, pence); `paid_via`; `split_mode`, `split_params`; `chapter_id`; `country`, `place`, `lat`, `lng` (3 decimals); itemised `items`; original currency fields (reference only); `receipt_path`; source fields; `refund_of`; soft delete |
+| `recurring` | templates | `owner_id` (S10, REC-9: null = shared; a member = their own: all theirs, a fixed amount; only they write it; a change applies from the next payment on); `amount_varies`; `is_subscription` ("Show in Subscriptions"; picking the Subscriptions category turns it on); `notes` (copied onto each entry, or each "amount varies" Inbox bill's payload, it posts from then on); schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). `ever_posted` (the server's: "has posted", never cleared). A new start after one has posted: the next payment is the new occurrence nearest to the old next day (`recurring_guard`, `recurring_restart_index`) |
 | `settlements` | "A paid B £x" | `method` monzo / other; soft delete |
 | `inbox_items` | things awaiting a decision | sources bill / scan / share / monzo; never counted as money |
 | `comments` | threads on entries | author-only edit; soft delete |
@@ -22,7 +22,7 @@
 | `activity` | append-only history | written by triggers and RPCs |
 | `accounts` | bank accounts (Monzo later) | |
 | `ai_usage`, `client_errors`, `app_config` | operations | usage counts; crash reports (insert-only); `min_client_version` |
-| view `member_net` | the balance in SQL | one row per person; the two sum to zero |
+| view `member_net` | the balance in SQL | one row per person; the two sum to zero; never counts a personal entry (S10) |
 | `notification_prefs` | one person's notification switches (S8) | own row only; written by `set_notification_prefs`; no row = the defaults |
 | `push_subscriptions` | each phone allowed to show notifications (S8) | own rows only; written by `save_push_subscription` / `remove_push_subscription` |
 | `notification_outbox` | notifications waiting to be sent (S8) | filled by triggers and the daily job, never by phones; no client access |
@@ -55,12 +55,15 @@ net(P) = Σ expenses   ( paid[P] − shares[P] )
        − Σ money_back ( paid[P] − shares[P] )
        + Σ settle-ups P paid   − Σ settle-ups P received
 net(Jae) + net(Sam) = 0 always.    Balance sentence: if net(Jae) > 0, "Sam owes Jae £net".
+(S10) Over shared rows only: an entry with an owner (a personal regular payment's) is never in either sum.
 ```
 Worked example (this is the SQL test): Jae pays Tesco £44.00 at 50/50 (+2200). Jae pays Sam's haircut £30.00, for_other (+3000). Sam treats dinner £60.00 (0). Net(Jae) = 5200. A £100 sofa from the joint account split 70/30: Jae paid 5000, owes 7000 (−2000) → 3200. Jae receives a £20 refund that belongs to both: −(2000 − 1000) → 2200. Sam pays Jae £22.00 → 0: "All square".
 
 One pure function, `src/core/balance.ts`, computes this for the UI and exports; the `member_net` view computes it in SQL; a property test and every two-user end-to-end scenario assert they agree.
 
-**Shared spending** (all analytics): live `expense` rows with `split_mode` in (`ratio`, `exact`, `treat`), at full `amount_pence` on `date`, minus live `money_back` rows in the same category and period. Excludes `for_other` and settle-ups.
+**Shared spending** (all analytics): live `expense` rows with `split_mode` in (`ratio`, `exact`, `treat`), at full `amount_pence` on `date`, minus live `money_back` rows in the same category and period. Excludes `for_other`, settle-ups and personal entries.
+
+**Personal regular payments** (S10, owner 25 Nov, REC-9…REC-12, INS-10). A template with `owner_id` set is one person's own: `paid` and `shares` are each the whole amount to the owner (`split_mode` treat, by a person), a fixed amount; what it posts carries the same `owner_id`. Both members read them; only the owner writes them (row-level security), and `check_personal` keeps the shape. They are never in a shared figure: `net(P)` and `member_net`/`member_net_on` skip rows with an owner (whatever their maps say), and so do shared spending, usual, pace, the comparison period, notes, the recap, the statement, What home costs, the Bills calendar and Subscriptions, Ask, and Activity's filtered total. Each person's own figures are the same functions over their own entries alone (`core/insights` `ownView`). Changing whose a template is posts what is already due first, as it was; entries never change owner.
 
 **Money back and its original** (S9a, MB-2, MB-3). A money back with `refund_of` is for one of the household's own expenses, never one that was deleted, and never more than it still has to come back (the original's amount less its other live linked money back); an original is never edited below its live linked money back. The phone and the database (`check_refund_limit`, which checks the phone's upsert as the edit it is) refuse otherwise. Deleting the original soft-deletes its live linked money back in the same statement (same `deleted_at`, same person, one notification); restoring the original restores those rows (the same `deleted_at`) as they were, and no others. A row deleted again keeps its first `deleted_at`. A money back whose original is deleted never counts, however it came about: `netPositions` (and so every figure built on it), Insights and `member_net`/`member_net_on` all leave it out.
 
@@ -85,7 +88,8 @@ One pure function, `src/core/balance.ts`, computes this for the UI and exports; 
 | Fairness | person's paid ÷ total paid, beside the default ratio |
 | Unusual category | this month ≥ 1.3 × usual for that category and ≥ £20 above |
 | Unusual entry | ≥ 3 × the category's 6-month median, with ≥ 5 earlier entries |
-| What home costs | Σ active recurring, converted to monthly (weekly × 52 ÷ 12 ÷ every; yearly ÷ 12 ÷ every) |
+| What home costs | Σ active shared recurring, converted to monthly (weekly × 52 ÷ 12 ÷ every; yearly ÷ 12 ÷ every) |
+| A person's own cost (S10) | the same, over their own running regular payments: a month and a year |
 | Subscription yearly cost | monthly × 12 ÷ every, etc. |
 | Standing-order hint | mean month-end net over the last 3+ months in the same direction, rounded down to £10; none when the household has a settle day or settled up in each of those 3 months (S9a) |
 | Trip cost per day | chapter total ÷ days from first to last entry |
