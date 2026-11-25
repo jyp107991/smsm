@@ -735,6 +735,9 @@ isOneToOne: false
                            },
 "storage_used":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"subscription_follow_category":
+{ Args: Record<PropertyKey, never>; Returns: number
                            }
           }
           Enums: {

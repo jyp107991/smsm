@@ -243,7 +243,7 @@ function NotesSection({ entries, settlements, templates, categories, people, tod
   settleDay: number | null;
 }) {
   const list = useMemo(
-    () => notes({ entries, templates: (templates ?? []).map(toTemplate), categories: categories.map((c) => ({ id: c.id, name: c.name })) }, today),
+    () => notes({ entries, templates: (templates ?? []).map((t) => toTemplate(t, categories)), categories: categories.map((c) => ({ id: c.id, name: c.name })) }, today),
     [entries, templates, categories, today],
   );
   const [a, b] = people;

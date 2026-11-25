@@ -976,6 +976,19 @@ begin
   end if;
 end $$;
 --
+-- Name: recurring_category_subscription(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.recurring_category_subscription() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+begin
+  new.is_subscription := new.category_id is not null and exists (
+    select 1 from categories c
+    where c.id = new.category_id and c.household_id = new.household_id and c.seed_key = 'subscriptions');
+  return new;
+end $$;
+--
 -- Name: recurring_guard(); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.recurring_guard() RETURNS trigger
@@ -1205,7 +1218,15 @@ begin
   for r in select * from jsonb_array_elements(coalesce(p_rows -> 'categories', '[]')) loop
     old := (r ->> 'id')::uuid;
     if restore_target(hid, old, 'categories') is null then
-      select id into tgt from categories where household_id = hid and lower(btrim(name)) = lower(btrim(r ->> 'name')) limit 1;
+      -- A starting category (by its key) is this household's starting one, renamed or not (REC-7: the Subscriptions
+      -- category alone makes a subscription, so a renamed one must land on it); then by name.
+      tgt := null;
+      if nullif(r ->> 'seed_key', '') is not null then
+        select id into tgt from categories where household_id = hid and seed_key = r ->> 'seed_key' limit 1;
+      end if;
+      if tgt is null then
+        select id into tgt from categories where household_id = hid and lower(btrim(name)) = lower(btrim(r ->> 'name')) limit 1;
+      end if;
       if tgt is not null then
         insert into restore_ids values (hid, old, tgt) on conflict do nothing;
         skipped := jsonb_set(skipped, '{categories}', to_jsonb((skipped ->> 'categories')::int + 1));
@@ -1661,6 +1682,22 @@ begin
   end if;
   return jsonb_build_object('database_bytes', pg_database_size(current_database()), 'photo_bytes', photos);
 end $_$;
+--
+-- Name: subscription_follow_category(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.subscription_follow_category() RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare n int;
+begin
+  update recurring r set is_subscription = x.want
+  from (select r2.id, coalesce(c.seed_key = 'subscriptions', false) as want
+        from recurring r2 left join categories c on c.id = r2.category_id and c.household_id = r2.household_id) x
+  where x.id = r.id and r.is_subscription is distinct from x.want;
+  get diagnostics n = row_count;
+  return n;
+end $$;
 --
 -- Name: accounts; Type: TABLE; Schema: public; Owner: -
 --
@@ -2422,6 +2459,10 @@ CREATE TRIGGER members_guard BEFORE UPDATE ON public.members FOR EACH ROW EXECUT
 --
 CREATE TRIGGER recurring_author BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.stamp_author();
 --
+-- Name: recurring recurring_category_subscription; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER recurring_category_subscription BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.recurring_category_subscription();
+--
 -- Name: recurring recurring_check_money; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER recurring_check_money BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.check_money();
@@ -3138,6 +3179,11 @@ REVOKE ALL ON FUNCTION public.queue_daily_notifications(p_now timestamp with tim
 --
 REVOKE ALL ON FUNCTION public.queue_notification(p_household uuid, p_actor uuid, p_kind text, p_ref uuid, p_payload jsonb) FROM PUBLIC;
 --
+-- Name: FUNCTION recurring_category_subscription(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.recurring_category_subscription() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.recurring_category_subscription() TO service_role;
+--
 -- Name: FUNCTION recurring_guard(); Type: ACL; Schema: public; Owner: -
 --
 REVOKE ALL ON FUNCTION public.recurring_guard() FROM PUBLIC;
@@ -3267,6 +3313,10 @@ GRANT ALL ON FUNCTION public.stamp_update() TO service_role;
 REVOKE ALL ON FUNCTION public.storage_used() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.storage_used() TO authenticated;
 GRANT ALL ON FUNCTION public.storage_used() TO service_role;
+--
+-- Name: FUNCTION subscription_follow_category(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.subscription_follow_category() FROM PUBLIC;
 --
 -- Name: TABLE accounts; Type: ACL; Schema: public; Owner: -
 --

@@ -27,7 +27,7 @@ const RENT = storedRecurring();
 const rentDraft = {
   description: 'Rent', amount: pence(145000), categoryId: RENT.category_id, payer: JAE_ID,
   split: { mode: 'ratio' as const, ratio: { [JAE_ID]: 50, [SAM_ID]: 50 } }, notes: null,
-  frequency: 'monthly' as const, every: 1, startDate: RENT.start_date, endDate: null, amountVaries: false, isSubscription: false,
+  frequency: 'monthly' as const, every: 1, startDate: RENT.start_date, endDate: null, amountVaries: false,
 };
 
 describe('template edits after posting (fresh review blocker 1)', () => {

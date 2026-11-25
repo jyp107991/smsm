@@ -84,6 +84,10 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     archived: false, sort: i + 1, seed_key: key, updated_at: stamp(start),
   }));
   const cat = (name: string): string => categories.find((c) => c.name === name)?.id ?? '';
+  const catName = (id: string | null): string => categories.find((c) => c.id === id)?.name ?? 'Other';
+  // REC-7 (owner, 25 Nov): a regular payment is a subscription exactly when it is in the Subscriptions category; the
+  // column says what the database's trigger would.
+  const inSubscriptions = (category: string): boolean => categories.some((c) => c.name === category && c.seed_key === 'subscriptions');
 
   // A nine-day trip to Japan about five months ago, kept apart as a chapter.
   const tripStart = addDays(addMonths(today, -5), -3);
@@ -130,7 +134,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
     return {
       id: newId(), household_id: DEMO_HOUSEHOLD_ID, description, amount_pence: amount, amount_varies: false,
       category_id: cat(category), paid: { ...paid }, paid_via: 'person', split_mode: 'ratio',
-      split_params: { [JAE]: 50, [SAM]: 50 }, shares: { ...shares }, is_subscription: false, frequency: 'monthly',
+      split_params: { [JAE]: 50, [SAM]: 50 }, shares: { ...shares }, is_subscription: inSubscriptions(category), frequency: 'monthly',
       every: 1, start_date: addDays(start, 2), end_date: null, posted_count: 0, active: true, notes: null,
       created_by: payer, created_at: stamp(start), updated_at: stamp(start), deleted_at: null, ever_posted: false, owner_id: null, ...extra,
     };
@@ -138,8 +142,8 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   const recurring: RecurringRow[] = [
     tmpl('Rent', 145000, 'Rent & bills', JAE),
     tmpl('Octopus Energy', 9000, 'Utilities', SAM, { amount_varies: true }),
-    tmpl('Netflix', 1899, 'Subscriptions', SAM, { is_subscription: true, start_date: addDays(start, 9) }),
-    tmpl('Spotify Duo', 1699, 'Subscriptions', JAE, { is_subscription: true, start_date: addDays(start, 14) }),
+    tmpl('Netflix', 1899, 'Subscriptions', SAM, { start_date: addDays(start, 9) }),
+    tmpl('Spotify Duo', 1699, 'Subscriptions', JAE, { start_date: addDays(start, 14) }),
     tmpl('Community Fibre', 2500, 'Utilities', JAE, { start_date: addDays(start, 20) }),
   ];
 
@@ -153,7 +157,7 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   // the demo shows the answer).
   for (const r of recurring) {
     const payer = Object.entries(r.paid as Record<string, number>).find(([, v]) => v > 0)?.[0] ?? JAE;
-    const category = r.description === 'Rent' ? 'Rent & bills' : r.is_subscription ? 'Subscriptions' : 'Utilities';
+    const category = catName(r.category_id);
     const due = dueOccurrences({ frequency: 'monthly', every: 1, startDate: r.start_date, endDate: null }, 0, today);
     due.forEach((date, i) => {
       r.posted_count += 1;
@@ -252,24 +256,24 @@ export function demoHousehold(today: IsoDate): DemoHousehold {
   ] : [];
   // S10 (REC-9): each person's own regular payments (kept out of every shared figure), posted as the database posts them.
   // Added last, from fixed amounts, so nothing drawn above moves.
-  const ownTmpl = (n: number, description: string, amount: number, category: string, owner: UserId, startDay: IsoDate, isSubscription: boolean): RecurringRow => ({
+  const ownTmpl = (n: number, description: string, amount: number, category: string, owner: UserId, startDay: IsoDate): RecurringRow => ({
     id: id(n), household_id: DEMO_HOUSEHOLD_ID, description, amount_pence: amount, amount_varies: false, category_id: cat(category),
     paid: { [owner]: amount }, paid_via: 'person', split_mode: 'treat', split_params: null, shares: { [owner]: amount },
-    is_subscription: isSubscription, frequency: 'monthly', every: 1, start_date: startDay, end_date: null, posted_count: 0, active: true,
+    is_subscription: inSubscriptions(category), frequency: 'monthly', every: 1, start_date: startDay, end_date: null, posted_count: 0, active: true,
     notes: null, created_by: owner, created_at: stamp(startDay), updated_at: stamp(startDay), deleted_at: null, ever_posted: false, owner_id: owner,
   });
   const own: RecurringRow[] = [
-    ownTmpl(9201, 'Climbing wall', 3500, 'Health', JAE, addDays(addMonths(today, -7), -4), false),
-    ownTmpl(9202, 'Duolingo', 799, 'Subscriptions', JAE, addDays(addMonths(today, -5), -9), true),
-    ownTmpl(9203, 'Phone contract', 1800, 'Utilities', SAM, addDays(addMonths(today, -8), -12), false),
-    ownTmpl(9204, 'Audible', 899, 'Subscriptions', SAM, addDays(addMonths(today, -4), -2), true),
+    ownTmpl(9201, 'Climbing wall', 3500, 'Health', JAE, addDays(addMonths(today, -7), -4)),
+    ownTmpl(9202, 'Duolingo', 799, 'Subscriptions', JAE, addDays(addMonths(today, -5), -9)),
+    ownTmpl(9203, 'Phone contract', 1800, 'Utilities', SAM, addDays(addMonths(today, -8), -12)),
+    ownTmpl(9204, 'Audible', 899, 'Subscriptions', SAM, addDays(addMonths(today, -4), -2)),
   ];
   for (const r of own) {
     const owner = r.owner_id ?? JAE;
     for (const date of dueOccurrences({ frequency: 'monthly', every: 1, startDate: r.start_date, endDate: null }, 0, today)) {
       r.posted_count += 1;
       r.ever_posted = true;
-      add({ date, description: r.description, amount: r.amount_pence, category: r.category_id === cat('Health') ? 'Health' : r.is_subscription ? 'Subscriptions' : 'Utilities',
+      add({ date, description: r.description, amount: r.amount_pence, category: catName(r.category_id),
         payer: owner, split: { mode: 'treat' }, source: 'recurring', recurringId: r.id, owner });
     }
     recurring.push(r);

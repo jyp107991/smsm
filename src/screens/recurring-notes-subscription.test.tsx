@@ -1,11 +1,10 @@
 /**
- * Owner's reports, 24 Nov (DECISIONS "One meaning for subscription", "Notes on regular payments"), on the regular
- * payment sheet, Bills and the Inbox. On Sat 14 Nov 2026 (TODAY).
- *   1. "subscriptions category duplicates subscription switch when adding bills": the switch is "Show in
- *      Subscriptions", with the hint "Lists it with its monthly and yearly cost under Subscriptions on Bills.".
- *      Picking the household's Subscriptions category (its starting one, found by its key: renamed, it still is;
- *      a person's own "Subscriptions" isn't) turns it on; the person can switch it off; another category turns off
- *      only an automatic "on", never one the person set.
+ * Owner's reports, 24 and 25 Nov (DECISIONS 25 Nov "The category alone decides what a subscription is", superseding
+ * 24 Nov "One meaning for subscription"; "Notes on regular payments"), on the regular payment sheet, Bills and the
+ * Inbox. On Sat 14 Nov 2026 (TODAY).
+ *   1. "why do you still have a subscriptions category and a subscriptions switch": there is no switch. A regular
+ *      payment is a subscription exactly when it is in the household's Subscriptions category (its starting one,
+ *      found by its key: renamed, it still is; a person's own "Subscriptions" isn't), and Bills lists it there.
  *   2. "Can't add notes when editing recurring payments": Notes is on the sheet itself, adding and editing; it saves
  *      (logged in the history), and what the payment posts from then on carries it, an Inbox bill included.
  */
@@ -36,8 +35,6 @@ async function settle(layer: DataLayer) {
   await act(async () => { await layer.idle(); });
 }
 const text = (el: HTMLElement) => el.textContent.replace(/\s+/g, ' ').trim();
-const SWITCH = 'Show in Subscriptions';
-const HINT = 'Lists it with its monthly and yearly cost under Subscriptions on Bills.';
 
 async function goBills() {
   fireEvent.click(await screen.findByRole('tab', { name: 'Bills' }));
@@ -56,7 +53,6 @@ async function openRent() {
   fireEvent.click(within(await screen.findByRole('list', { name: 'Next 30 days' })).getAllByRole('button', { name: /^Rent\b/ })[0] as HTMLElement);
   return screen.findByRole('dialog', { name: 'Edit regular payment' });
 }
-const subsSwitch = (sheet: HTMLElement) => within(sheet).getByRole<HTMLInputElement>('switch', { name: SWITCH });
 const pick = (sheet: HTMLElement, name: RegExp) => {
   fireEvent.click(within(within(sheet).getByRole('group', { name: 'Category' })).getByRole('button', { name }));
 };
@@ -70,60 +66,81 @@ async function saveNew(c: { layer: DataLayer }, sheet: HTMLElement, description:
 const R = (n: number) => `00000000-0000-4000-8000-00000000d${n.toString().padStart(3, '0')}`;
 const RENT = storedRecurring({ id: R(1), paid: { [JAE_ID]: 145000, [SAM_ID]: 0 }, shares: { [JAE_ID]: 72500, [SAM_ID]: 72500 } });
 
-describe('one meaning for "subscription" (REC-7)', () => {
-  it('REC-7: the switch is "Show in Subscriptions" with its hint; picking Subscriptions turns it on, and that is saved', async () => {
+describe('one meaning for "subscription": the category alone decides (REC-7, owner 25 Nov)', () => {
+  const subsList = async () => {
+    await goBills();
+    const seg = within(screen.getByRole('main')).queryAllByRole('radio', { name: 'Subscriptions' });
+    if (seg[0]) fireEvent.click(seg[0]);
+    return screen.findByRole('list', { name: 'Subscriptions' });
+  };
+
+  it('REC-7: the sheet has no subscription switch, adding or editing', async () => {
+    const c = couple({ recurring: [{ ...RENT, category_id: categoryId('Subscriptions'), is_subscription: true }] });
+    show(c.layer);
+    const sheet = await openNew();
+    expect(within(sheet).queryByRole('switch', { name: /subscription/i })).toBeNull();
+    expect(within(sheet).queryByText(/Show in Subscriptions/)).toBeNull();
+    pick(sheet, /^Subscriptions\b/);
+    expect(within(sheet).queryByRole('switch', { name: /subscription/i })).toBeNull();
+    expect(within(sheet).getAllByRole('switch').map((x) => x.getAttribute('aria-label') ?? x.closest('label')?.textContent ?? '')
+      .some((name) => /subscription/i.test(name))).toBe(false);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
+    const edit = await openRent();
+    expect(within(edit).queryByRole('switch', { name: /subscription/i })).toBeNull();
+  });
+
+  it('REC-7: saved in the Subscriptions category, it is listed under Subscriptions (and stored as one)', async () => {
     const c = couple();
     show(c.layer);
     const sheet = await openNew();
-    const sw = subsSwitch(sheet);
-    expect(sw.checked).toBe(false);
-    expect(sw.getAttribute('aria-describedby')).not.toBeNull();
-    expect(text(document.getElementById(sw.getAttribute('aria-describedby') ?? '') as HTMLElement)).toBe(HINT);
-    expect(within(sheet).queryByRole('switch', { name: 'Subscription' })).toBeNull();
     pick(sheet, /^Subscriptions\b/);
-    expect(subsSwitch(sheet).checked).toBe(true);
     await saveNew(c, sheet, 'Netflix');
-    expect(c.controls.tables.recurring).toHaveLength(1);
     expect(c.controls.tables.recurring[0]).toMatchObject({ description: 'Netflix', category_id: categoryId('Subscriptions'), is_subscription: true });
+    expect(within(await subsList()).getAllByRole('button', { name: /^Netflix\b/ })).toHaveLength(1);
   });
 
-  it('REC-7: the person can switch it off in Subscriptions; it saves off', async () => {
+  it('REC-7: saved in another category, it is not a subscription', async () => {
     const c = couple();
     show(c.layer);
     const sheet = await openNew();
-    pick(sheet, /^Subscriptions\b/);
-    fireEvent.click(subsSwitch(sheet));
-    expect(subsSwitch(sheet).checked).toBe(false);
-    await saveNew(c, sheet, 'Phone insurance');
-    expect(c.controls.tables.recurring[0]).toMatchObject({ category_id: categoryId('Subscriptions'), is_subscription: false });
-  });
-
-  it('REC-7: another category turns off an automatic "on"', async () => {
-    const c = couple();
-    show(c.layer);
-    const sheet = await openNew();
-    pick(sheet, /^Subscriptions\b/);
-    expect(subsSwitch(sheet).checked).toBe(true);
-    pick(sheet, /^Household\b/);
-    expect(subsSwitch(sheet).checked).toBe(false);
-    await saveNew(c, sheet, 'Window cleaner');
-    expect(c.controls.tables.recurring[0]).toMatchObject({ category_id: categoryId('Household'), is_subscription: false });
-  });
-
-  it('REC-7: turned on by the person, it stays on when another category is picked (also after a pass through Subscriptions)', async () => {
-    const c = couple();
-    show(c.layer);
-    const sheet = await openNew();
-    fireEvent.click(subsSwitch(sheet));
-    expect(subsSwitch(sheet).checked).toBe(true);
     pick(sheet, /^Subscriptions\b/);
     pick(sheet, /^Health\b/);
-    expect(subsSwitch(sheet).checked).toBe(true);
     await saveNew(c, sheet, 'Gym');
-    expect(c.controls.tables.recurring[0]).toMatchObject({ category_id: categoryId('Health'), is_subscription: true });
+    expect(c.controls.tables.recurring[0]).toMatchObject({ category_id: categoryId('Health'), is_subscription: false });
+    await goBills();
+    const seg = within(screen.getByRole('main')).queryAllByRole('radio', { name: 'Subscriptions' });
+    if (seg[0]) fireEvent.click(seg[0]);
+    await waitFor(() => { expect(text(screen.getByRole('main'))).toContain('No subscriptions yet. A regular payment in the Subscriptions category shows here.'); });
   });
 
-  it('REC-7: the starting Subscriptions category renamed still turns it on; a person’s own "Subscriptions" does not', async () => {
+  it('REC-7: the category decides even against a stored column: one stored "on" in Health isn’t listed; one stored "off" in Subscriptions is', async () => {
+    const R2 = storedRecurring({ id: R(2), description: 'Gym', amount_pence: 3000, category_id: categoryId('Health'), is_subscription: true, paid: { [JAE_ID]: 3000, [SAM_ID]: 0 }, shares: { [JAE_ID]: 1500, [SAM_ID]: 1500 } });
+    const R3 = storedRecurring({ id: R(3), description: 'Spotify', amount_pence: 1199, category_id: categoryId('Subscriptions'), is_subscription: false, paid: { [JAE_ID]: 1199, [SAM_ID]: 0 }, shares: { [JAE_ID]: 600, [SAM_ID]: 599 } });
+    const c = couple({ recurring: [RENT, R2, R3] });
+    show(c.layer);
+    const list = await subsList();
+    expect(within(list).getAllByRole('button', { name: /^Spotify\b/ })).toHaveLength(1);
+    expect(within(list).queryByRole('button', { name: /^Gym\b/ })).toBeNull();
+    expect(within(list).queryByRole('button', { name: /^Rent\b/ })).toBeNull();
+  });
+
+  it('REC-7: moved out of Subscriptions on an edit, it leaves the list', async () => {
+    const c = couple({ recurring: [{ ...RENT, description: 'Rent', category_id: categoryId('Subscriptions'), is_subscription: true }] });
+    show(c.layer);
+    expect(within(await subsList()).getAllByRole('button', { name: /^Rent\b/ })).toHaveLength(1);
+    const sheet = await openRent();
+    pick(sheet, /^Household\b/);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Edit regular payment' })).toBeNull(); });
+    await settle(c.layer);
+    expect(c.controls.tables.recurring[0]).toMatchObject({ category_id: categoryId('Household'), is_subscription: false });
+    await goBills();
+    const seg = within(screen.getByRole('main')).queryAllByRole('radio', { name: 'Subscriptions' });
+    if (seg[0]) fireEvent.click(seg[0]);
+    await waitFor(() => { expect(text(screen.getByRole('main'))).toContain('No subscriptions yet. A regular payment in the Subscriptions category shows here.'); });
+  });
+
+  it('REC-7: the starting Subscriptions category renamed still decides; a person’s own "Subscriptions" does not', async () => {
     const c = couple();
     const cats = c.controls.tables.categories;
     const seeded = cats.find((x) => x.id === categoryId('Subscriptions'));
@@ -131,29 +148,27 @@ describe('one meaning for "subscription" (REC-7)', () => {
     seeded.name = 'Streaming';
     cats.push({ ...seeded, id: '00000000-0000-4000-8000-000000000a99', name: 'Subscriptions', emoji: '📰', sort: 13, seed_key: null });
     show(c.layer);
-    const sheet = await openNew();
+    let sheet = await openNew();
     pick(sheet, /^Subscriptions\b/);
-    expect(subsSwitch(sheet).checked).toBe(false);
+    await saveNew(c, sheet, 'Magazine');
+    sheet = await openNew();
     pick(sheet, /^Streaming\b/);
-    expect(subsSwitch(sheet).checked).toBe(true);
+    await saveNew(c, sheet, 'Netflix');
+    expect(c.controls.tables.recurring.find((r) => r.description === 'Magazine')).toMatchObject({ is_subscription: false });
+    expect(c.controls.tables.recurring.find((r) => r.description === 'Netflix')).toMatchObject({ is_subscription: true });
+    const list = await subsList();
+    expect(within(list).getAllByRole('button', { name: /^Netflix\b/ })).toHaveLength(1);
+    expect(within(list).queryByRole('button', { name: /^Magazine\b/ })).toBeNull();
   });
 
-  it('REC-7: editing leaves the stored switch as it was until the category changes; one stored on stays on', async () => {
-    const c = couple({ recurring: [{ ...RENT, category_id: categoryId('Subscriptions'), is_subscription: true }] });
-    show(c.layer);
-    const sheet = await openRent();
-    expect(subsSwitch(sheet).checked).toBe(true);
-    pick(sheet, /^Household\b/);
-    expect(subsSwitch(sheet).checked).toBe(true);
-  });
-
-  it('REC-7: Subscriptions on Bills, empty, names the switch', async () => {
+  it('REC-7: Subscriptions on Bills, empty, says the category is what puts one there', async () => {
     const c = couple({ recurring: [RENT] });
     show(c.layer);
     await goBills();
     const seg = within(screen.getByRole('main')).queryAllByRole('radio', { name: 'Subscriptions' });
     if (seg[0]) fireEvent.click(seg[0]);
-    await waitFor(() => { expect(text(screen.getByRole('main'))).toContain('No subscriptions yet. Turn on “Show in Subscriptions” on a regular payment to see it here.'); });
+    await waitFor(() => { expect(text(screen.getByRole('main'))).toContain('No subscriptions yet. A regular payment in the Subscriptions category shows here.'); });
+    expect(text(screen.getByRole('main'))).not.toContain('Show in Subscriptions');
   });
 });
 

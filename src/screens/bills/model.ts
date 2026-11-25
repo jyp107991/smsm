@@ -5,6 +5,7 @@
 import { addDays, startOfMonth, type IsoDate } from '../../core/dates';
 import { pence, sumPence, type Pence } from '../../core/money';
 import { isRunning as running, monthlyCost, upcoming, yearlyCost, type Frequency, type UpcomingBill, type UpcomingTemplate } from '../../core/recurring';
+import { isSubscription, type KeyedCategory } from '../../core/subscription';
 import type { ExpenseRow, RecurringRow } from '../../data';
 
 /** S10 (REC-12): only shared templates and entries make the shared Bills figures; one person's own never do. */
@@ -88,10 +89,13 @@ export function next30(templates: readonly RecurringRow[], today: IsoDate): Upco
 
 export interface SubscriptionLine { template: RecurringRow; perMonth: Pence; perYear: Pence }
 
-/** REC-7: the running subscriptions, with their cost a month and a year, and the year's total. */
-export function subscriptions(templates: readonly RecurringRow[], today: IsoDate): { lines: SubscriptionLine[]; perYear: Pence } {
+/**
+ * REC-7: the running subscriptions (shared regular payments in the Subscriptions category: the category alone
+ * decides), with their cost a month and a year, and the year's total.
+ */
+export function subscriptions(templates: readonly RecurringRow[], categories: readonly KeyedCategory[], today: IsoDate): { lines: SubscriptionLine[]; perYear: Pence } {
   const lines = shared(templates)
-    .filter((t) => t.is_subscription && isRunning(t, today))
+    .filter((t) => isSubscription(t, categories) && isRunning(t, today))
     .map((t) => ({ template: t, perMonth: monthlyCost(cadence(t), pence(t.amount_pence)), perYear: yearlyCost(cadence(t), pence(t.amount_pence)) }))
     .sort((a, b) => b.perYear - a.perYear || a.template.description.localeCompare(b.template.description));
   return { lines, perYear: sumPence(lines.map((l) => l.perYear)) };
@@ -108,7 +112,7 @@ export interface OwnCosts {
 }
 
 /** S10 (REC-10, INS-10): what one person's own regular payments cost, apart from everything shared. */
-export function ownCosts(templates: readonly RecurringRow[], owner: string, today: IsoDate): OwnCosts {
+export function ownCosts(templates: readonly RecurringRow[], categories: readonly KeyedCategory[], owner: string, today: IsoDate): OwnCosts {
   const own = templates.filter((t) => t.owner_id === owner && t.deleted_at === null);
   const live = own.filter((t) => isRunning(t, today));
   const nextOf = (t: RecurringRow): IsoDate | null => upcoming([toUpcoming(t, today)], { from: today, to: addDays(today, 3660) })[0]?.date ?? null;
@@ -116,7 +120,7 @@ export function ownCosts(templates: readonly RecurringRow[], owner: string, toda
     .map((t) => ({ template: t, next: nextOf(t), perMonth: monthlyCost(cadence(t), pence(t.amount_pence)) }))
     .sort((a, b) => (a.next ?? '9999').localeCompare(b.next ?? '9999')|| a.template.description.localeCompare(b.template.description));
   const lines = live
-    .filter((t) => t.is_subscription)
+    .filter((t) => isSubscription(t, categories))
     .map((t) => ({ template: t, perMonth: monthlyCost(cadence(t), pence(t.amount_pence)), perYear: yearlyCost(cadence(t), pence(t.amount_pence)) }))
     .sort((a, b) => b.perYear - a.perYear || a.template.description.localeCompare(b.template.description));
   return {

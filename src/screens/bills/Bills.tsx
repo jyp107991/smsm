@@ -7,11 +7,11 @@
 import { useId, useMemo, useState } from 'react';
 import { formatDate, monthWeeks, type IsoDate } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
-import { isDeleted, useAllRecurring, useDataLayer, useEntries, useRecurring, type RecurringRow } from '../../data';
+import { isDeleted, useAllRecurring, useCategories, useDataLayer, useEntries, useRecurring, type RecurringRow } from '../../data';
 import { Button, Segmented } from '../../ui/primitives';
 import { cx } from '../../ui/primitives/util';
 import { strings } from '../../ui/strings';
-import { NO_ENTRIES } from '../shared/empty';
+import { NO_CATEGORIES, NO_ENTRIES } from '../shared/empty';
 import { usePeople } from '../shared/people';
 import type { Person } from '../shared/words';
 import { useSheets } from '../sheets';
@@ -106,7 +106,8 @@ export function Bills() {
 function OwnSection({ person, mine, templates, today, onOpen }: {
   person: Person; mine: boolean; templates: readonly RecurringRow[]; today: IsoDate; onOpen: (id: string) => void;
 }) {
-  const costs = useMemo(() => ownCosts(templates, person.id, today), [templates, person.id, today]);
+  const categories = useCategories().data ?? NO_CATEGORIES;
+  const costs = useMemo(() => ownCosts(templates, categories, person.id, today), [templates, categories, person.id, today]);
   const id = useId();
   const tap = (tid: string) => (mine ? { onClick: () => { onOpen(tid); } } : {});
   return (
@@ -315,7 +316,8 @@ function Next30({ templates, today, onOpen }: { templates: readonly RecurringRow
 }
 
 function Subscriptions({ templates, today, onOpen }: { templates: readonly RecurringRow[]; today: IsoDate; onOpen: (id: string) => void }) {
-  const subs = useMemo(() => subscriptions(templates, today), [templates, today]);
+  const categories = useCategories().data ?? NO_CATEGORIES;
+  const subs = useMemo(() => subscriptions(templates, categories, today), [templates, categories, today]);
   const id = useId();
   return (
     <section className="flex flex-col">

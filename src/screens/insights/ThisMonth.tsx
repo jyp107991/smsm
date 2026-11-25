@@ -20,7 +20,7 @@ export function ThisMonth() {
   const entries = useMemo(() => rows.map(toInsight), [rows]);
   const p = useMemo(() => pace(entries, today), [entries, today]);
   const note = useMemo(
-    () => notes({ entries, templates: (templates ?? []).map(toTemplate), categories: categories.map((c) => ({ id: c.id, name: c.name })) }, today)[0] ?? null,
+    () => notes({ entries, templates: (templates ?? []).map((t) => toTemplate(t, categories)), categories: categories.map((c) => ({ id: c.id, name: c.name })) }, today)[0] ?? null,
     [entries, templates, categories, today],
   );
   if (rows.length === 0) return null;

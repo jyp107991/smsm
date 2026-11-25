@@ -35,7 +35,7 @@ export function useRecapInput(): RecapInput | null {
       people: [a.id, b.id],
       names: { [a.id]: a.name, [b.id]: b.name },
       categories: categories.map((c) => ({ id: c.id, name: c.name })),
-      templates: (templates ?? []).map(toTemplate),
+      templates: (templates ?? []).map((t) => toTemplate(t, categories)),
       commentCounts: counts,
     };
   }, [rows, settlements, templates, categories, comments, a, b]);

@@ -198,7 +198,7 @@ async function pickDay(page: Page, title: 'When it starts' | 'When it ends', iso
 
 interface NewPayment {
   amount: string; description: string; category?: string; payer?: 'Jae' | 'Sam'; split?: string;
-  often?: 'Weekly' | 'Monthly' | 'Yearly'; every?: string; startsOn?: string; varies?: boolean; subscription?: boolean;
+  often?: 'Weekly' | 'Monthly' | 'Yearly'; every?: string; startsOn?: string; varies?: boolean;
 }
 
 async function fill(page: Page, sheet: Locator, p: Partial<NewPayment>): Promise<void> {
@@ -219,9 +219,6 @@ async function fill(page: Page, sheet: Locator, p: Partial<NewPayment>): Promise
   }
   if (p.varies !== undefined && (await sheet.getByRole('switch', { name: 'Amount varies' }).isChecked()) !== p.varies) {
     await sheet.getByRole('switch', { name: 'Amount varies' }).click();
-  }
-  if (p.subscription !== undefined && (await sheet.getByRole('switch', { name: 'Show in Subscriptions' }).isChecked()) !== p.subscription) {
-    await sheet.getByRole('switch', { name: 'Show in Subscriptions' }).click();
   }
 }
 
@@ -308,7 +305,7 @@ for (const size of SIZES) {
         await expect(cleaner).toHaveCount(2);
 
         // Yearly subscription, from today: £119.99 a year, £10.00 a month (rounded once).
-        await add(page, { amount: '119.99', description: 'Prime', category: 'Subscriptions', payer: 'Jae', often: 'Yearly', startsOn: today(), subscription: true });
+        await add(page, { amount: '119.99', description: 'Prime', category: 'Subscriptions', payer: 'Jae', often: 'Yearly', startsOn: today() });
         await expectHomeCost(page, cost0 + 2600 + 1000, 'a yearly £119.99 is £10.00 a month');
         await show(page, 'Subscriptions');
         await expect(page.getByRole('list', { name: 'Subscriptions' }).getByRole('button', { name: 'Prime, £119.99 a year, £10.00 a month' })).toBeVisible();
@@ -715,32 +712,28 @@ for (const theme of THEMES) {
   });
 }
 
-// ───────── Owner's reports, 24 Nov: one meaning for "subscription", and notes (DECISIONS 24 Nov) ─────────
+// ───────── Owner's reports, 24 and 25 Nov: the category alone decides what a subscription is, and notes (DECISIONS) ─────────
 
 for (const theme of THEMES) {
-  test.describe(`390×844, ${theme}: Show in Subscriptions and notes`, () => {
+  test.describe(`390×844, ${theme}: subscriptions by category, and notes`, () => {
     test.beforeEach(async ({ page }) => { await start(page, { width: 390, height: 844 }, theme); });
 
-    test('REC-7 REC-1 REC-6: picking Subscriptions turns "Show in Subscriptions" on (another category undoes only that); notes on add and edit, carried by what it posts', async ({ page }) => {
+    test('REC-7 REC-1 REC-6: no subscription switch, the Subscriptions category puts it under Subscriptions; notes on add and edit, carried by what it posts', async ({ page }) => {
       const where = `390×844, ${theme}`;
       const sheet = await openNew(page);
-      const sw = sheet.getByRole('switch', { name: 'Show in Subscriptions' });
-      await expect(sw).not.toBeChecked();
-      await expect(sw).toHaveAccessibleDescription('Lists it with its monthly and yearly cost under Subscriptions on Bills.');
-      await expect(sheet.getByRole('switch', { name: 'Subscription', exact: true })).toHaveCount(0);
+      // One concept (owner, 25 Nov): no switch, the category alone decides.
+      await expect(sheet.getByRole('switch', { name: /subscription/i })).toHaveCount(0);
+      await expect(sheet.getByText('Show in Subscriptions')).toHaveCount(0);
       const category = (name: string) => sheet.getByRole('group', { name: 'Category' }).getByRole('button', { name: new RegExp(`^${name}\\b`) });
-      await category('Subscriptions').click();
-      await expect(sw).toBeChecked();
       await category('Household').click();
-      await expect(sw).not.toBeChecked();
       await category('Subscriptions').click();
-      await expect(sw).toBeChecked();
+      await expect(sheet.getByRole('switch', { name: /subscription/i })).toHaveCount(0);
       // Notes is on the sheet itself.
       await expect(sheet.getByRole('button', { name: 'More details' })).toHaveCount(0);
       const notes = sheet.getByRole('textbox', { name: 'Notes' });
       await notes.fill('Account 1234');
       await fill(page, sheet, { amount: '7.99', description: 'Music', payer: 'Jae', split: '50/50', startsOn: today() });
-      await check(page, `${where}: the sheet with Show in Subscriptions and Notes`);
+      await check(page, `${where}: the sheet with Notes and no subscription switch`);
       await save(page, sheet, 'Saved Music as a regular payment');
 
       // In Subscriptions on Bills, at £7.99 a month and £95.88 a year.
@@ -760,7 +753,7 @@ for (const theme of THEMES) {
       edit = await openFrom(page, 'Subscriptions', 'Music');
       await expect(edit.getByRole('textbox', { name: 'Notes' })).toHaveValue('Account 5678');
       await expect(edit.getByRole('region', { name: 'History' })).toContainText(/the note/);
-      await expect(edit.getByRole('switch', { name: 'Show in Subscriptions' })).toBeChecked();
+      await expect(edit.getByRole('switch', { name: /subscription/i })).toHaveCount(0);
       await check(page, `${where}: editing, with its notes`);
       await closeSheet(page, edit);
       await tab(page, 'Activity');

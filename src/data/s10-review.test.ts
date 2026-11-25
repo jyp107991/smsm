@@ -115,7 +115,7 @@ describe('S10 review 1: a regular payment’s day is taken only by its posting o
 
 describe('S10 review 8: a queued edit built against another owner is refused at replay, not written over it', () => {
   const even = { mode: 'ratio' as const, ratio: { [JAE_ID]: 50, [SAM_ID]: 50 } };
-  const rentDraft = { description: 'Rent', amount: pence(150000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even, frequency: 'monthly' as const, every: 1, startDate: '2026-01-01', endDate: null, amountVaries: false, isSubscription: false };
+  const rentDraft = { description: 'Rent', amount: pence(150000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even, frequency: 'monthly' as const, every: 1, startDate: '2026-01-01', endDate: null, amountVaries: false };
 
   it('REC-11: offline, Jae raises the shared rent; her other phone made it her own meanwhile: refused, her own stays as it is', async () => {
     const c = household({ recurring: [RENT] });

@@ -61,7 +61,7 @@ function OwnFigure({ person, period: shown, beforeWords }: { person: Person; per
     // `period` is rebuilt each render; its days (key) are what it is.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, key, today]);
-  const costs = useMemo(() => ownCosts(templates ?? [], person.id, today), [templates, person.id, today]);
+  const costs = useMemo(() => ownCosts(templates ?? [], categories, person.id, today), [templates, categories, person.id, today]);
 
   const tail = figures.monthPace ? ownPaceTail(figures.monthPace, person.name) : '';
   const sentence = figures.monthPace
