@@ -248,7 +248,7 @@ describe.skipIf(!process.env.PGHOST)('netPositions against the member_net view',
 
   /**
    * S10 (REC-12, BAL-1): core and SQL agree that one person's own entries are left out of the balance. Each household
-   * has random shared rows, its members' own entries as the app writes them (all the owner's, through row-level
+   * has random shared rows, its members' own entries as the posting writes them (all the owner's, through row-level
    * security and check_personal), and own entries shaped to move the balance if they were counted (written by the
    * database owner with the checks off), so only "whose it is" can keep them out.
    */
@@ -278,12 +278,15 @@ describe.skipIf(!process.env.PGHOST)('netPositions against the member_net view',
     const lines: string[] = [`insert into auth.users(id) values ${users.map((u) => `('${u}')`).join(', ')} on conflict do nothing;`];
     for (const [i, h] of households.entries()) {
       lines.push('set role authenticated;', householdSql({ a: h.a, b: h.b, entries: h.entries, settlements: h.settlements }, 900 + i));
+      // As the posting of their own regular payment writes them (S10 review: a phone never inserts an own entry, the
+      // posting does, under smsm.posting), still through row-level security and check_personal as the owner.
+      lines.push("select set_config('smsm.posting', 'on', false);");
       for (const o of h.own) {
         lines.push(`set request.jwt.claim.sub = '${o.ownerId ?? ''}';`,
           `insert into expenses(household_id, kind, description, amount_pence, paid, split_mode, shares, owner_id, deleted_at) values ` +
           `(:'hid', 'expense', 'Own', ${o.amount}, ${jsonb(o.paid)}, 'treat', ${jsonb(o.shares)}, '${o.ownerId ?? ''}', ${o.deleted ? 'now()' : 'null'});`);
       }
-      lines.push('reset role;', 'alter table expenses disable trigger user;');
+      lines.push("select set_config('smsm.posting', 'off', false);", 'reset role;', 'alter table expenses disable trigger user;');
       for (const o of h.stray) {
         lines.push(`insert into expenses(household_id, kind, description, amount_pence, paid, split_mode, shares, owner_id) values ` +
           `(:'hid', 'expense', 'Stray own', ${o.amount}, ${jsonb(o.paid)}, 'for_other', ${jsonb(o.shares)}, '${o.ownerId ?? ''}');`);

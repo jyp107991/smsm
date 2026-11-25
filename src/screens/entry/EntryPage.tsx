@@ -89,9 +89,11 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const label = row.description;
   const tap = useTapAction();
   // S10 (REC-9, REC-10): one person's own entry: all theirs, apart from what you share; only they change it.
-  const owner = row.owner_id === null ? null : (people.list.find((p) => p.id === row.owner_id) ?? null);
-  const personal = row.owner_id !== null;
-  const theirs = personal && row.owner_id !== people.me?.id;
+  // S10 review 3: a row cached or queued before S10 has no owner_id at all: shared.
+  const ownerId = row.owner_id ?? null;
+  const owner = ownerId === null ? null : (people.list.find((p) => p.id === ownerId) ?? null);
+  const personal = ownerId !== null;
+  const theirs = personal && ownerId !== people.me?.id;
 
   // Q-F1 ADD-7: one copy per tap-action (a double tap makes one); a later tap makes another on purpose.
   const duplicate = () => {

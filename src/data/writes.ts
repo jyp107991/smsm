@@ -139,7 +139,11 @@ export type MoneyOp = OpBase & (
   | { table: 'settlements'; op: 'patch'; id: string; patch: SoftDeletePatch; label: string }
   /** S3: a regular payment (added, edited, paused, resumed, ended: always the whole template, never deleted). */
   /** `columns`: only these are written to an existing template (pause, resume, end, an edit), never the rest. */
-  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[] }
+  /**
+   * `ownerWas` (S10 review 8): whose it was when the edit was made (null, shared); the server refuses the edit if whose
+   * it is has changed since (another phone of the same person), rather than write money of the old shape over it.
+   */
+  | { table: 'recurring'; op: 'upsert'; isNew: boolean; row: RecurringRow; input: null; columns?: readonly RecurringColumn[]; ownerWas?: string | null }
   /** S3: an Inbox decision (INB-2). */
   | { table: 'inbox_items'; op: 'patch'; id: string; patch: InboxPatch; label: string }
   /** S6a (SCAN-4): a receipt to sort later, added to the Inbox. */

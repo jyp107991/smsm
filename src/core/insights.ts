@@ -273,7 +273,8 @@ export function notes(
     if (isPersonal(t)) continue;
     // A subscription whose entry posted this month differs from the one before.
     if (t.isSubscription) {
-      const posted = entries.filter((e) => !e.deleted && e.recurringId === t.id).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      // S10 review 4: its shared postings only (one that was someone's own, before it was shared, has their price).
+      const posted = entries.filter((e) => !e.deleted && !isPersonal(e) && e.recurringId === t.id).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
       const last = posted[posted.length - 1];
       const before = posted[posted.length - 2];
       if (last && before && month(last.date) === m && last.date <= today && last.amount !== before.amount) {

@@ -63,7 +63,8 @@ export const EntryRowView = memo(function EntryRowView({ row, categories, people
   const back = row.kind === 'money_back';
   const amount = formatPence(pence(back ? -row.amount_pence : row.amount_pence));
   // S10 (REC-9): one person's own entry is marked as theirs (never "treat").
-  const owner = row.owner_id === null ? null : people.find((p) => p.id === row.owner_id);
+  const ownerId = row.owner_id ?? null;
+  const owner = ownerId === null ? null : people.find((p) => p.id === ownerId);
   const ownTag = owner ? strings.entry.ownTag(owner.name) : null;
   const tag = ownTag ?? (back ? strings.entry.moneyBackTag
     : row.split_mode === 'for_other' && beneficiary ? strings.entry.forTag(beneficiary.name)

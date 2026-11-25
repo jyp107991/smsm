@@ -224,6 +224,8 @@ export const strings = {
       'deleted-regular': 'It was deleted on the other phone, so it can’t start again.',
       /** S10: the database's rules for a personal payment. */
       personal: 'It’s one person’s own, so only they can change it.',
+      /** S10 review 8: an edit made before whose it is changed on another phone. */
+      'whose-changed': 'Whose it is changed on another phone first, so this change wasn’t saved. Open it to check and save again.',
       other: 'It couldn’t be saved. Open it to check it and save again.',
     },
     fix: 'Fix it',
@@ -358,6 +360,8 @@ export const strings = {
     /** S10 (REC-11): whose a regular payment is, from its next payment on. */
     madeOwn: (who: string, owner: string) => `${who} made it ${owner}’s own`,
     madeShared: (who: string) => `${who} made it shared`,
+    /** S10 review 6: a change of whose with other changes in the same save. */
+    madeAndChanged: (made: string, what: string) => `${made} and changed ${what}`,
     resumed: (who: string) => `${who} resumed it`,
     endDate: 'the end date',
     often: 'how often',
@@ -425,6 +429,10 @@ export const strings = {
     ownOf: (name: string) => `${name}’s own`,
     /** S10: a person's own entries, filtered; never in the shared total. */
     ownTotalLine: (name: string, count: number, amount: string) => `${name}’s own: ${String(count)} ${count === 1 ? 'entry' : 'entries'} · ${amount}`,
+    /** S10 review 2: Whose on its default with own rows in the matches: "2 shared entries · £30.00 · Jae’s own: 3 · £45.00". */
+    sharedTotalLine: (count: number, total: string) => `${String(count)} shared ${count === 1 ? 'entry' : 'entries'} · ${total}`,
+    ownTotalPart: (name: string, count: number, amount: string) => `${name}’s own: ${String(count)} · ${amount}`,
+    sharedAndOwnLine: (shared: string, own: readonly string[]) => [shared, ...own].join(' · '),
   },
   settle: {
     title: 'Settle up',
@@ -486,7 +494,7 @@ export const strings = {
     own: (name: string) => `${name}’s own`,
     ownLine: 'Kept apart from what you share.',
     ownSubscriptions: (name: string) => `${name}’s subscriptions`,
-    ownNoSubscriptions: 'No subscriptions of their own.',
+    ownNoSubscriptions: (name: string) => `No subscriptions in ${name}’s own regular payments.`,
     /** Worded apart from the shared "… a year in all" (one total of that name on the page). */
     ownYearTotal: (amount: string) => `${amount} a year altogether`,
     readOnly: (name: string) => `Only ${name} can change these.`,
@@ -747,7 +755,7 @@ export const strings = {
     thisMonthRegion: 'This month',
     /** S10 (INS-10): each person's own regular payments, produced apart from the shared figures. */
     own: (name: string) => `${name}’s own`,
-    ownLine: 'Their own regular payments, never in the figures above.',
+    ownLine: (name: string) => `${name}’s own regular payments, never in the figures above.`,
     ownThisMonth: 'This month',
     ownNothing: 'Nothing of their own this month yet.',
     ownRunning: (month: string, year: string) => `${month} a month to run, ${year} a year`,

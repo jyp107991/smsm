@@ -10,6 +10,8 @@ import { isRunning, occurrence, restart } from '../core/recurring';
 import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
+  WHOSE_CHANGED,
+  WHOSE_CHANGED_MESSAGE,
   type ActivityRow, type Api, type AuthUser, type CategoryMemoryRow, type CategoryRow, type ChangeRequestRow, type ChannelStatus, type ExpenseRow,
   type ChapterRow, type CommentRow, type ExpenseWrite, type HouseholdRow, type ImportIgnoreRow, type ImportRuleRow, type InboxItemRow, type MemberRow, type RecapRow,
   type RecurringRow, type RestoreCounts, type RestoreRows, type RestoreTable, type SettlementRow, type SettlementWrite, type WatchedTable,
@@ -317,6 +319,21 @@ export function createMemoryApi(
     if ('kind' in row) {
       if (row.kind !== 'expense' || row.chapter_id !== null || row.refund_of !== null) refuse('a personal entry is an expense, in no chapter', '23514');
     } else if (row.amount_varies) refuse('a personal regular payment has a fixed amount', '23514');
+  }
+  /**
+   * S10 review (migration 20261125000100, check_entry_day): a phone never adds an own entry (only an own regular
+   * payment's posting makes one, and a restore); an entry takes a regular payment's day (set, or changed) only from that
+   * day's bill in the Inbox, as a shared entry. An upsert of a row already there is an edit, checked as one.
+   */
+  function checkEntryDay(row: ExpenseRow, before: ExpenseRow | undefined) {
+    const owner = row.owner_id ?? null;
+    if (!before && owner !== null) refuse('a personal entry comes only from its owner\'s own regular payment', '42501');
+    if (row.recurring_id === null) return;
+    if (before && before.recurring_id === row.recurring_id && before.occurrence_date === row.occurrence_date) return;
+    if (owner !== null) refuse('a personal entry keeps the day its own regular payment posted it on', '42501');
+    if (!tables.inboxItems.some((i) => i.household_id === row.household_id && i.recurring_id === row.recurring_id && i.occurrence_date === row.occurrence_date)) {
+      refuse('a regular payment\'s day is taken only by its own posting or its bill in the Inbox', '23514');
+    }
   }
   /** S10 (row-level security): only its owner writes a personal row; a shared one is anyone's in the household. */
   function refuseNotOwner(row: { owner_id?: string | null } | undefined, table: string) {
@@ -710,6 +727,7 @@ export function createMemoryApi(
           }
           checkRefundLimit(r, tables.expenses.find((e) => e.id === r.id));
           checkPersonal(r, before);
+          checkEntryDay(r, before);
         });
       }),
     patchExpense: (id, patch) => call('patchExpense', { id, patch }, () => {
@@ -812,13 +830,15 @@ export function createMemoryApi(
     postDueRecurring: () => call('postDueRecurring', null, () => postDue()),
     recurring: (hid) => call('recurring', hid, () => mine(tables.recurring).sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0))),
     inboxItems: (hid) => call('inboxItems', hid, () => mine(tables.inboxItems).sort((a, b) => (a.created_at < b.created_at ? -1 : 1))),
-    upsertRecurring: (row, columns) =>
+    upsertRecurring: (row, columns, ownerWas) =>
       call('upsertRecurring', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         const i = tables.recurring.findIndex((r) => r.id === row.id);
         const existing = i === -1 ? undefined : tables.recurring[i];
         if (existing && existing.household_id !== myHousehold()) refuse('new row violates row-level security policy', '42501');
         // S10 (row-level security): a personal template is written only by its owner; one is added only as your own.
+        // S10 review 8: an edit made against another owner than the server's now is refused, never written over it.
+        if (existing && columns && ownerWas !== undefined && (existing.owner_id ?? null) !== ownerWas) refuse(WHOSE_CHANGED_MESSAGE, WHOSE_CHANGED);
         refuseNotOwner(existing, 'recurring');
         if (!existing) refuseNotOwner(row, 'recurring');
         const stamp = now().toISOString();
@@ -920,6 +940,9 @@ export function createMemoryApi(
     insertInboxItem: (row) =>
       call('insertInboxItem', row, () => {
         if (row.household_id !== myHousehold()) refuse('new row violates row-level security policy for table "inbox_items"', '42501');
+        // S10 review (check_inbox_day): a regular payment's bill comes only from its own posting.
+        const named = row as { recurring_id?: string | null; occurrence_date?: string | null };
+        if ((named.recurring_id ?? null) !== null || (named.occurrence_date ?? null) !== null) refuse('a regular payment\'s bill comes only from its own posting', '42501');
         const existing = tables.inboxItems.find((r) => r.id === row.id);
         if (existing) return existing;
         const stamp = now().toISOString();

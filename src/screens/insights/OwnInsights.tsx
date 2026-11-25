@@ -26,8 +26,9 @@ export function OwnInsights({ period, beforeWords }: { period: Period; beforeWor
   const templates = useAllRecurring().data;
   const owners = useMemo(() => {
     const has = new Set<string>();
-    for (const e of rows) if (e.owner_id !== null && e.deleted_at === null) has.add(e.owner_id);
-    for (const t of templates ?? []) if (t.owner_id !== null && !isDeleted(t)) has.add(t.owner_id);
+    // S10 review 3: a row from before S10 has no owner_id at all (shared).
+    for (const e of rows) if ((e.owner_id ?? null) !== null && e.deleted_at === null) has.add(e.owner_id ?? '');
+    for (const t of templates ?? []) if ((t.owner_id ?? null) !== null && !isDeleted(t)) has.add(t.owner_id ?? '');
     return [...people.list].sort((a, b) => Number(b.id === people.me?.id) - Number(a.id === people.me?.id)).filter((p) => has.has(p.id));
   }, [rows, templates, people.list, people.me]);
   if (owners.length === 0) return null;
@@ -74,7 +75,7 @@ function OwnFigure({ person, period: shown, beforeWords }: { person: Person; per
   return (
     <Figure title={strings.insights.own(person.name)} define={strings.insights.ownDefine}>
       <div className="flex flex-col gap-4" data-own-insights={person.id}>
-        <p className="text-secondary text-ink-2 m-0">{strings.insights.ownLine}</p>
+        <p className="text-secondary text-ink-2 m-0">{strings.insights.ownLine(person.name)}</p>
         <p className="text-sentence nums-list m-0">{sentence}</p>
         <p className="text-body nums-list m-0">{strings.insights.ownRunning(formatPence(costs.perMonth), formatPence(costs.perYear))}</p>
         <div className="flex flex-col">

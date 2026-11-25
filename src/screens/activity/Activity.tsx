@@ -18,7 +18,7 @@
 import { Check, X } from 'lucide-react';
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, startTransition, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, type IsoDate } from '../../core/dates';
-import { applyFilter, filteredTotal, newestFirst, type Filter, type FilterEntry } from '../../core/filters';
+import { applyFilter, filteredTotal, filteredTotals, newestFirst, type Filter, type FilterEntry } from '../../core/filters';
 import { formatPence, pence } from '../../core/money';
 import {
   addExpense, deleteExpense, newId, restoreExpense, useAllEntries, useCategories, useChapters, useDataLayer, useSettlements, useSyncStatus,
@@ -149,11 +149,13 @@ export function Activity() {
     const gone = new Set((entries ?? []).filter((e) => e.deleted_at !== null).map((e) => e.id));
     // S10 (REC-12): the shared total never counts someone's own entries; their own filter totals theirs alone.
     const owner = shownFilters.whose !== '' && shownFilters.whose !== SHARED ? shownFilters.whose : undefined;
-    const t = filteredTotal(shown.map((i) => ({
+    const rows = shown.map((i) => ({
       ...i.entry, amount: pence(i.row.amount_pence),
       deleted: i.row.deleted_at !== null || (i.kind === 'expense' && i.row.kind === 'money_back' && i.row.refund_of !== null && gone.has(i.row.refund_of)),
-    })), owner);
-    return { ...t, owner };
+    }));
+    // S10 review 2: Whose on its default, own rows on screen: the shared line, then each person's own, apart (core).
+    const parts = shownFilters.whose === '' ? filteredTotals(rows).own : [];
+    return { ...filteredTotal(rows, owner), owner, own: parts };
   }, [shown, shownFilters, entries]);
   const someOwn = useMemo(() => (entries ?? []).some((e) => (e.owner_id ?? null) !== null), [entries]);
 
@@ -239,7 +241,11 @@ export function Activity() {
           <p className="text-secondary text-ink-2 nums-list m-0">
             {total.owner !== undefined
               ? strings.activity.ownTotalLine(people.list.find((p) => p.id === total.owner)?.name ?? '', total.count, formatPence(total.total))
-              : strings.activity.totalLine(total.count, formatPence(total.total))}
+              : total.own.length === 0 ? strings.activity.totalLine(total.count, formatPence(total.total))
+              : strings.activity.sharedAndOwnLine(
+                strings.activity.sharedTotalLine(total.count, formatPence(total.total)),
+                people.list.flatMap((p) => total.own.filter((o) => o.owner === p.id).map((o) => strings.activity.ownTotalPart(p.name, o.count, formatPence(o.total)))),
+              )}
           </p>
         ) : null}
         <ActivityList

@@ -622,7 +622,8 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
   const columns = EDIT_COLUMNS.filter((k) => (k === 'notes' ? notesChanged : k === 'owner_id' ? ownerChanged : !(k in changed) || changed[k as keyof typeof changed]));
   layer.enqueue({
     opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
-    ...(existing ? { columns } : {}),
+    // S10 review 8: built against whose it was; refused at the server if that changed meanwhile.
+    ...(existing ? { columns, ownerWas: existing.owner_id ?? null } : {}),
   });
   return row.id;
 }

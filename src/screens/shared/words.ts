@@ -166,6 +166,12 @@ function listWords(parts: readonly string[]): string {
 
 /** What an edit changed, in words: "£42.50 to £45.20 and the category". */
 function editWords(summary: unknown, people: readonly Person[]): string {
+  const parts = editParts(summary, people);
+  return parts.length > 0 ? listWords(parts) : strings.history.details;
+}
+
+/** What an edit changed, part by part ("£42.50 to £45.20", "the category"); none when nothing it names changed. */
+function editParts(summary: unknown, people: readonly Person[]): string[] {
   const parts: string[] = [];
   const amount = field(summary, 'amount_pence');
   if (amount && typeof amount.before === 'number' && typeof amount.after === 'number') {
@@ -192,7 +198,7 @@ function editWords(summary: unknown, people: readonly Person[]): string {
   if (field(summary, 'frequency') ?? field(summary, 'every')) parts.push(strings.history.often);
   if (field(summary, 'start_date')) parts.push(strings.history.start);
   if (field(summary, 'end_date')) parts.push(strings.history.endDate);
-  return parts.length > 0 ? listWords(parts) : strings.history.details;
+  return parts;
 }
 
 /** REC-1: a regular payment paused or resumed and nothing else changed: "Jae paused it". */
@@ -204,13 +210,21 @@ function pausedOrResumed(summary: unknown, who: string): string | null {
   return active.after ? strings.history.resumed(who) : strings.history.paused(who);
 }
 
-/** S10 (REC-11): a regular payment made someone's own, or shared again: "Jae made it Jae's own" (its money follows). */
+/** What follows from a change of whose by itself (who paid and the split); never named as a change of its own. */
+const FOLLOWS_OWNER = new Set(['owner_id', 'paid', 'paid_via', 'shares', 'split_mode', 'split_params']);
+
+/**
+ * S10 (REC-11): a regular payment made someone's own, or shared again: "Jae made it Jae's own" (its money follows);
+ * S10 review 6: with what else the same save changed, "Jae made it Jae's own and changed £10.00 to £12.00".
+ */
 function ownerChanged(summary: unknown, who: string, people: readonly Person[]): string | null {
   const owner = field(summary, 'owner_id');
   if (!owner || same(owner.before, owner.after)) return null;
-  if (owner.after === null) return strings.history.madeShared(who);
   const name = people.find((p) => p.id === owner.after)?.name ?? strings.history.someone;
-  return strings.history.madeOwn(who, name);
+  const made = owner.after === null ? strings.history.madeShared(who) : strings.history.madeOwn(who, name);
+  const rest = Object.fromEntries(Object.entries(summary as Record<string, unknown>).filter(([k]) => !FOLLOWS_OWNER.has(k)));
+  const others = editParts(rest, people);
+  return others.length > 0 ? strings.history.madeAndChanged(made, listWords(others)) : made;
 }
 
 /** One line of an entry's history (ACT-2): "Sam changed £42.50 to £45.20, yesterday 18:02". */

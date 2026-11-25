@@ -84,6 +84,17 @@ export function filteredTotal(rows: readonly (FilterEntry & { amount: Pence; del
   return { count, total: pence(total) };
 }
 
+/**
+ * S10 review 2: the line over Activity with Whose on its default ("Shared and own"): the shared count and total (as
+ * filteredTotal) and, apart, each person's own count and total, by owner id, from the same whole filtered set.
+ */
+export function filteredTotals(rows: readonly (FilterEntry & { amount: Pence; deleted?: boolean })[]): {
+  shared: { count: number; total: Pence }; own: { owner: UserId; count: number; total: Pence }[];
+} {
+  const owners = [...new Set(rows.filter((r) => r.kind !== 'settlement' && r.deleted !== true && isPersonal(r)).map((r) => r.ownerId as UserId))].sort();
+  return { shared: filteredTotal(rows), own: owners.map((owner) => ({ owner, ...filteredTotal(rows, owner) })) };
+}
+
 /** S9a (ACT-1): what the one order reads: the entry's date, when it was added (an ISO timestamp) and its id. */
 export interface Ordered { date: IsoDate; createdAt: string; id: string }
 

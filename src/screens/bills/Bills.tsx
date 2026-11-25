@@ -131,7 +131,7 @@ function OwnSection({ person, mine, templates, today, onOpen }: {
       ) : null}
       <h3 className="text-subtitle text-ink-2 mt-4 mb-0">{strings.bills.ownSubscriptions(person.name)}</h3>
       {costs.subscriptions.lines.length === 0 ? (
-        <p className="text-secondary text-ink-2 mt-2 mb-0">{strings.bills.ownNoSubscriptions}</p>
+        <p className="text-secondary text-ink-2 mt-2 mb-0">{strings.bills.ownNoSubscriptions(person.name)}</p>
       ) : (
         <>
           {/* Unnamed lists under their headings, inside the region "Jae's own" (never a second "Subscriptions" list). */}
