@@ -2,6 +2,14 @@
 
 Newest first. Each entry: what was built, what was tested, what failed, what's next.
 
+## 2026-11-25 ~14:34 UTC: personal regular payments and one meaning for "subscription" are LIVE
+- **S10, personal regular payments** (PR #25, `88c5945`, live 13:21). A regular payment can be Shared or someone's own. Own payments are kept out of every shared figure, and the database is the authority for that. Insights has a section per person.
+  - The fresh review found that a regular payment's day could be taken, so a bill silently didn't post. This is now refused by the database (`20261125000100`).
+  - Seven smaller findings were also fixed, each with a test.
+- **REC-7, the category alone decides what a subscription is** (PR #26, `7be123b`, live 14:34). The "Show in Subscriptions" switch is gone, and a trigger keeps the stored column equal to the category.
+  - The fresh review found that a backup restore of a renamed Subscriptions category dropped its subscriptions. Restore now maps a starting category by its key first (`20261125000300`).
+- **Note:** the mutation job now takes about 45 minutes on main and gates every deploy, so a release takes about an hour. Moving it off the release path needs the owner's go-ahead (asked).
+
 ## 2026-11-24: the AI check covers every smart feature, and the free AI allowance can no longer run out
 - **What happened:** today's three full AI checks used up the whole day's free AI allowance (10,000 "Neurons", shared with MacroPy). Until midnight UTC the app's smart features rest: reading receipts, loose wording, category guesses, recap wording and Ask all fall back to doing it by hand, as designed (a receipt says "That’s enough reading for today. Fill it in by hand."). Nothing is lost and nothing is charged.
 - **The AI check is now cheap by default:** it sends a small, fixed sample (8 receipts, 10 loose wordings, 10 questions, 10 shop names, 4 recap months), says before it starts roughly how much of the allowance it will use, and stops at once if the allowance runs out. The complete set is a "full" box on the eval-ai workflow, for quiet days only.
