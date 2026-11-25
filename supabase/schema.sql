@@ -1218,7 +1218,15 @@ begin
   for r in select * from jsonb_array_elements(coalesce(p_rows -> 'categories', '[]')) loop
     old := (r ->> 'id')::uuid;
     if restore_target(hid, old, 'categories') is null then
-      select id into tgt from categories where household_id = hid and lower(btrim(name)) = lower(btrim(r ->> 'name')) limit 1;
+      -- A starting category (by its key) is this household's starting one, renamed or not (REC-7: the Subscriptions
+      -- category alone makes a subscription, so a renamed one must land on it); then by name.
+      tgt := null;
+      if nullif(r ->> 'seed_key', '') is not null then
+        select id into tgt from categories where household_id = hid and seed_key = r ->> 'seed_key' limit 1;
+      end if;
+      if tgt is null then
+        select id into tgt from categories where household_id = hid and lower(btrim(name)) = lower(btrim(r ->> 'name')) limit 1;
+      end if;
       if tgt is not null then
         insert into restore_ids values (hid, old, tgt) on conflict do nothing;
         skipped := jsonb_set(skipped, '{categories}', to_jsonb((skipped ->> 'categories')::int + 1));

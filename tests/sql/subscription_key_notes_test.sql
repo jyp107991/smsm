@@ -40,11 +40,22 @@ update categories set seed_key = null where id = :'subs';             -- expect 
 select seed_key = 'subscriptions' as ok_rec7_key_unmoved from categories where id = :'subs';
 -- A rename's history says nothing of the key.
 select count(*) = 0 as ok_cat1_key_not_in_history from activity where entity = 'category' and entity_id = :'subs' and summary ? 'seed_key';
--- A restored backup's category (a renamed starting one, say) brings no key: the household's own are its own.
+-- A restored backup's category brings no key: the household's own are its own. A backup's starting category (renamed,
+-- say) lands on this household's one with the same key (REC-7 review, 25 Nov: otherwise a renamed Subscriptions
+-- category would come back unkeyed and its payments would silently leave Subscriptions); any other is added unkeyed.
 select restore_backup(jsonb_build_object(:'F', :'F', :'G', :'G'), jsonb_build_object('categories', jsonb_build_array(
   jsonb_build_object('id', 'c3000000-0000-4000-8000-000000000001', 'name', 'Telly and apps', 'emoji', '📺', 'colour', 'plum',
-                     'sort', 20, 'seed_key', 'subscriptions')))) is not null as ok_cat1_restored;
-select seed_key is null as ok_cat1_restored_category_has_no_key from categories where household_id = :'fhid' and name = 'Telly and apps';
+                     'sort', 20, 'seed_key', 'subscriptions'),
+  jsonb_build_object('id', 'c3000000-0000-4000-8000-000000000002', 'name', 'Climbing', 'emoji', '🧗', 'colour', 'plum',
+                     'sort', 21, 'seed_key', 'nonsense')),
+  'recurring', jsonb_build_array(jsonb_build_object('id', 'c3000000-0000-4000-8000-0000000000a1', 'description', 'Telly', 'amount_pence', 999,
+     'paid', jsonb_build_object(:'F', 999), 'split_mode', 'treat', 'shares', jsonb_build_object(:'F', 999), 'frequency', 'monthly', 'every', 1,
+     'start_date', '2025-01-03', 'posted_count', 0, 'active', true, 'is_subscription', true,
+     'category_id', 'c3000000-0000-4000-8000-000000000001')))) is not null as ok_cat1_restored;
+select count(*) = 0 as ok_rec7_restored_renamed_lands_on_ours from categories where household_id = :'fhid' and name = 'Telly and apps';
+select category_id = :'subs' and is_subscription as ok_rec7_restored_payment_still_a_subscription
+  from recurring where household_id = :'fhid' and description = 'Telly';
+select seed_key is null as ok_cat1_restored_category_has_no_key from categories where household_id = :'fhid' and name = 'Climbing';
 select count(*) = 1 as ok_rec7_one_subscriptions_key_per_household from categories where household_id = :'fhid' and seed_key = 'subscriptions';
 reset role;
 

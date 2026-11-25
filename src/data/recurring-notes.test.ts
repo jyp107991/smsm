@@ -189,3 +189,30 @@ describe('backup and restore keep a regular payment’s notes (EXP-1)', () => {
     expect(d.controls.tables.recurring.map((r) => r.notes)).toEqual(['Account 1234']);
   });
 });
+
+describe('a backup’s renamed Subscriptions category lands on this household’s (REC-7 review, EXP-1)', () => {
+  it('REC-7 EXP-1: restored into a fresh household, a payment in a renamed Subscriptions category is still a subscription', async () => {
+    const c = household({ recurring: [storedRecurring({ category_id: categoryId('Subscriptions'), is_subscription: true })] });
+    await c.layer.ready;
+    await settle(c.layer);
+    const parsed = JSON.parse(backupJson({ appVersion: 'test' }, c.layer)) as { categories: { id: string; name: string; seed_key: string | null }[] };
+    // The backup's household had renamed it, and its id is unknown here (a different household).
+    const subs = parsed.categories.find((x) => x.seed_key === 'subscriptions');
+    if (!subs) throw new Error('no Subscriptions category in the backup');
+    subs.name = 'Streaming';
+    subs.id = 'c9000000-0000-4000-8000-000000000001';
+    const file = JSON.stringify(parsed).replaceAll(categoryId('Subscriptions'), subs.id);
+
+    const d = household();
+    await d.layer.ready;
+    await settle(d.layer);
+    const plan = restorePlan(file, d.layer);
+    if ('error' in plan) throw new Error(plan.error);
+    const people = defaultPeopleMap(plan, d.layer.members().map((x) => ({ id: x.user_id, name: x.display_name ?? '' })));
+    await restoreBackup(plan, people, d.layer);
+    await settle(d.layer);
+    const ours = d.controls.tables.categories.find((x) => x.seed_key === 'subscriptions');
+    expect(d.controls.tables.categories.some((x) => x.name === 'Streaming')).toBe(false);
+    expect(d.controls.tables.recurring.map((r) => [r.category_id, r.is_subscription])).toEqual([[ours?.id, true]]);
+  });
+});

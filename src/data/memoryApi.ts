@@ -215,11 +215,11 @@ export function createMemoryApi(
     tables.activity.push({ id: activityId++, household_id: householdId, actor: user?.userId ?? null, entity, entity_id: id, action, summary: summary ?? {}, at: now().toISOString() });
   }
 
-  /** S10 (recurring_guard, migration 20261124000000): a deleted template is never running. */
   /** REC-7 (migration 20261125000200): in its household's Subscriptions category (by its key), it is a subscription. */
   function inSubscriptions(r: RecurringRow): boolean {
     return isSubscription(r, tables.categories.filter((c) => c.household_id === r.household_id));
   }
+  /** S10 (recurring_guard, migration 20261124000000): a deleted template is never running. */
   function refuseDeletedRunning(r: RecurringRow, wasDeleted: boolean) {
     if ((r.deleted_at ?? null) === null || !isRunning({ active: r.active, endDate: r.end_date }, today())) return;
     refuse(wasDeleted ? 'a deleted regular payment can\'t run again' : 'a regular payment that is still running can\'t be deleted: pause or end it first', '23514');
@@ -559,7 +559,11 @@ export function createMemoryApi(
     for (const r of objects('categories')) {
       if (target(r['id'], 'categories') !== null) { skipped.categories += 1; continue; }
       const name = str(r['name']).trim().toLowerCase();
-      const same = mine(tables.categories).find((c) => c.name.trim().toLowerCase() === name);
+      // REC-7 review (migration 20261125000300): a starting category lands on this household's one with the same key,
+      // renamed or not; then by name.
+      const key = typeof r['seed_key'] === 'string' && r['seed_key'] !== '' ? r['seed_key'] : null;
+      const same = (key === null ? undefined : mine(tables.categories).find((c) => c.seed_key === key))
+        ?? mine(tables.categories).find((c) => c.name.trim().toLowerCase() === name);
       if (same) { if (typeof r['id'] === 'string') restoreIds.set(`${hid}:${r['id']}`, same.id); skipped.categories += 1; continue; }
       // A restored category brings no starting key (categories_seed_guard): the household's own are its own.
       const row = { ...(r as unknown as CategoryRow), id: newId(r['id'], 'categories'), household_id: hid, default_ratio: remap(r['default_ratio'] ?? null), seed_key: null };
