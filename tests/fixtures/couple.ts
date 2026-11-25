@@ -45,10 +45,11 @@ export const JAE_ID = '00000000-0000-4000-8000-0000000000a1';
 export const SAM_ID = '00000000-0000-4000-8000-0000000000b1';
 export const TODAY = '2026-11-14';
 
-const CATEGORIES: readonly [string, string, string][] = [
-  ['Groceries', '🛒', 'moss'], ['Eating out', '🍜', 'amber'], ['Rent & bills', '🏠', 'walnut'], ['Utilities', '💡', 'honey'],
-  ['Transport', '🚆', 'slate'], ['Subscriptions', '📺', 'plum'], ['Household', '🧺', 'oak'], ['Going out', '🍸', 'berry'],
-  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '📦', 'stone'],
+const CATEGORIES: readonly [string, string, string, string][] = [
+  ['Groceries', '🛒', 'moss', 'groceries'], ['Eating out', '🍜', 'amber', 'eating_out'], ['Rent & bills', '🏠', 'walnut', 'rent_bills'],
+  ['Utilities', '💡', 'honey', 'utilities'], ['Transport', '🚆', 'slate', 'transport'], ['Subscriptions', '📺', 'plum', 'subscriptions'],
+  ['Household', '🧺', 'oak', 'household'], ['Going out', '🍸', 'berry', 'going_out'], ['Travel', '✈️', 'lake', 'travel'],
+  ['Gifts', '🎁', 'clay', 'gifts'], ['Health', '💊', 'fern', 'health'], ['Other', '📦', 'stone', 'other'],
 ];
 
 export function categoryId(name: string): string {
@@ -171,8 +172,8 @@ export function couple(
   if (opts.partnerJoined !== false) {
     members.push({ household_id: HID, user_id: SAM_ID, display_name: 'Sam', animal: 'dog', locked_at: stamp, monzo_me: null, joined_at: '2026-11-02T12:00:00.000Z' });
   }
-  const categories: CategoryRow[] = CATEGORIES.map(([name, emoji, colour], i) => ({
-    id: categoryId(name), household_id: HID, name, emoji, colour, default_ratio: null, archived: false, sort: i + 1, updated_at: stamp,
+  const categories: CategoryRow[] = CATEGORIES.map(([name, emoji, colour, key], i) => ({
+    id: categoryId(name), household_id: HID, name, emoji, colour, default_ratio: null, archived: false, sort: i + 1, seed_key: key, updated_at: stamp,
   }));
   const me = opts.as === 'sam' ? SAM_ID : JAE_ID;
   // `recurring`, `inboxItems` and the `today` option are S3's additions to the in-memory Api (docs/slices/S3.md).

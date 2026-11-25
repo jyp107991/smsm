@@ -81,14 +81,14 @@ isOneToOne: false
                   ]
                 },"categories": {
                   Row: {
-                    "archived": boolean,"colour": string,"default_ratio": Json | null,"emoji": string,"household_id": string,"id": string,"name": string,"sort": number,"updated_at": string
+                    "archived": boolean,"colour": string,"default_ratio": Json | null,"emoji": string,"household_id": string,"id": string,"name": string,"seed_key": string | null,"sort": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "archived"?: boolean,"colour"?: string,"default_ratio"?: Json | null,"emoji"?: string,"household_id": string,"id"?: string,"name": string,"sort"?: number,"updated_at"?: string
+                    "archived"?: boolean,"colour"?: string,"default_ratio"?: Json | null,"emoji"?: string,"household_id": string,"id"?: string,"name": string,"seed_key"?: string | null,"sort"?: number,"updated_at"?: string
                   }
                   Update: {
-                    "archived"?: boolean,"colour"?: string,"default_ratio"?: Json | null,"emoji"?: string,"household_id"?: string,"id"?: string,"name"?: string,"sort"?: number,"updated_at"?: string
+                    "archived"?: boolean,"colour"?: string,"default_ratio"?: Json | null,"emoji"?: string,"household_id"?: string,"id"?: string,"name"?: string,"seed_key"?: string | null,"sort"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -612,6 +612,9 @@ isOneToOne: false
                            },
 "jsonb_pence_sum":
 { Args: { "j": Json }; Returns: number
+                           },
+"key_starting_categories":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "kick_push":
 { Args: Record<PropertyKey, never>; Returns: undefined

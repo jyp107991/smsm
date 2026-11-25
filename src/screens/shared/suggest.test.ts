@@ -10,7 +10,7 @@ const J: Person = { id: 'j', name: 'Jae', animal: 'cat' };
 const S: Person = { id: 's', name: 'Sam', animal: 'dog' };
 const TODAY = '2026-11-14';
 const cat = (name: string, i: number): CategoryRow => ({
-  id: `c${String(i)}`, household_id: 'h', name, emoji: '', colour: 'stone', default_ratio: null, archived: false, sort: i, updated_at: '',
+  id: `c${String(i)}`, household_id: 'h', name, emoji: '', colour: 'stone', default_ratio: null, archived: false, sort: i, seed_key: null, updated_at: '',
 });
 const categories = ['Groceries', 'Eating out', 'Household', 'Subscriptions', 'Other'].map(cat);
 const id = (name: string) => categories.find((c) => c.name === name)?.id ?? '';

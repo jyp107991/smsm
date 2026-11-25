@@ -90,10 +90,12 @@ export interface MemoryControls {
   signInAs(user: AuthUser | null): void;
 }
 
-const DEFAULT_CATEGORIES: readonly [string, string, string][] = [
-  ['Groceries', '🛒', 'moss'], ['Eating out', '🍜', 'amber'], ['Rent & bills', '🏠', 'walnut'], ['Utilities', '💡', 'honey'],
-  ['Transport', '🚆', 'slate'], ['Subscriptions', '📺', 'plum'], ['Household', '🧺', 'oak'], ['Going out', '🍸', 'berry'],
-  ['Travel', '✈️', 'lake'], ['Gifts', '🎁', 'clay'], ['Health', '💊', 'fern'], ['Other', '📦', 'stone'],
+/** The starting categories, with the key each is known by (create_household, migration 20261124000100). */
+const DEFAULT_CATEGORIES: readonly [string, string, string, string][] = [
+  ['Groceries', '🛒', 'moss', 'groceries'], ['Eating out', '🍜', 'amber', 'eating_out'], ['Rent & bills', '🏠', 'walnut', 'rent_bills'],
+  ['Utilities', '💡', 'honey', 'utilities'], ['Transport', '🚆', 'slate', 'transport'], ['Subscriptions', '📺', 'plum', 'subscriptions'],
+  ['Household', '🧺', 'oak', 'household'], ['Going out', '🍸', 'berry', 'going_out'], ['Travel', '✈️', 'lake', 'travel'],
+  ['Gifts', '🎁', 'clay', 'gifts'], ['Health', '💊', 'fern', 'health'], ['Other', '📦', 'stone', 'other'],
 ];
 
 /** The palette names a category may use (migration 6, DESIGN §3.1). */
@@ -378,7 +380,7 @@ export function createMemoryApi(
           tables.inboxItems.push({
             id: crypto.randomUUID(), household_id: hid, source: 'bill', status: 'open', receipt_path: null, recurring_id: r.id,
             occurrence_date: d, external_id: null, expense_id: null, created_by: null, created_at: stamp, updated_at: stamp,
-            payload: { description: r.description, estimate_pence: r.amount_pence, date: d, category_id: r.category_id },
+            payload: { description: r.description, estimate_pence: r.amount_pence, date: d, category_id: r.category_id, notes: r.notes },
           });
         }
       } else if (!tables.expenses.some((e) => e.recurring_id === r.id && e.occurrence_date === d)) {
@@ -494,7 +496,8 @@ export function createMemoryApi(
       const name = str(r['name']).trim().toLowerCase();
       const same = mine(tables.categories).find((c) => c.name.trim().toLowerCase() === name);
       if (same) { if (typeof r['id'] === 'string') restoreIds.set(`${hid}:${r['id']}`, same.id); skipped.categories += 1; continue; }
-      const row = { ...(r as unknown as CategoryRow), id: newId(r['id'], 'categories'), household_id: hid, default_ratio: remap(r['default_ratio'] ?? null) };
+      // A restored category brings no starting key (categories_seed_guard): the household's own are its own.
+      const row = { ...(r as unknown as CategoryRow), id: newId(r['id'], 'categories'), household_id: hid, default_ratio: remap(r['default_ratio'] ?? null), seed_key: null };
       if (!PALETTE.includes(row.colour)) refuse('new row violates check constraint "categories_colour_palette"', '23514');
       tables.categories.push(row);
       log('category', row.id, 'created', { after: row as unknown as Json }, hid);
@@ -683,8 +686,8 @@ export function createMemoryApi(
           joint_enabled: false, joint_ratio: null, settle_day: null, created_at: stamp,
         });
         tables.members.push({ household_id: id, user_id: me().userId, display_name: null, animal: null, locked_at: null, monzo_me: null, joined_at: stamp });
-        DEFAULT_CATEGORIES.forEach(([name, emoji, colour], i) => {
-          tables.categories.push({ id: crypto.randomUUID(), household_id: id, name, emoji, colour, default_ratio: null, archived: false, sort: i + 1, updated_at: stamp });
+        DEFAULT_CATEGORIES.forEach(([name, emoji, colour, key], i) => {
+          tables.categories.push({ id: crypto.randomUUID(), household_id: id, name, emoji, colour, default_ratio: null, archived: false, sort: i + 1, seed_key: key, updated_at: stamp });
         });
         return id;
       }),
@@ -905,7 +908,8 @@ export function createMemoryApi(
         if (!PALETTE.includes(row.colour)) refuse('new row violates check constraint "categories_colour_palette"', '23514');
         const i = tables.categories.findIndex((r) => r.id === row.id);
         const existing = i === -1 ? undefined : tables.categories[i];
-        const next: CategoryRow = { ...(existing ?? {}), ...row, updated_at: now().toISOString() };
+        // categories_seed_guard: a starting category's key is the server's; a phone never sets or moves it.
+        const next: CategoryRow = { ...(existing ?? {}), ...row, seed_key: existing?.seed_key ?? null, updated_at: now().toISOString() };
         if (existing) tables.categories[i] = next;
         else tables.categories.push(next);
         log('category', next.id, existing ? 'edited' : 'created', existing ? diff(existing, next) : { after: next as unknown as Json }, next.household_id);

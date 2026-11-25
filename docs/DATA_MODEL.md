@@ -8,10 +8,10 @@
 |---|---|---|
 | `households` | one row per couple | `join_code`, `home_country` (GB), `default_ratio` (null = 50/50; approval needed), `joint_enabled`, `joint_ratio` |
 | `members` | the two people | `display_name`, `animal`, `locked_at`, `monzo_me`. No direct writes: `set_identity()`, `set_monzo_me()`, change requests |
-| `categories` | 12 defaults + custom | `colour` is a palette token name; `default_ratio`; `archived`; `sort` |
+| `categories` | 12 defaults + custom | `colour` is a palette token name; `default_ratio`; `archived`; `sort`; `seed_key` (the server's: which starting category it is, e.g. `subscriptions`; kept through a rename; null for a person's own; never written by a phone) |
 | `chapters` | trips and projects | `kind`, `country`, dates, `closed` |
 | `expenses` | every entry | `kind` expense / money_back; `paid` and `shares` (jsonb, pence); `paid_via`; `split_mode`, `split_params`; `chapter_id`; `country`, `place`, `lat`, `lng` (3 decimals); itemised `items`; original currency fields (reference only); `receipt_path`; source fields; `refund_of`; soft delete |
-| `recurring` | templates | `amount_varies`; `is_subscription`; schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). `ever_posted` (the server's: "has posted", never cleared). A new start after one has posted: the next payment is the new occurrence nearest to the old next day (`recurring_guard`, `recurring_restart_index`) |
+| `recurring` | templates | `amount_varies`; `is_subscription` ("Show in Subscriptions"; picking the Subscriptions category turns it on); `notes` (copied onto each entry, or each "amount varies" Inbox bill's payload, it posts from then on); schedule; `posted_count` (the server's); soft delete (`deleted_at`, only once paused or ended; a deleted one never posts or runs again; what it posted stays). `ever_posted` (the server's: "has posted", never cleared). A new start after one has posted: the next payment is the new occurrence nearest to the old next day (`recurring_guard`, `recurring_restart_index`) |
 | `settlements` | "A paid B £x" | `method` monzo / other; soft delete |
 | `inbox_items` | things awaiting a decision | sources bill / scan / share / monzo; never counted as money |
 | `comments` | threads on entries | author-only edit; soft delete |
