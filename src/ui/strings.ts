@@ -482,7 +482,7 @@ export const strings = {
     dueTag: 'Due',
     about: (amount: string) => `about ${amount}`,
     nothingSoon: 'Nothing due in the next 30 days.',
-    noSubscriptions: 'No subscriptions yet. Turn on “Show in Subscriptions” on a regular payment to see it here.',
+    noSubscriptions: 'No subscriptions yet. A regular payment in the Subscriptions category shows here.',
     aMonth: (amount: string) => `${amount} a month`,
     aYear: (amount: string) => `${amount} a year`,
     yearInAll: (amount: string) => `${amount} a year in all`,
@@ -550,9 +550,6 @@ export const strings = {
     pickEnd: 'When it ends',
     amountVaries: 'Amount varies',
     amountVariesHint: 'Each time, the Inbox asks how much it was.',
-    /** REC-7 (owner, 24 Nov): one meaning for "subscription": this switch is what puts it under Subscriptions on Bills. */
-    subscription: 'Show in Subscriptions',
-    subscriptionHint: 'Lists it with its monthly and yearly cost under Subscriptions on Bills.',
     pause: 'Pause',
     resume: 'Resume',
     end: 'End',

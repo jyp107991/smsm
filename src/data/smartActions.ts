@@ -326,12 +326,14 @@ async function wordMonth(month: string, layer: DataLayer): Promise<Wording | nul
   const people = inJoinOrder(layer);
   if (!hid || !people || failed.has(month)) return null;
   const categories = liveCategories(layer);
+  // REC-7: a subscription is one in the Subscriptions category, archived or not.
+  const allCategories = rowsOf<CategoryRow>(layer, keys.categories(layer.me() ?? ''), 'categories');
   // S10 review 4 (REC-12): the shared entries and regular payments only: nothing of one person's own reaches the AI.
   const shared = (r: { owner_id?: string | null }) => (r.owner_id ?? null) === null;
   const templates = (layer.client.getQueryData<RecurringRow[]>(keys.recurring(layer.me() ?? '')) ?? []).filter(shared);
   const recap = recapOf(
     layer.entries().filter(shared).map(toInsight), layer.settlements().map(toSettle), [people[0].id, people[1].id], month,
-    { today, names: { [people[0].id]: people[0].name, [people[1].id]: people[1].name }, categories: categories.map((c) => ({ id: c.id, name: c.name })), templates: templates.map(toTemplate) },
+    { today, names: { [people[0].id]: people[0].name, [people[1].id]: people[1].name }, categories: categories.map((c) => ({ id: c.id, name: c.name })), templates: templates.map((t) => toTemplate(t, allCategories)) },
   );
   // AI.md rule 4: names in the notes (an entry's description) go as Person A / Person B, like everything else.
   const plain = recapStats(recap, [people[0].id, people[1].id]);

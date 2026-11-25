@@ -10,6 +10,7 @@
  */
 import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
+import { isSubscription } from '../core/subscription';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
 import { dueOccurrences, isRunning, occurrence, restart } from '../core/recurring';
@@ -525,7 +526,7 @@ export async function decideChange(id: string, approve: boolean, layer = activeD
 export interface RecurringDraft {
   description: string; amount: Pence; categoryId: string | null; payer: UserId; split: SplitParams; notes?: string | null;
   frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate; endDate: IsoDate | null;
-  amountVaries: boolean; isSubscription: boolean;
+  amountVaries: boolean;
   /**
    * S10 (REC-9, REC-11): whose it is: null, shared; the person's own id, theirs (paid and shared all by them; a fixed
    * amount). Not given: as it was (a new one: shared). A change applies from the next payment on.
@@ -607,7 +608,8 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
   const row: RecurringRow = {
     id: id ?? newId(), household_id: ctx.hid, description: draft.description.trim(), amount_pence: draft.amount, amount_varies: draft.amountVaries,
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
-    shares: money.shares, is_subscription: draft.isSubscription, ...schedule, active: existing?.active ?? active ?? true,
+    // REC-7 (owner, 25 Nov): the category alone decides; the column is what the database's trigger will set.
+    shares: money.shares, is_subscription: isSubscription({ category_id: draft.categoryId }, shown<CategoryRow>(layer, 'categories')), ...schedule, active: existing?.active ?? active ?? true,
     notes,
     posted_count: expectedCount(existing, schedule, owner, layer.today()), ever_posted: existing ? hasStarted(existing) : false,
     created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,

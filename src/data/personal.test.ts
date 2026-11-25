@@ -46,7 +46,7 @@ const GYM = '00000000-0000-4000-8000-00000000d0a1';
 const even = { mode: 'ratio' as const, ratio: { [JAE_ID]: 50, [SAM_ID]: 50 } };
 const gymDraft = (over: Partial<Parameters<typeof data.saveRecurring>[0]> = {}) => ({
   description: 'Gym', amount: pence(3500), categoryId: categoryId('Health'), payer: JAE_ID, split: even,
-  frequency: 'monthly' as const, every: 1, startDate: '2026-09-02', endDate: null, amountVaries: false, isSubscription: false,
+  frequency: 'monthly' as const, every: 1, startDate: '2026-09-02', endDate: null, amountVaries: false,
   ...over,
 });
 /** Jae's own gym as the server holds it, posted up to 2 Nov. */
@@ -176,7 +176,7 @@ describe('REC-11: whose it is changes from the next payment on', () => {
     act(() => {
       data.saveRecurring({
         description: 'Rent', amount: pence(145000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even, frequency: 'monthly', every: 1,
-        startDate: '2026-01-01', endDate: null, amountVaries: false, isSubscription: false, id: rent.id, ownerId: JAE_ID,
+        startDate: '2026-01-01', endDate: null, amountVaries: false, id: rent.id, ownerId: JAE_ID,
       }, c.layer);
     });
     await settle(c.layer);
@@ -190,7 +190,7 @@ describe('REC-11: whose it is changes from the next payment on', () => {
     act(() => {
       data.saveRecurring({
         description: 'Rent', amount: pence(145000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even, frequency: 'monthly', every: 1,
-        startDate: '2026-01-01', endDate: null, amountVaries: false, isSubscription: false, id: rent.id, ownerId: null,
+        startDate: '2026-01-01', endDate: null, amountVaries: false, id: rent.id, ownerId: null,
       }, c.layer);
     });
     await settle(c.layer);

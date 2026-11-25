@@ -17,17 +17,16 @@ export interface ScheduleState {
   startDate: IsoDate;
   endDate: IsoDate | null;
   amountVaries: boolean;
-  isSubscription: boolean;
 }
 
 export function blankSchedule(startDate: IsoDate): ScheduleState {
-  return { frequency: 'monthly', everyText: '1', startDate, endDate: null, amountVaries: false, isSubscription: false };
+  return { frequency: 'monthly', everyText: '1', startDate, endDate: null, amountVaries: false };
 }
 
 export function scheduleOf(t: RecurringRow): ScheduleState {
   return {
     frequency: t.frequency as Frequency, everyText: String(t.every), startDate: t.start_date, endDate: t.end_date,
-    amountVaries: t.amount_varies, isSubscription: t.is_subscription,
+    amountVaries: t.amount_varies,
   };
 }
 

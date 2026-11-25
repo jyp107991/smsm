@@ -245,7 +245,7 @@ async function openRegularPayment() {
 }
 
 describe('the regular payment sheet (REC-1, REC-6, SPL-2)', () => {
-  it('REC-1: How often, Every, Starts, Ends, Amount varies and Subscription, with the usual entry fields; Save stores the template', async () => {
+  it('REC-1 REC-7: How often, Every, Starts, Ends and Amount varies (no subscription switch: the category decides), with the usual entry fields; Save stores the template', async () => {
     const c = couple();
     show(c.layer);
     await goBills();
@@ -261,20 +261,19 @@ describe('the regular payment sheet (REC-1, REC-6, SPL-2)', () => {
     expect(within(sheet).getByRole('radiogroup', { name: 'Who paid' })).toBeTruthy();
     expect(within(sheet).getByRole('radiogroup', { name: 'How it’s shared' })).toBeTruthy();
     expect(isChecked(toggle(sheet, 'Amount varies'))).toBe(false);
-    expect(isChecked(toggle(sheet, 'Show in Subscriptions'))).toBe(false);
+    expect(within(sheet).queryByRole('switch', { name: /subscription/i })).toBeNull();
 
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Amount' }), { target: { value: '12' } });
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Description' }), { target: { value: 'Window cleaner' } });
     fireEvent.click(within(sheet).getByRole('radio', { name: 'Weekly' }));
     fireEvent.change(within(sheet).getByRole('textbox', { name: 'Every' }), { target: { value: '2' } });
-    fireEvent.click(toggle(sheet, 'Show in Subscriptions'));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Regular payment' })).toBeNull(); });
     await settle(c.layer);
     expect(tablesOf(c).recurring).toHaveLength(1);
     expect(tablesOf(c).recurring[0]).toMatchObject({
       description: 'Window cleaner', amount_pence: 1200, frequency: 'weekly', every: 2, start_date: TODAY, end_date: null,
-      amount_varies: false, is_subscription: true, paid: { [JAE_ID]: 1200 }, shares: { [JAE_ID]: 600, [SAM_ID]: 600 },
+      amount_varies: false, is_subscription: false, paid: { [JAE_ID]: 1200 }, shares: { [JAE_ID]: 600, [SAM_ID]: 600 },
     });
   });
 

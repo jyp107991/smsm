@@ -32,7 +32,7 @@ const recurringOf = (c: { controls: { tables: MemoryTables } }) => (c.controls.t
 const even = { mode: 'ratio' as const, ratio: { [JAE_ID]: 50, [SAM_ID]: 50 } };
 const rent = {
   description: 'Rent', amount: pence(145000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even,
-  frequency: 'monthly' as const, every: 1, startDate: '2026-01-31', endDate: null, amountVaries: false, isSubscription: false,
+  frequency: 'monthly' as const, every: 1, startDate: '2026-01-31', endDate: null, amountVaries: false,
 };
 const sched = (r: RecurringRow) => ({ frequency: r.frequency as 'monthly', every: r.every, startDate: r.start_date, endDate: r.end_date });
 

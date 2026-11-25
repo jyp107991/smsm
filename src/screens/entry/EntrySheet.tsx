@@ -15,7 +15,6 @@ import { Minus, Plus } from 'lucide-react';
 import { startTransition, useEffect, useId, useMemo, useRef, useState, type RefObject, type SyntheticEvent, type ReactNode } from 'react';
 import { formatDate, formatDay, formatShortDate } from '../../core/dates';
 import { isRunning, keepsAnchor, pastOccurrences } from '../../core/recurring';
-import { subscriptionsCategoryId, subscriptionSwitch, switchByPerson, switchForCategory } from '../../core/subscription';
 import { currencyOf, currencySymbol } from '../../core/fx';
 import type { ScanReply } from '../../core/aiReplies';
 import { checkTotal, itemise } from '../../core/itemise';
@@ -117,18 +116,11 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     const country = currentCountry();
     return { ...blank, categoryId: otherCategoryId(live), chapterId, country, ...(request.mode === 'add' || request.mode === 'recurring' ? request.prefill : undefined) };
   });
-  // REC-7 (owner, 24 Nov): the household's Subscriptions category (by its starting key, never its name). A new
-  // regular payment in it starts with "Show in Subscriptions" on; that automatic "on" goes if another category is
-  // picked, but one the person set stays (a stored template's switch is the person's).
-  const subscriptionsId = useMemo(() => subscriptionsCategoryId(categories), [categories]);
-  const [startSwitch] = useState(() => (request.mode === 'recurring' && !template && request.schedule?.isSubscription === undefined
-    ? subscriptionSwitch(initial.categoryId, subscriptionsId) : null));
-  const subscriptionAuto = useRef(startSwitch?.auto ?? false);
   // S3 (REC-1): the schedule, when this is a regular payment ("Repeat" turns an expense into one).
   const [initialSchedule] = useState((): ScheduleState | null => {
     if (request.mode !== 'recurring') return null;
     if (template) return scheduleOf(template);
-    return { ...blankSchedule(today), ...(startSwitch ? { isSubscription: startSwitch.on } : {}), ...request.schedule };
+    return { ...blankSchedule(today), ...request.schedule };
   });
   const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
   // S10 (REC-9): whose a regular payment is: shared (the default) or mine (I pay all of it; kept out of what we share).
@@ -210,12 +202,6 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     // Q-F5: money back on an exact split keeps the original's proportion until the person types a share.
     setS(followExact(next));
     setErrors([]);
-    // REC-7: a new category moves "Show in Subscriptions" (only an automatic "on" is undone).
-    if (rec && next.categoryId !== s.categoryId) {
-      const sw = switchForCategory({ on: rec.isSubscription, auto: subscriptionAuto.current }, next.categoryId, subscriptionsId);
-      subscriptionAuto.current = sw.auto;
-      if (sw.on !== rec.isSubscription) setRec({ ...rec, isSubscription: sw.on });
-    }
   };
   /**
    * When closing asks "Discard your changes?" first. Editing a saved entry: any change from it (amount,
@@ -234,16 +220,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     if (rec) setRec({ ...rec, ...next });
     setErrors([]);
   };
-  /** REC-7: the person set "Show in Subscriptions": theirs from now on. */
-  const setSubscription = (on: boolean) => {
-    subscriptionAuto.current = switchByPerson(on).auto;
-    changeSchedule({ isSubscription: on });
-  };
-  /** REC-1: "Repeat" makes this entry a regular payment (one in Subscriptions shows there, REC-7). */
+  /** REC-1: "Repeat" makes this entry a regular payment (in the Subscriptions category, it is a subscription: REC-7). */
   const repeat = () => {
-    const sw = subscriptionSwitch(s.categoryId, subscriptionsId);
-    subscriptionAuto.current = sw.auto;
-    setRec({ ...blankSchedule(s.date), isSubscription: sw.on });
+    setRec(blankSchedule(s.date));
     setS((prev) => ({ ...prev, foreign: null }));
     setErrors([]);
   };
@@ -642,7 +621,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       const savedId = saveRecurring({
         ...(template ? { id: template.id } : { id: rowId }),
         description: d.description, amount: d.amount, categoryId: d.categoryId, payer: d.payer, split: d.split, notes: d.notes ?? null,
-        frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: whose === 'mine' ? false : r.amountVaries, isSubscription: r.isSubscription,
+        frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: whose === 'mine' ? false : r.amountVaries,
         // S10 (REC-9, REC-11): whose it is (a change applies from the next payment on).
         ownerId: whose === 'mine' ? me.id : null,
         ...(skipping && !template ? { active: false } : {}),
@@ -930,7 +909,6 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           past={pastChoice}
           startsRef={startsRef}
           onChange={changeSchedule}
-          onSubscription={setSubscription}
           onPick={setPicking}
         />
       ) : (
@@ -1148,7 +1126,7 @@ interface PastChoice {
   onMove: () => void;
 }
 
-function ScheduleFields({ rec, today, rhythmLocked, personal, restart, past, startsRef, onChange, onSubscription, onPick }: {
+function ScheduleFields({ rec, today, rhythmLocked, personal, restart, past, startsRef, onChange, onPick }: {
   rec: ScheduleState;
   /** S10 (REC-9): one of my own has a fixed amount (no "Amount varies"). */
   personal: boolean;
@@ -1160,8 +1138,6 @@ function ScheduleFields({ rec, today, rhythmLocked, personal, restart, past, sta
   past: PastChoice | null;
   startsRef: RefObject<HTMLDivElement | null>;
   onChange: (next: Partial<ScheduleState>) => void;
-  /** REC-7: the person set "Show in Subscriptions". */
-  onSubscription: (on: boolean) => void;
   onPick: (which: 'start' | 'end') => void;
 }) {
   const n = everyOf(rec.everyText) ?? 1;
@@ -1230,17 +1206,16 @@ function ScheduleFields({ rec, today, rhythmLocked, personal, restart, past, sta
         {/* S10: a moved start's own line says when it posts; the general hint would repeat it. */}
         {restart === null ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p> : null}
       </Group>
-      <EndsAndSwitches rec={rec} personal={personal} today={today} onChange={onChange} onSubscription={onSubscription} onPick={onPick} />
+      <EndsAndSwitches rec={rec} personal={personal} today={today} onChange={onChange} onPick={onPick} />
     </>
   );
 }
 
-function EndsAndSwitches({ rec, today, personal, onChange, onSubscription, onPick }: {
+function EndsAndSwitches({ rec, today, personal, onChange, onPick }: {
   rec: ScheduleState;
   personal: boolean;
   today: string;
   onChange: (next: Partial<ScheduleState>) => void;
-  onSubscription: (on: boolean) => void;
   onPick: (which: 'start' | 'end') => void;
 }) {
   return (
@@ -1256,12 +1231,12 @@ function EndsAndSwitches({ rec, today, personal, onChange, onSubscription, onPic
         </div>
       </Group>
 
-      <div className="flex flex-col">
-        {personal ? null : (
+      {/* REC-7 (owner, 25 Nov): no subscription switch: the category alone decides. */}
+      {personal ? null : (
+        <div className="flex flex-col">
           <Toggle label={strings.recurring.amountVaries} hint={strings.recurring.amountVariesHint} on={rec.amountVaries} onChange={(amountVaries) => { onChange({ amountVaries }); }} />
-        )}
-        <Toggle label={strings.recurring.subscription} hint={strings.recurring.subscriptionHint} on={rec.isSubscription} onChange={onSubscription} />
-      </div>
+        </div>
+      )}
     </>
   );
 }

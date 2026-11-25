@@ -7,6 +7,7 @@
 import { todayIn, type IsoDate } from '../core/dates';
 import { pence, type Pence } from '../core/money';
 import { isRunning, occurrence, restart } from '../core/recurring';
+import { isSubscription } from '../core/subscription';
 import { validateEntry, type EntryIssue, type PenceMap, type SplitMode, type UserId } from '../core/split';
 import {
   ApiError,
@@ -215,6 +216,10 @@ export function createMemoryApi(
   }
 
   /** S10 (recurring_guard, migration 20261124000000): a deleted template is never running. */
+  /** REC-7 (migration 20261125000200): in its household's Subscriptions category (by its key), it is a subscription. */
+  function inSubscriptions(r: RecurringRow): boolean {
+    return isSubscription(r, tables.categories.filter((c) => c.household_id === r.household_id));
+  }
   function refuseDeletedRunning(r: RecurringRow, wasDeleted: boolean) {
     if ((r.deleted_at ?? null) === null || !isRunning({ active: r.active, endDate: r.end_date }, today())) return;
     refuse(wasDeleted ? 'a deleted regular payment can\'t run again' : 'a regular payment that is still running can\'t be deleted: pause or end it first', '23514');
@@ -583,6 +588,7 @@ export function createMemoryApi(
         // A backup from before ever_posted: what it had counted says (as recurring_guard).
         ever_posted: r['ever_posted'] === true || Number(r['posted_count'] ?? 0) > 0,
       };
+      row.is_subscription = inSubscriptions(row);
       checkMoney(row as unknown as ExpenseRow);
       checkPersonal(row);
       tables.recurring.push(row);
@@ -848,6 +854,9 @@ export function createMemoryApi(
         let next: RecurringRow = existing
           ? { ...existing, ...sent, updated_at: stamp }
           : { created_by: me().userId, created_at: stamp, updated_at: stamp, ...row, posted_count: 0, ever_posted: false };
+        // REC-7 (recurring_category_subscription, migration 20261125000200): the category alone decides, whatever was
+        // sent; set before the guard, as the trigger runs before recurring_guard.
+        next = { ...next, is_subscription: inSubscriptions(next) };
         if (existing) next = guardRecurring(existing, next);
         else refuseDeletedRunning(next, false);
         // The table's checks (amount > 0, every 1–52). An end before the start is not one of them: End on a payment

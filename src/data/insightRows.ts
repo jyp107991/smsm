@@ -2,6 +2,7 @@
 import { pence } from '../core/money';
 import type { InsightEntry, InsightSettlement, NoteTemplate } from '../core/insights';
 import type { SplitMode } from '../core/split';
+import { isSubscription, type KeyedCategory } from '../core/subscription';
 import type { ExpenseRow, RecurringRow, SettlementRow } from './api';
 import { isDeleted } from './writes';
 
@@ -22,11 +23,12 @@ export function toSettle(s: SettlementRow): InsightSettlement {
   return { from: s.from_user, to: s.to_user, amount: pence(s.amount_pence), date: s.date, deleted: s.deleted_at !== null };
 }
 
-export function toTemplate(t: RecurringRow): NoteTemplate {
+/** REC-7 (owner, 25 Nov): a subscription is one in the Subscriptions category (the category alone decides). */
+export function toTemplate(t: RecurringRow, categories: readonly KeyedCategory[]): NoteTemplate {
   return {
     id: t.id, description: t.description, amount: pence(t.amount_pence), frequency: t.frequency as NoteTemplate['frequency'], every: t.every,
     // S10: a deleted one is never "new" (what it posted still counts as entries).
-    startDate: t.start_date, isSubscription: t.is_subscription, active: t.active && !isDeleted(t),
+    startDate: t.start_date, isSubscription: isSubscription(t, categories), active: t.active && !isDeleted(t),
     ownerId: t.owner_id ?? null,
   };
 }

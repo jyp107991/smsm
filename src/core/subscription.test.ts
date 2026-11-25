@@ -1,10 +1,11 @@
 /**
- * Owner's report, 24 Nov ("subscriptions category duplicates subscription switch when adding bills"; DECISIONS "One
- * meaning for subscription"). REC-7: "Show in Subscriptions" follows the household's Subscriptions category, found by
- * its starting key (never its name), until the person sets the switch themselves.
+ * Owner, 25 Nov ("why do you still have a subscriptions category and a subscriptions switch"; DECISIONS 25 Nov "The
+ * category alone decides what a subscription is"). REC-7: a regular payment is a subscription exactly when its
+ * category is the household's Subscriptions category, found by its starting key (never its name). No switch.
  */
 import { describe, expect, it } from 'vitest';
-import { subscriptionSwitch, subscriptionsCategoryId, switchByPerson, switchForCategory } from './subscription';
+import * as subscription from './subscription';
+import { isSubscription } from './subscription';
 
 const SUBS = 'cat-subs';
 const RENT = 'cat-rent';
@@ -15,45 +16,23 @@ const cats: Cat[] = [
   { id: 'cat-own', name: 'Subscriptions', seed_key: null, archived: false },
 ];
 
-describe('the Subscriptions category (REC-7)', () => {
-  it('REC-7: found by its starting key, so a renamed one still is it and a person’s own "Subscriptions" is not', () => {
-    expect(subscriptionsCategoryId(cats)).toBe(SUBS);
+describe('the category alone decides (REC-7)', () => {
+  it('REC-7: in the household’s Subscriptions category (renamed or not), it is a subscription', () => {
+    expect(isSubscription({ category_id: SUBS }, cats)).toBe(true);
   });
-  it('REC-7: none when the household has no keyed one (or it is archived: it can’t be picked)', () => {
-    const own: Cat[] = [{ id: 'x', name: 'Subscriptions', seed_key: null, archived: false }];
-    const archived: Cat[] = [{ id: SUBS, name: 'Subscriptions', seed_key: 'subscriptions', archived: true }];
-    expect(subscriptionsCategoryId(own)).toBeNull();
-    expect(subscriptionsCategoryId(archived)).toBeNull();
-    expect(subscriptionsCategoryId([])).toBeNull();
+  it('REC-7: in any other category, or none, it is not', () => {
+    expect(isSubscription({ category_id: RENT }, cats)).toBe(false);
+    expect(isSubscription({ category_id: null }, cats)).toBe(false);
+    expect(isSubscription({ category_id: 'cat-gone' }, cats)).toBe(false);
   });
-});
-
-describe('"Show in Subscriptions" follows the category until the person sets it (REC-7)', () => {
-  it('REC-7: a new regular payment starts on (automatically) in Subscriptions, off elsewhere', () => {
-    expect(subscriptionSwitch(SUBS, SUBS)).toEqual({ on: true, auto: true });
-    expect(subscriptionSwitch(RENT, SUBS)).toEqual({ on: false, auto: false });
-    expect(subscriptionSwitch(null, SUBS)).toEqual({ on: false, auto: false });
-    expect(subscriptionSwitch(SUBS, null)).toEqual({ on: false, auto: false });
+  it('REC-7: a category a person added and named "Subscriptions" is not the Subscriptions category', () => {
+    expect(isSubscription({ category_id: 'cat-own' }, cats)).toBe(false);
   });
-  it('REC-7: picking Subscriptions turns it on; picking another category then turns that automatic on off again', () => {
-    const on = switchForCategory({ on: false, auto: false }, SUBS, SUBS);
-    expect(on).toEqual({ on: true, auto: true });
-    expect(switchForCategory(on, RENT, SUBS)).toEqual({ on: false, auto: false });
+  it('REC-7: archived, the Subscriptions category still is it (what is in it stays a subscription, as in the database)', () => {
+    expect(isSubscription({ category_id: SUBS }, [{ id: SUBS, seed_key: 'subscriptions' }])).toBe(true);
+    expect(isSubscription({ category_id: SUBS }, cats.map((c) => ({ ...c, archived: true })))).toBe(true);
   });
-  it('REC-7: turned on by the person, another category leaves it on', () => {
-    const mine = switchByPerson(true);
-    expect(mine).toEqual({ on: true, auto: false });
-    expect(switchForCategory(mine, RENT, SUBS)).toEqual({ on: true, auto: false });
-    expect(switchForCategory(switchForCategory(mine, SUBS, SUBS), RENT, SUBS)).toEqual({ on: true, auto: false });
-  });
-  it('REC-7: the person can switch it off in Subscriptions; it stays off until Subscriptions is picked again', () => {
-    const off = switchByPerson(false);
-    expect(off).toEqual({ on: false, auto: false });
-    expect(switchForCategory(off, RENT, SUBS)).toEqual({ on: false, auto: false });
-    expect(switchForCategory(switchForCategory(off, RENT, SUBS), SUBS, SUBS)).toEqual({ on: true, auto: true });
-  });
-  it('REC-7: with no Subscriptions category, a category change never moves it', () => {
-    expect(switchForCategory({ on: true, auto: false }, RENT, null)).toEqual({ on: true, auto: false });
-    expect(switchForCategory({ on: false, auto: false }, SUBS, null)).toEqual({ on: false, auto: false });
+  it('REC-7: nothing about a switch is left: the module is the one pure rule', () => {
+    expect(Object.keys(subscription).sort()).toEqual(['SUBSCRIPTIONS_KEY', 'isSubscription']);
   });
 });

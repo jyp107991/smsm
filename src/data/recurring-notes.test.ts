@@ -44,7 +44,7 @@ const ID = storedRecurring().id;
 const even = { mode: 'ratio' as const, ratio: { [JAE_ID]: 50, [SAM_ID]: 50 } };
 const rent = (over: Partial<Parameters<typeof data.saveRecurring>[0]> = {}) => ({
   description: 'Rent', amount: pence(145000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even,
-  frequency: 'monthly' as const, every: 1, startDate: '2026-01-01', endDate: null, amountVaries: false, isSubscription: false,
+  frequency: 'monthly' as const, every: 1, startDate: '2026-01-01', endDate: null, amountVaries: false,
   ...over,
 });
 const server = (c: ReturnType<typeof household>, id = ID) => c.controls.tables.recurring.find((r) => r.id === id);

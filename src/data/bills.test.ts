@@ -20,7 +20,7 @@
  *       description: string; amount: Pence; categoryId: string | null; payer: UserId; split: SplitParams;
  *       notes?: string | null;
  *       frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate; endDate: IsoDate | null;
- *       amountVaries: boolean; isSubscription: boolean;
+ *       amountVaries: boolean;
  *     }
  *     saveRecurring(input: RecurringDraft & { id?: string }, layer?): string
  *       REC-1, REC-6: adds (or, with the id of an existing template, edits) a template; returns its id. paid and
@@ -89,7 +89,7 @@ import { EntryInvalidError, type ExpenseDraft } from './writes';
 interface RecurringDraft {
   description: string; amount: Pence; categoryId: string | null; payer: UserId; split: SplitParams; notes?: string | null;
   frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate; endDate: IsoDate | null;
-  amountVaries: boolean; isSubscription: boolean;
+  amountVaries: boolean;
 }
 type CategoryColour = 'moss' | 'amber' | 'walnut' | 'honey' | 'slate' | 'plum' | 'oak' | 'berry' | 'lake' | 'clay' | 'fern' | 'stone';
 interface CategoryDraft { name: string; emoji: string; colour: CategoryColour }
@@ -153,12 +153,12 @@ const ENERGY_ID = '00000000-0000-4000-8000-00000000d0e1';
 function rent(over: Partial<RecurringDraft> = {}): RecurringDraft {
   return {
     description: 'Rent', amount: pence(145000), categoryId: categoryId('Rent & bills'), payer: JAE_ID, split: even,
-    frequency: 'monthly', every: 1, startDate: '2026-12-01', endDate: null, amountVaries: false, isSubscription: false, ...over,
+    frequency: 'monthly', every: 1, startDate: '2026-12-01', endDate: null, amountVaries: false, ...over,
   };
 }
 
 const netflix = (over: Partial<RecurringDraft> = {}) =>
-  rent({ description: 'Netflix', amount: pence(1099), categoryId: categoryId('Subscriptions'), isSubscription: true, startDate: TODAY, ...over });
+  rent({ description: 'Netflix', amount: pence(1099), categoryId: categoryId('Subscriptions'), startDate: TODAY, ...over });
 
 /** The Energy template whose 3 Nov bill is waiting in the Inbox (paid by Sam, 50/50). */
 const energyTemplate = (over: Partial<RecurringRow> = {}) =>
@@ -204,17 +204,20 @@ describe('saveRecurring (REC-1, OFF-2)', () => {
     view.unmount();
   });
 
-  it('REC-1: every, an end date, "amount varies" and "subscription" are kept as entered', async () => {
+  it('REC-1 REC-7: every, an end date and "amount varies" are kept as entered; a subscription is what its category says', async () => {
     const c = household();
     await c.layer.ready;
     const id = m.saveRecurring(
-      rent({ description: 'Window cleaner', amount: pence(1200), frequency: 'weekly', every: 2, startDate: '2026-11-21', endDate: '2027-06-30', amountVaries: true, isSubscription: false }),
+      rent({ description: 'Window cleaner', amount: pence(1200), frequency: 'weekly', every: 2, startDate: '2026-11-21', endDate: '2027-06-30', amountVaries: true }),
       c.layer,
     );
+    const subs = m.saveRecurring(netflix({ description: 'Netflix', startDate: '2026-12-20' }), c.layer);
     await settle(c.layer);
     expect(tablesOf(c).recurring.find((r) => r.id === id)).toMatchObject({
       frequency: 'weekly', every: 2, start_date: '2026-11-21', end_date: '2027-06-30', amount_varies: true, is_subscription: false,
     });
+    // REC-7 (owner, 25 Nov): in the Subscriptions category it is one; nothing else says so.
+    expect(tablesOf(c).recurring.find((r) => r.id === subs)).toMatchObject({ category_id: categoryId('Subscriptions'), is_subscription: true });
   });
 
   it('Q-F1 REC-1: the same form saved twice is one template', async () => {
