@@ -4,7 +4,7 @@
  * end figure is the app's own balance for that date. Deleted entries and settle-ups are left out, as they are
  * from the balance.
  */
-import { netPositions, withoutOrphans } from './balance';
+import { isPersonal, netPositions, withoutOrphans } from './balance';
 import { daysInMonth, type IsoDate } from './dates';
 import { newestFirst } from './filters';
 import type { InsightEntry, InsightSettlement } from './insights';
@@ -61,7 +61,8 @@ export function statement(
 ): Statement {
   const { from, to } = monthRange(month);
   // MB-3: money back whose original is deleted is as good as deleted (wherever the original is dated).
-  const live = withoutOrphans(entries).filter((e) => !e.deleted);
+  // S10 (REC-12): the statement is between the two of you: one person's own entries are never on it.
+  const live = withoutOrphans(entries).filter((e) => !e.deleted && !isPersonal(e));
   const liveS = settlements.filter((s) => !s.deleted);
   const opening = netPositions(members, live.filter((e) => e.date < from), liveS.filter((s) => s.date < from));
   const closing = netPositions(members, live.filter((e) => e.date <= to), liveS.filter((s) => s.date <= to));

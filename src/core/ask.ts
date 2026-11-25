@@ -5,6 +5,7 @@
  * gives the figure. Pure: no I/O, no clock; money in integer pence.
  */
 import type { AskReply } from './aiReplies';
+import { isPersonal } from './balance';
 import type { IsoDate } from './dates';
 import { applyFilter, type Filter, type FilterEntry } from './filters';
 import { formatPence, type Pence } from './money';
@@ -105,7 +106,8 @@ export function askFilter(reply: AskReply, lookups: AskLookups): AskQuery | null
 const COUNTED = new Set<string>(['ratio', 'exact', 'treat']);
 /** Insights' rule: live counted expenses, and live money back that isn't for the other. */
 function counts(e: AskEntry): boolean {
-  if (e.deleted || e.kind === 'settlement') return false;
+  // S10 (REC-12): Ask answers about shared spending; one person's own entries are invisible to it.
+  if (e.deleted || e.kind === 'settlement' || isPersonal(e)) return false;
   return e.kind === 'expense' ? e.splitMode !== null && COUNTED.has(e.splitMode) : e.splitMode !== 'for_other';
 }
 /** An entry's money for this question: the whole amount, or (asked about one person) what that person paid. */

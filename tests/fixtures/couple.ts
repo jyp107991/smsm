@@ -72,6 +72,7 @@ export function storedExpense(over: Partial<ExpenseRow> = {}): ExpenseRow {
     original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, category_guess: false, source: 'manual', external_id: null, merchant: null,
     external_category: null, account_id: null, recurring_id: null, occurrence_date: null, refund_of: null, created_by: JAE_ID,
     created_at: '2026-11-10T12:00:00.000Z', updated_by: JAE_ID, updated_at: '2026-11-10T12:00:00.000Z', deleted_at: null, bill_total_pence: null, items: null,
+    owner_id: null,
     ...over,
   };
 }
@@ -100,6 +101,7 @@ export function storedRecurring(over: Partial<RecurringRow> = {}): RecurringRow 
     created_by: JAE_ID, created_at: '2026-01-01T09:00:00.000Z', updated_at: '2026-01-01T09:00:00.000Z', deleted_at: null,
     // S10: "has posted" as the server keeps it (true once anything has been counted done).
     ever_posted: (over.posted_count ?? 11) > 0,
+    owner_id: null,
     ...over,
   };
 }

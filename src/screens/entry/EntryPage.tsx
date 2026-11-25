@@ -8,7 +8,7 @@ import { useMemo, type ReactNode } from 'react';
 import { formatDay } from '../../core/dates';
 import { formatPence, pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useHistory,
+  addExpense, deleteExpense, deleteSettlement, restoreExpense, restoreSettlement, useCategories, useChapters, useDataLayer, useHousehold, useEntries, useAllEntries, useHistory,
   useOnline, useSettlements, useSyncStatus, type ExpenseRow, type SettlementRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -30,7 +30,8 @@ import { useSheets } from '../sheets';
 import { duplicateDraft } from './form';
 
 export function EntryPage({ id }: { id: string }) {
-  const entries = useEntries();
+  // S10 (REC-9): one person's own entries open here too (read-only for the other person).
+  const entries = useAllEntries();
   const settlements = useSettlements();
   const expense = entries.data?.find((e) => e.id === id);
   const settlement = settlements.data?.find((s) => s.id === id);
@@ -50,7 +51,8 @@ export function EntryPage({ id }: { id: string }) {
       {expense ? <ExpenseView row={expense} /> : settlement ? <SettlementView row={settlement} /> : loading ? null : (
         <p className="text-note m-0">{strings.entry.notFound}</p>
       )}
-      {expense ? <Comments expenseId={expense.id} /> : null}
+      {/* S10: comments are for shared entries (a personal one is its owner's own). */}
+      {expense && (expense.owner_id ?? null) === null ? <Comments expenseId={expense.id} /> : null}
       {expense || settlement ? <History id={id} /> : null}
     </div>
   );
@@ -86,6 +88,10 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
   const back = row.kind === 'money_back';
   const label = row.description;
   const tap = useTapAction();
+  // S10 (REC-9, REC-10): one person's own entry: all theirs, apart from what you share; only they change it.
+  const owner = row.owner_id === null ? null : (people.list.find((p) => p.id === row.owner_id) ?? null);
+  const personal = row.owner_id !== null;
+  const theirs = personal && row.owner_id !== people.me?.id;
 
   // Q-F1 ADD-7: one copy per tap-action (a double tap makes one); a later tap makes another on purpose.
   const duplicate = () => {
@@ -113,8 +119,9 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         {back && original ? <p className="text-secondary text-ink-2 m-0">{strings.entry.moneyBackFor(original.description)}</p> : null}
         <p className="text-note m-0 flex items-center gap-2">
           {payer ? <Head animal={payer.animal} size={28} /> : null}
-          <span>{entrySentence(row, people.list)}</span>
+          <span>{personal ? strings.entry.ownLine(owner?.name ?? '') : entrySentence(row, people.list)}</span>
         </p>
+        {personal ? <p className="text-secondary text-ink-2 m-0">{theirs ? strings.entry.ownReadOnly(owner?.name ?? '') : strings.entry.ownApart}</p> : null}
         {owes ? <p className="text-secondary text-ink-2 m-0">{owes}</p> : null}
         {cameBack.map((m) => (
           <a
@@ -173,6 +180,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         ) : null}
       </dl>
       {row.receipt_path ? <ReceiptImage path={row.receipt_path} /> : null}
+      {theirs ? null : (
       <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-wrap gap-3 border-0 p-0">
         {deleted ? (
           <Button
@@ -191,8 +199,9 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
         ) : (
           <>
             <Button variant="plain" onClick={() => { sheets.openEntry({ mode: 'edit', id: row.id }); }}>{strings.entry.editButton}</Button>
-            <Button variant="plain" onClick={duplicate}>{strings.entry.duplicate}</Button>
-            {!back ? <Button variant="plain" onClick={() => { sheets.openEntry({ mode: 'refund', of: row }); }}>{strings.entry.refund}</Button> : null}
+            {/* S10: a personal entry is only ever posted by its regular payment: no copy, no money back. */}
+            {personal ? null : <Button variant="plain" onClick={duplicate}>{strings.entry.duplicate}</Button>}
+            {!back && !personal ? <Button variant="plain" onClick={() => { sheets.openEntry({ mode: 'refund', of: row }); }}>{strings.entry.refund}</Button> : null}
             {/* Delete on its own line, a text button on the margin, apart from the everyday actions (Q-L11). */}
             <div className="basis-full">
             <Button
@@ -213,6 +222,7 @@ function ExpenseView({ row }: { row: ExpenseRow }) {
           </>
         )}
       </fieldset>
+      )}
     </article>
   );
 }

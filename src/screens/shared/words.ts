@@ -204,6 +204,15 @@ function pausedOrResumed(summary: unknown, who: string): string | null {
   return active.after ? strings.history.resumed(who) : strings.history.paused(who);
 }
 
+/** S10 (REC-11): a regular payment made someone's own, or shared again: "Jae made it Jae's own" (its money follows). */
+function ownerChanged(summary: unknown, who: string, people: readonly Person[]): string | null {
+  const owner = field(summary, 'owner_id');
+  if (!owner || same(owner.before, owner.after)) return null;
+  if (owner.after === null) return strings.history.madeShared(who);
+  const name = people.find((p) => p.id === owner.after)?.name ?? strings.history.someone;
+  return strings.history.madeOwn(who, name);
+}
+
 /** One line of an entry's history (ACT-2): "Sam changed £42.50 to £45.20, yesterday 18:02". */
 export function historyLine(a: ActivityLike, people: readonly Person[], today: IsoDate, timeZone?: string): string {
   const who = a.actor === null ? null : (people.find((p) => p.id === a.actor)?.name ?? strings.history.someone);
@@ -212,7 +221,7 @@ export function historyLine(a: ActivityLike, people: readonly Person[], today: I
   else if (a.action === 'created') line = strings.history.added(who);
   else if (a.action === 'deleted') line = strings.history.deleted(who);
   else if (a.action === 'restored') line = strings.history.restored(who);
-  else line = pausedOrResumed(a.summary, who) ?? strings.history.changed(who, editWords(a.summary, people));
+  else line = ownerChanged(a.summary, who, people) ?? pausedOrResumed(a.summary, who) ?? strings.history.changed(who, editWords(a.summary, people));
   const when = whenWords(a.at, today, timeZone);
   return when ? strings.history.at(line, when) : line;
 }

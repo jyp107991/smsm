@@ -248,6 +248,8 @@ export interface Named { id: string; name: string }
 
 export const EXPORT_COLUMNS = (a: string, b: string) => [
   'Date', 'Type', 'Description', 'Category', 'Chapter', 'Country', 'Amount', 'Paid by', `${a}'s share`, `${b}'s share`, 'Notes', 'Deleted',
+  // S10 (REC-9): "Shared", or "Jae's own" for one person's own regular payment (blank for a settle-up).
+  'Whose',
 ];
 
 /**
@@ -276,6 +278,7 @@ export function exportCsv(
         e.date, e.kind === 'money_back' ? 'Money back' : 'Expense', e.description, nameOf(categories, e.categoryId),
         nameOf(chapters, e.chapterId), e.country ?? '', formatPlainPounds(e.amount), payers.map((p) => p.name).join(' and '),
         formatPlainPounds(e.shares[a.id] ?? pence(0)), formatPlainPounds(e.shares[b.id] ?? pence(0)), e.notes ?? '', e.deleted ? 'yes' : '',
+        e.ownerId == null ? 'Shared' : `${person(e.ownerId)}'s own`,
       ],
     });
   }
@@ -283,7 +286,7 @@ export function exportCsv(
     if (!inRange(s.date)) continue;
     lines.push({
       date: s.date,
-      cells: [s.date, 'Settle-up', `${person(s.from)} paid ${person(s.to)}`, '', '', '', formatPlainPounds(s.amount), person(s.from), '', '', s.note ?? '', s.deleted ? 'yes' : ''],
+      cells: [s.date, 'Settle-up', `${person(s.from)} paid ${person(s.to)}`, '', '', '', formatPlainPounds(s.amount), person(s.from), '', '', s.note ?? '', s.deleted ? 'yes' : '', ''],
     });
   }
   lines.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));

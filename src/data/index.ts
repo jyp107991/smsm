@@ -10,8 +10,8 @@ export { checkClientVersion, compareVersions, isStale, type VersionCheck } from 
 export { browserNetwork, type Network } from './network';
 export { installDataLayer, activeDataLayer } from './context';
 export {
-  useSession, useHousehold, useMembers, useCategories, useEntries, useSettlements, useBalance, useChangeRequests,
-  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useInbox, useImportRules, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts, useSmartFeatures,
+  useSession, useHousehold, useMembers, useCategories, useEntries, useAllEntries, useSettlements, useBalance, useChangeRequests,
+  useHistory, useOnline, useSyncStatus, useDataLayer, useWindowRole, useCategoryMemory, useRecurring, useAllRecurring, useInbox, useImportRules, useChapters, useCurrentChapter, useCurrentCountry, useLocationSetting, useComments, useAllComments, useCommentCounts, useSmartFeatures,
   type BalanceView, type DataResult, type SessionView, type SyncStatus,
 } from './hooks';
 export {

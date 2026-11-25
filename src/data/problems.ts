@@ -10,7 +10,7 @@ import { strings } from '../ui/strings';
 import { opLabel, opRowId, type MoneyOp, type QueuedRow } from './writes';
 
 /** Why the server said no, in categories the interface can explain (strings.sync.reasons). */
-export type RefusalReason = 'money' | 'money-back' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'still-running' | 'deleted-regular' | 'other';
+export type RefusalReason = 'money' | 'money-back' | 'not-member' | 'not-allowed' | 'missing' | 'category' | 'chapter' | 'photo' | 'still-running' | 'deleted-regular' | 'personal' | 'other';
 
 /** What the person is told (DESIGN §5: plain words, no codes); the words live with the interface's (TXT-7). */
 export const REFUSAL_MESSAGES: Record<RefusalReason, string> = strings.sync.reasons;
@@ -66,6 +66,8 @@ export function moneyBackLine(message: string): string | null {
 export function refusalReason(message: string, code: string): RefusalReason {
   // S6a: a receipt photo that couldn't go up (gone from the phone, or refused by the bucket); its entry is saved.
   if (code === 'photo-missing' || /mime type|payload too large|maximum allowed size/i.test(message)) return 'photo';
+  // S10 (migration 20261125000000): a personal payment's rules (before "not allowed": some share its code).
+  if (/personal (regular )?payment|personal entry|whose an entry|only its owner|handed to the other person|change whose it is/i.test(message)) return 'personal';
   if (code === '42501' || /row-level security|permission denied/i.test(message)) return 'not-allowed';
   if (/non-member|only the two of you/i.test(message)) return 'not-member';
   // The database's own money checks (check_money, the amount constraints) and the phone's (validateEntry);

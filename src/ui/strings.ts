@@ -109,6 +109,9 @@ export const strings = {
     /** S10: Delete is for a regular payment that has stopped. */
     stillRunning: 'Pause or end it first, then delete it.',
     deletedRegular: 'It was deleted, so it can’t start again.',
+    /** S10 (REC-9): a personal payment, or what it posted, is changed only by its owner. */
+    notTheirs: 'It’s one person’s own, so only they can change it.',
+    personalVaries: 'A payment of your own has a fixed amount. Turn off “Amount varies”, or make it shared.',
   },
 
   // ───────────── S2: the daily loop ─────────────
@@ -219,6 +222,8 @@ export const strings = {
       /** S10: a regular payment refused by the database's rules for Delete. */
       'still-running': 'It was still running, so it wasn’t deleted. Pause or end it first.',
       'deleted-regular': 'It was deleted on the other phone, so it can’t start again.',
+      /** S10: the database's rules for a personal payment. */
+      personal: 'It’s one person’s own, so only they can change it.',
       other: 'It couldn’t be saved. Open it to check it and save again.',
     },
     fix: 'Fix it',
@@ -309,6 +314,12 @@ export const strings = {
     moneyBackTag: 'money back',
     forTag: (name: string) => `for ${name}`,
     treatTag: 'treat',
+    /** S10 (REC-9): one person's own entry (what their own regular payment posted). */
+    ownTag: (name: string) => `${name}’s own`,
+    ownLine: (name: string) => `${name}’s own regular payment`,
+    ownApart: 'Kept out of everything you share.',
+    ownSummary: (name: string, amount: string | null) => (amount === null ? `${name}’s own` : `${name}’s own · ${amount}`),
+    ownReadOnly: (name: string) => `Kept out of everything you share. Only ${name} can change it.`,
     notSynced: 'On this phone; it syncs when there’s a connection.',
     note: 'Note',
     categoryNone: 'No category',
@@ -344,6 +355,9 @@ export const strings = {
     details: 'the details',
     /** A regular payment's history (REC-1): its pause and resume, its end, its rhythm. */
     paused: (who: string) => `${who} paused it`,
+    /** S10 (REC-11): whose a regular payment is, from its next payment on. */
+    madeOwn: (who: string, owner: string) => `${who} made it ${owner}’s own`,
+    madeShared: (who: string) => `${who} made it shared`,
     resumed: (who: string) => `${who} resumed it`,
     endDate: 'the end date',
     often: 'how often',
@@ -404,6 +418,13 @@ export const strings = {
     swipeDuplicate: 'Duplicate',
     /** S9: the rest of a long list, for the keyboard and screen readers (scrolling brings it by itself). */
     showMore: 'Show older entries',
+    /** S10 (REC-9): whose an entry is. */
+    whose: 'Whose',
+    anyWhose: 'Shared and own',
+    sharedOnly: 'Shared',
+    ownOf: (name: string) => `${name}’s own`,
+    /** S10: a person's own entries, filtered; never in the shared total. */
+    ownTotalLine: (name: string, count: number, amount: string) => `${name}’s own: ${String(count)} ${count === 1 ? 'entry' : 'entries'} · ${amount}`,
   },
   settle: {
     title: 'Settle up',
@@ -461,9 +482,23 @@ export const strings = {
     ended: 'Ended',
     later: 'Paused or ended',
     pendingPost: (description: string) => `${description} is due today and will post when you’re back online`,
+    /** S10 (REC-9, REC-10): each person's own regular payments, apart from what you share. */
+    own: (name: string) => `${name}’s own`,
+    ownLine: 'Kept apart from what you share.',
+    ownSubscriptions: (name: string) => `${name}’s subscriptions`,
+    ownNoSubscriptions: 'No subscriptions of their own.',
+    /** Worded apart from the shared "… a year in all" (one total of that name on the page). */
+    ownYearTotal: (amount: string) => `${amount} a year altogether`,
+    readOnly: (name: string) => `Only ${name} can change these.`,
   },
   recurring: {
     title: 'Regular payment',
+    /** S10 (REC-9): whose it is. */
+    whose: 'Whose is it?',
+    shared: 'Shared',
+    mine: 'Mine',
+    mineHint: 'You pay all of it. It’s kept out of everything you share.',
+    mineFromNext: 'From the next payment on. Past ones stay as they were.',
     edit: 'Edit regular payment',
     repeat: 'Repeat',
     howOften: 'How often',
@@ -710,6 +745,18 @@ export const strings = {
     over: (amount: string) => ` · about ${amount} over your usual pace`,
     onPace: ' · on your usual pace',
     thisMonthRegion: 'This month',
+    /** S10 (INS-10): each person's own regular payments, produced apart from the shared figures. */
+    own: (name: string) => `${name}’s own`,
+    ownLine: 'Their own regular payments, never in the figures above.',
+    ownThisMonth: 'This month',
+    ownNothing: 'Nothing of their own this month yet.',
+    ownRunning: (month: string, year: string) => `${month} a month to run, ${year} a year`,
+    ownByCategory: 'By category',
+    ownUnder: (name: string, amount: string) => ` · about ${amount} under ${name}’s usual pace`,
+    ownOver: (name: string, amount: string) => ` · about ${amount} over ${name}’s usual pace`,
+    ownOnPace: (name: string) => ` · on ${name}’s usual pace`,
+    ownMonthTotal: (amount: string) => `${amount} this month`,
+    ownDefine: 'This person’s own regular payments only: what they posted in the period, by the same rules as shared spending (this month against the usual pace, other periods against the same stretch before). The running cost is every running one of their own, as a month and a year.',
     standingOrder: (debtor: string, creditor: string, amount: string) =>
       `${debtor} has owed ${creditor} at the end of each of the last 3 months, about ${amount} on average. A standing order of ${amount} a month would keep you about square.`,
   },

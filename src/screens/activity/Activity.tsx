@@ -21,7 +21,7 @@ import { formatDate, formatDay, type IsoDate } from '../../core/dates';
 import { applyFilter, filteredTotal, newestFirst, type Filter, type FilterEntry } from '../../core/filters';
 import { formatPence, pence } from '../../core/money';
 import {
-  addExpense, deleteExpense, newId, restoreExpense, useCategories, useChapters, useDataLayer, useEntries, useSettlements, useSyncStatus,
+  addExpense, deleteExpense, newId, restoreExpense, useAllEntries, useCategories, useChapters, useDataLayer, useSettlements, useSyncStatus,
   type CategoryRow, type ChapterRow, type ExpenseRow, type SettlementRow, useCommentCounts,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -65,16 +65,21 @@ interface Filters {
   /** Q-U10: the days picked under "Pick dates". */
   range: DayRange | null;
   type: TypeChoice;
+  /** S10 (REC-9): '' everything, SHARED what you share, or a person's id: their own entries only. */
+  whose: string;
 }
 
-const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', tag: '', dates: 'any', range: null, type: 'any' };
+/** S10: the Whose filter's "Shared". */
+const SHARED = 'shared';
+const NO_FILTERS: Filters = { text: '', payer: null, category: null, chapter: '', country: '', place: '', tag: '', dates: 'any', range: null, type: 'any', whose: '' };
 
 /** Q-U10: a filter is on (search has its own clear button). */
-const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.tag !== '' || f.dates !== 'any' || f.type !== 'any';
+const filtering = (f: Filters) => f.payer !== null || f.category !== null || f.chapter !== '' || f.country !== '' || f.place !== '' || f.tag !== '' || f.dates !== 'any' || f.type !== 'any' || f.whose !== '';
 
 export function Activity() {
   const layer = useDataLayer();
-  const entries = useEntries().data;
+  // S10 (REC-9): Activity lists each person's own entries too, marked, and filterable apart.
+  const entries = useAllEntries().data;
   const settlements = useSettlements().data;
   const categories = useCategories().data;
   const people = usePeople();
@@ -99,7 +104,7 @@ export function Activity() {
         entry: {
           kind: row.kind === 'money_back' ? 'money_back' : 'expense', description: row.description, notes: row.notes, tags: row.tags,
           place: row.place, payer: payerOf(row.paid, people.list), categoryId: row.category_id, chapterId: row.chapter_id,
-          country: row.country, date: row.date, splitMode: row.split_mode as FilterEntry['splitMode'],
+          country: row.country, date: row.date, splitMode: row.split_mode as FilterEntry['splitMode'], ownerId: row.owner_id ?? null,
         },
       });
     }
@@ -128,6 +133,7 @@ export function Activity() {
       ...(f.tag !== '' ? { tags: [f.tag] } : {}),
       ...datesRange(f.dates, today, f.range),
       ...(f.type === 'expense' || f.type === 'money_back' || f.type === 'settlement' ? { kinds: [f.type] } : {}),
+      ...(f.whose !== '' ? { owner: f.whose } : {}),
     };
     const kept = new Set(applyFilter(items.map((i) => i.entry), filter));
     // S9a (ACT-1): the one order, as Home and the statement: newest first, then the one added last, then by id.
@@ -141,11 +147,15 @@ export function Activity() {
   const total = useMemo(() => {
     if (shownFilters.type === 'deleted' || (shownFilters.text.trim() === '' && !filtering(shownFilters))) return null;
     const gone = new Set((entries ?? []).filter((e) => e.deleted_at !== null).map((e) => e.id));
-    return filteredTotal(shown.map((i) => ({
+    // S10 (REC-12): the shared total never counts someone's own entries; their own filter totals theirs alone.
+    const owner = shownFilters.whose !== '' && shownFilters.whose !== SHARED ? shownFilters.whose : undefined;
+    const t = filteredTotal(shown.map((i) => ({
       ...i.entry, amount: pence(i.row.amount_pence),
       deleted: i.row.deleted_at !== null || (i.kind === 'expense' && i.row.kind === 'money_back' && i.row.refund_of !== null && gone.has(i.row.refund_of)),
-    })));
+    })), owner);
+    return { ...t, owner };
   }, [shown, shownFilters, entries]);
+  const someOwn = useMemo(() => (entries ?? []).some((e) => (e.owner_id ?? null) !== null), [entries]);
 
   const loading = entries === undefined || settlements === undefined;
   // The countries and places that occur in the household's entries (PLC-7), by name.
@@ -211,6 +221,7 @@ export function Activity() {
         countries={countries}
         places={places}
         tags={tags}
+        someOwn={someOwn}
         today={today}
       />
 
@@ -224,7 +235,13 @@ export function Activity() {
         )
       ) : (
         <>
-        {total !== null ? <p className="text-secondary text-ink-2 nums-list m-0">{strings.activity.totalLine(total.count, formatPence(total.total))}</p> : null}
+        {total !== null ? (
+          <p className="text-secondary text-ink-2 nums-list m-0">
+            {total.owner !== undefined
+              ? strings.activity.ownTotalLine(people.list.find((p) => p.id === total.owner)?.name ?? '', total.count, formatPence(total.total))
+              : strings.activity.totalLine(total.count, formatPence(total.total))}
+          </p>
+        ) : null}
         <ActivityList
           shown={shown}
           filters={shownFilters}
@@ -316,8 +333,9 @@ const ActivityList = memo(function ActivityList({ shown, filters, today, categor
           <ul className="m-0 list-none p-0">
             {d.items.map((i) => (
               <li key={i.row.id} className="border-line border-b last:border-b-0">
-                {/* A read-only window, or a deleted entry (Restore is on its page), has nothing to swipe. */}
-                {i.kind === 'expense' && (readOnly || i.row.deleted_at !== null) ? (
+                {/* A read-only window, or a deleted entry (Restore is on its page), has nothing to swipe; nor has one
+                    person's own (S10: never duplicated; its owner deletes it from its page). */}
+                {i.kind === 'expense' && (readOnly || i.row.deleted_at !== null || (i.row.owner_id ?? null) !== null) ? (
                   <EntryRowView row={i.row} categories={categories} people={people} pending={pendingIds.has(i.row.id)} comments={commentCounts.get(i.row.id) ?? 0} shared />
                 ) : i.kind === 'expense' ? (
                   <SwipeRow id={i.row.id}>
@@ -517,7 +535,7 @@ function springEasing(stiffness: number, damping: number, mass: number, seconds:
 }
 
 /** The search's chips and their sheets. Which sheet is open lives here, so opening one never redraws the list. */
-function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, tags, today }: {
+function FilterBar({ filters, onChange, onClear, people, nameOf, categories, chapters, countries, places, tags, someOwn, today }: {
   filters: Filters;
   onChange: (patch: Partial<Filters>) => void;
   onClear: () => void;
@@ -528,10 +546,13 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
   countries: readonly string[];
   places: readonly string[];
   tags: readonly string[];
+  /** S10 (REC-9): someone has entries of their own (the Whose filter is offered). */
+  someOwn: boolean;
   today: IsoDate;
 }) {
-  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'tag' | 'dates' | 'type' | null>(null);
-  const { payer, category, chapter, country, place, tag, dates, range, type } = filters;
+  const [picker, setPicker] = useState<'payer' | 'category' | 'chapter' | 'country' | 'place' | 'tag' | 'dates' | 'type' | 'whose' | null>(null);
+  const { payer, category, chapter, country, place, tag, dates, range, type, whose } = filters;
+  const whoseLabel = whose === '' ? null : whose === SHARED ? strings.activity.sharedOnly : strings.activity.ownOf(nameOf(whose));
   const live = categories.filter((c) => !c.archived);
   const chapterLabel = chapter === '' ? null : chapter === EVERYDAY ? strings.chapters.everyday : (chapters.find((c) => c.id === chapter)?.name ?? null);
   const payerLabel = payer ? nameOf(payer) : null;
@@ -568,6 +589,9 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
         ) : null}
         <FilterButton label={strings.activity.dates} value={dates === 'any' ? null : (dates === 'custom' ? rangeLabel : datesLabels[dates])} onClick={() => { setPicker('dates'); }} />
         <FilterButton label={strings.activity.type} value={type === 'any' ? null : typeLabels[type]} onClick={() => { setPicker('type'); }} />
+        {someOwn || whose !== '' ? (
+          <FilterButton label={strings.activity.whose} value={whoseLabel} onClick={() => { setPicker('whose'); }} />
+        ) : null}
         {filtering(filters) ? (
           <button
             type="button"
@@ -651,6 +675,18 @@ function FilterBar({ filters, onChange, onClear, people, nameOf, categories, cha
         value={type}
         options={(Object.keys(typeLabels) as TypeChoice[]).map((k) => ({ value: k, label: typeLabels[k] }))}
         onPick={(v) => { onChange({ type: v as TypeChoice }); }}
+      />
+      <Picker
+        open={picker === 'whose'}
+        title={strings.activity.whose}
+        onClose={close}
+        value={whose}
+        options={[
+          { value: '', label: strings.activity.anyWhose },
+          { value: SHARED, label: strings.activity.sharedOnly },
+          ...people.map((p) => ({ value: p.id, label: strings.activity.ownOf(p.name) })),
+        ]}
+        onPick={(v) => { onChange({ whose: v }); }}
       />
     </>
   );

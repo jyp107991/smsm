@@ -24,7 +24,7 @@ import { formatPence, formatPlainPounds, pence, type Pence } from '../../core/mo
 import {
   addExpense, deleteExpense, deleteRecurring, hasStarted, isDeleted, editExpense, endRecurring, restoreRecurring, keepImportNow, keepInboxItem, newId, undoKeep, pauseRecurring, rememberChoice, resumeRecurring, saveRecurring,
   currentCountry, currentOpenChapter, homeCountry, locate, guessCategory, keepPhoto, forgetPhoto, photoBlob, photoUrl, queuePhotoUpload, readReceipt, sortPhotoLater,
-  useSmartFeatures, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, useRecurring, type ExpenseDraft, type ExpenseRow,
+  useSmartFeatures, useAllEntries, useAllRecurring, useCategories, useCategoryMemory, useChapters, useDataLayer, useEntries, useHousehold, useOnline, type ExpenseDraft, type ExpenseRow,
   type ChapterRow, type RecurringRow,
 } from '../../data';
 import { tickSaved } from '../../ui/haptics';
@@ -86,14 +86,18 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   const categories = useCategories().data ?? NO_CATEGORIES;
   const live = useMemo(() => categories.filter((c) => !c.archived), [categories]);
   const entries = useEntries().data ?? NO_ENTRIES;
+  // S10 (REC-10): an entry being edited may be one person's own (never in the shared lists above).
+  const allEntries = useAllEntries().data ?? NO_ENTRIES;
   const memory = useCategoryMemory();
   const household = useHousehold().data ?? null;
   const today = layer.today();
   const me = people.me;
   const pair = people.list;
 
-  const existing: ExpenseRow | undefined = request.mode === 'edit' ? (entries.find((e) => e.id === request.id) ?? request.row) : undefined;
-  const templates = useRecurring().data;
+  const existing: ExpenseRow | undefined = request.mode === 'edit' ? (allEntries.find((e) => e.id === request.id) ?? request.row) : undefined;
+  // S10: a personal entry is all its owner's: no payer or split to choose.
+  const ownEntry = (existing?.owner_id ?? null) !== null;
+  const templates = useAllRecurring().data;
   const chapters = useChapters().data;
   const online = useOnline();
   // S3: the regular payment being edited (it stays the one opened, even as the list refreshes).
@@ -127,6 +131,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
     return { ...blankSchedule(today), ...(startSwitch ? { isSubscription: startSwitch.on } : {}), ...request.schedule };
   });
   const [rec, setRec] = useState<ScheduleState | null>(initialSchedule);
+  // S10 (REC-9): whose a regular payment is: shared (the default) or mine (I pay all of it; kept out of what we share).
+  const [initialWhose] = useState<'shared' | 'mine'>(() => (template && (template.owner_id ?? null) !== null ? 'mine' : 'shared'));
+  const [whose, setWhose] = useState<'shared' | 'mine'>(initialWhose);
+  const mine = rec !== null && whose === 'mine';
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
   const [s, setS] = useState<FormState>(initial);
   // CHP-1: a chapter started from this form is chosen for this entry (one request object per opening).
@@ -215,13 +223,13 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
    * otherwise drop it unseen. A new entry (add, money back): only typed text, as a tapped chip on an
    * otherwise empty form is one tap to redo (Q-U11).
    */
-  const asked = (f: FormState, r: ScheduleState | null) => {
+  const asked = (f: FormState, r: ScheduleState | null, w: 'shared' | 'mine') => {
     const exact = f.splitMode === 'exact' ? f.exactText : null;
     return JSON.stringify(request.mode === 'edit' || template
-      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, f.place ?? null, f.foreign ?? null, r]
-      : [f.amountText, f.description, f.notes, exact, r === null ? null : r.everyText]);
+      ? [f.amountText, f.description, f.categoryId, f.payer, f.splitMode, f.splitMode === 'ratio' ? f.ratio : null, exact, f.date, f.notes, f.place ?? null, f.foreign ?? null, r, w]
+      : [f.amountText, f.description, f.notes, exact, r === null ? null : r.everyText, w]);
   };
-  const dirty = asked(s, rec) !== asked(initial, initialSchedule) || (photo !== null && fromInboxScan === undefined);
+  const dirty = asked(s, rec, whose) !== asked(initial, initialSchedule, initialWhose) || (photo !== null && fromInboxScan === undefined);
   const changeSchedule = (next: Partial<ScheduleState>) => {
     if (rec) setRec({ ...rec, ...next });
     setErrors([]);
@@ -634,7 +642,9 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
       const savedId = saveRecurring({
         ...(template ? { id: template.id } : { id: rowId }),
         description: d.description, amount: d.amount, categoryId: d.categoryId, payer: d.payer, split: d.split, notes: d.notes ?? null,
-        frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: r.amountVaries, isSubscription: r.isSubscription,
+        frequency: r.frequency, every, startDate: r.startDate, endDate: r.endDate, amountVaries: whose === 'mine' ? false : r.amountVaries, isSubscription: r.isSubscription,
+        // S10 (REC-9, REC-11): whose it is (a change applies from the next payment on).
+        ownerId: whose === 'mine' ? me.id : null,
         ...(skipping && !template ? { active: false } : {}),
         // Review 2: only what this form changed of the schedule is sent (never the values it opened with).
         ...(template ? { opened: { frequency: template.frequency as ScheduleState['frequency'], every: template.every, startDate: template.start_date, endDate: template.end_date, notes: template.notes } } : {}),
@@ -724,7 +734,10 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
   };
 
   const remainder = remainderWords(s, pair);
-  const summary = summaryWords(s, pair);
+  // S10 (REC-9, REC-10): one person's own is all theirs: the line says whose and how much, never a split.
+  const ownName = mine ? me.name : ownEntry ? (pair.find((p) => p.id === existing?.owner_id)?.name ?? '') : null;
+  const ownAmount = parsedAmount(s);
+  const summary = ownName !== null ? strings.entry.ownSummary(ownName, ownAmount === null ? null : formatPence(ownAmount)) : summaryWords(s, pair);
   // S9a (fix 8): after a change of payer, a combination that doesn't move the balance says so.
   const noChange = (() => {
     if (isBack || movesBalance(s, pair) !== false) return null;
@@ -815,7 +828,29 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
         </div>
       </Group>
 
-      {pair.length === 2 ? (
+      {rec ? (
+        <Group label={strings.recurring.whose}>
+          <Choices
+            label={strings.recurring.whose}
+            options={[{ value: 'shared', label: strings.recurring.shared }, { value: 'mine', label: strings.recurring.mine }]}
+            value={whose}
+            onValueChange={(v) => {
+              setWhose(v === 'mine' ? 'mine' : 'shared');
+              setErrors([]);
+              // REC-11: one of my own made shared starts from the household's usual split (never "my treat", which
+              // would leave the other person owing nothing without anyone choosing it).
+              if (v === 'shared' && initialWhose === 'mine' && s.splitMode === 'treat' && !s.splitTouched) {
+                const usual = blankForm({ me: me.id, people: pair, today, split: defaultSplit({ remembered: null, category: undefined, householdRatio: household?.default_ratio, people: pair, me: me.id }) });
+                update({ ...s, payer: me.id, splitMode: usual.splitMode, ratio: usual.ratio, exactText: usual.exactText });
+              }
+            }}
+          />
+          {mine ? <p className="text-secondary text-ink-2 m-0 mt-2">{strings.recurring.mineHint}</p> : null}
+          {template && whose !== initialWhose ? <p className="text-secondary text-ink-2 m-0 mt-2">{strings.recurring.mineFromNext}</p> : null}
+        </Group>
+      ) : null}
+
+      {pair.length === 2 && !mine && !ownEntry ? (
         <>
           <Group label={isBack ? strings.entry.whoGotIt : strings.entry.whoPaid} id={`${formId}-payer`}>
             <PayerToggle
@@ -890,6 +925,7 @@ function EntryForm({ request, open, onDone }: { request: EntryRequest; open: boo
           rec={rec}
           today={today}
           rhythmLocked={template !== undefined && hasStarted(template)}
+          personal={mine}
           restart={restartText}
           past={pastChoice}
           startsRef={startsRef}
@@ -1112,8 +1148,10 @@ interface PastChoice {
   onMove: () => void;
 }
 
-function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, onChange, onSubscription, onPick }: {
+function ScheduleFields({ rec, today, rhythmLocked, personal, restart, past, startsRef, onChange, onSubscription, onPick }: {
   rec: ScheduleState;
+  /** S10 (REC-9): one of my own has a fixed amount (no "Amount varies"). */
+  personal: boolean;
   today: string;
   /** S10: one has posted, so how often is fixed (a new rhythm is a new payment); the start can still move. */
   rhythmLocked: boolean;
@@ -1192,13 +1230,14 @@ function ScheduleFields({ rec, today, rhythmLocked, restart, past, startsRef, on
         {/* S10: a moved start's own line says when it posts; the general hint would repeat it. */}
         {restart === null ? <p className="text-secondary text-ink-2 m-0">{strings.recurring.startsHint}</p> : null}
       </Group>
-      <EndsAndSwitches rec={rec} today={today} onChange={onChange} onSubscription={onSubscription} onPick={onPick} />
+      <EndsAndSwitches rec={rec} personal={personal} today={today} onChange={onChange} onSubscription={onSubscription} onPick={onPick} />
     </>
   );
 }
 
-function EndsAndSwitches({ rec, today, onChange, onSubscription, onPick }: {
+function EndsAndSwitches({ rec, today, personal, onChange, onSubscription, onPick }: {
   rec: ScheduleState;
+  personal: boolean;
   today: string;
   onChange: (next: Partial<ScheduleState>) => void;
   onSubscription: (on: boolean) => void;
@@ -1218,7 +1257,9 @@ function EndsAndSwitches({ rec, today, onChange, onSubscription, onPick }: {
       </Group>
 
       <div className="flex flex-col">
-        <Toggle label={strings.recurring.amountVaries} hint={strings.recurring.amountVariesHint} on={rec.amountVaries} onChange={(amountVaries) => { onChange({ amountVaries }); }} />
+        {personal ? null : (
+          <Toggle label={strings.recurring.amountVaries} hint={strings.recurring.amountVariesHint} on={rec.amountVaries} onChange={(amountVaries) => { onChange({ amountVaries }); }} />
+        )}
         <Toggle label={strings.recurring.subscription} hint={strings.recurring.subscriptionHint} on={rec.isSubscription} onChange={onSubscription} />
       </div>
     </>

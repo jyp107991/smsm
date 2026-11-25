@@ -96,7 +96,7 @@ export type InvalidReason =
   | EntryIssue
   | 'description' | 'date' | 'payerSplit' | 'settleBetween' | 'jointMoney' | 'splitAgain' | 'name' | 'monzoName' | 'ratio100'
   | 'schedule' | 'colour' | 'chapterName' | 'chapterDates' | 'comment' | 'notYours' | 'settleDay' | 'originalDeleted'
-  | 'stillRunning' | 'deletedRegular';
+  | 'stillRunning' | 'deletedRegular' | 'notTheirs' | 'personalVaries';
 
 /** The phone refused the entry before it was queued; `reasons` are codes for the screens to word. */
 export class EntryInvalidError extends Error {
@@ -193,7 +193,7 @@ function blankExpense(householdId: string, userId: UserId, date: IsoDate, stamp:
     items: null, bill_total_pence: null, country: 'GB', place: null, lat: null, lng: null, original_amount: null,
     original_currency: null, fx_rate: null, notes: null, tags: [], receipt_path: null, category_guess: false, source: 'manual', external_id: null,
     merchant: null, external_category: null, account_id: null, recurring_id: null, occurrence_date: null, refund_of: null,
-    created_by: userId, created_at: stamp, updated_by: userId, updated_at: stamp, deleted_at: null,
+    created_by: userId, created_at: stamp, updated_by: userId, updated_at: stamp, deleted_at: null, owner_id: null,
   };
 }
 

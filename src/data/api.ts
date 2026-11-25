@@ -61,6 +61,8 @@ export const EXPENSE_WRITE_COLUMNS = [
   // S6a: the receipt photo, its lines (each marked shared or not), the receipt's own total, and whether the category
   // was an AI guess.
   'receipt_path', 'items', 'bill_total_pence', 'category_guess',
+  // S10 (REC-9): whose it is (null: shared). Set by the server's posting; never changed (check_personal).
+  'owner_id',
 ] as const satisfies readonly (keyof ExpenseRow)[];
 export type ExpenseWrite = Pick<ExpenseRow, (typeof EXPENSE_WRITE_COLUMNS)[number]>;
 
@@ -80,6 +82,8 @@ export interface ExpensePatch extends SoftDeletePatch { external_id?: null }
 export const RECURRING_WRITE_COLUMNS = [
   'id', 'household_id', 'description', 'amount_pence', 'amount_varies', 'category_id', 'paid', 'paid_via', 'split_mode',
   'split_params', 'shares', 'is_subscription', 'frequency', 'every', 'start_date', 'end_date', 'active', 'notes', 'deleted_at',
+  // S10 (REC-9, REC-11): whose it is (null: shared); only to or from the person writing.
+  'owner_id',
 ] as const satisfies readonly (keyof RecurringRow)[];
 export type RecurringWrite = Pick<RecurringRow, (typeof RECURRING_WRITE_COLUMNS)[number]>;
 export type RecurringColumn = Exclude<(typeof RECURRING_WRITE_COLUMNS)[number], 'id' | 'household_id'>;

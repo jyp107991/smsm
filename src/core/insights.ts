@@ -6,7 +6,7 @@
  * dated in the period (a chapter period: that chapter's entries, whatever their dates). Settle-ups never count.
  * Everyday: in no chapter. Usual, pace and notes use everyday only.
  */
-import { netPositions, withoutOrphans } from './balance';
+import { isPersonal, netPositions, withoutOrphans } from './balance';
 import { addMonths, daysInMonth, startOfMonth, type IsoDate } from './dates';
 import { formatPence, pence, type Pence } from './money';
 import { monthlyCost } from './recurring';
@@ -22,6 +22,8 @@ export interface InsightEntry {
   refundOf?: string | null;
   /** When it was added (S9a: the one order). */
   createdAt?: string;
+  /** S10 (REC-12): whose it is: null or absent, shared; a person's id, their own (never in a shared figure). */
+  ownerId?: UserId | null;
 }
 export interface InsightSettlement { from: UserId; to: UserId; amount: Pence; date: IsoDate; deleted: boolean }
 export type PeriodChoice = 'month' | '3months' | '12months' | 'year' | 'chapter';
@@ -32,6 +34,8 @@ export interface Pace { soFar: Pence; usual: Pence | null; direction: 'under' | 
 export interface NoteTemplate {
   id: string; description: string; amount: Pence; frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate;
   isSubscription: boolean; active: boolean;
+  /** S10: a personal one (its owner's id) is never a shared note. */
+  ownerId?: UserId | null;
 }
 export interface Note { kind: 'category' | 'entry' | 'price' | 'new-regular'; text: string; weight: Pence }
 export interface Fairness { percents: Record<UserId, number>; split: Record<UserId, number>; total: Pence }
@@ -44,7 +48,8 @@ const shiftMonth = (m: Month, k: number): Month => addMonths(firstOf(m), k).slic
 
 /** Shared spending at all (the period aside): counted expenses and money back that isn't for the other. */
 function counts(e: InsightEntry): boolean {
-  if (e.deleted) return false;
+  // S10 (REC-12): one person's own entry is never shared spending.
+  if (e.deleted || isPersonal(e)) return false;
   return e.kind === 'expense' ? COUNTED.has(e.splitMode) : e.splitMode !== 'for_other';
 }
 const sign = (e: InsightEntry) => (e.kind === 'money_back' ? -1 : 1);
@@ -63,6 +68,15 @@ function sum(entries: readonly InsightEntry[]): number {
   let t = 0;
   for (const e of entries) t += sign(e) * e.amount;
   return t;
+}
+
+/**
+ * S10 (INS-10): one person's own entries, on their own: each as it was but read as shared spending (ownerId cleared), so
+ * every rule of the shared figures (the period, the comparison period, usual and pace, by category) applies to them
+ * unchanged, and nothing shared is among them. Their own entries are never in a shared figure.
+ */
+export function ownView(entries: readonly InsightEntry[], owner: UserId): InsightEntry[] {
+  return entries.filter((e) => e.ownerId === owner).map((e) => ({ ...e, ownerId: null }));
 }
 
 export function periodOf(choice: PeriodChoice, today: IsoDate, chapter?: PeriodChapter): Period {
@@ -86,7 +100,7 @@ export function previousPeriod(p: Period): Period | null {
 /** The first day with a live entry, or null with none (the household's history starts there). */
 function firstDay(entries: readonly InsightEntry[]): IsoDate | null {
   let first: IsoDate | null = null;
-  for (const e of entries) if (!e.deleted && (first === null || e.date < first)) first = e.date;
+  for (const e of entries) if (!e.deleted && !isPersonal(e) && (first === null || e.date < first)) first = e.date;
   return first;
 }
 
@@ -141,7 +155,7 @@ function median(xs: readonly number[]): number {
 /** The full months before `m` (after the month of the first live entry), most recent first, at most 6. */
 function fullMonths(entries: readonly InsightEntry[], m: Month): Month[] {
   let first: Month | null = null;
-  for (const e of entries) if (!e.deleted && (first === null || month(e.date) < first)) first = month(e.date);
+  for (const e of entries) if (!e.deleted && !isPersonal(e) && (first === null || month(e.date) < first)) first = month(e.date);
   if (first === null) return [];
   const out: Month[] = [];
   for (let k = 1; k <= 6; k += 1) {
@@ -255,6 +269,8 @@ export function notes(
     }
   }
   for (const t of templates) {
+    // S10: one person's own regular payment is never a shared note.
+    if (isPersonal(t)) continue;
     // A subscription whose entry posted this month differs from the one before.
     if (t.isSubscription) {
       const posted = entries.filter((e) => !e.deleted && e.recurringId === t.id).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -319,7 +335,7 @@ export function standingOrder(
     // The one balance function (balance.ts), over the rows up to that month's end; positive = a is owed.
     const nets = netPositions(
       people,
-      ledger.filter((e) => e.date <= end).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
+      ledger.filter((e) => e.date <= end).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted, ownerId: e.ownerId ?? null })),
       settlements.filter((s) => s.date <= end).map((s) => ({ from: s.from, to: s.to, amount: s.amount, deleted: s.deleted })),
     );
     ends.push(nets[a] ?? 0);

@@ -16,6 +16,7 @@ import {
 } from '../../data';
 import { Choices, Sheet } from '../../ui/primitives';
 import { AskSmsm } from './AskSmsm';
+import { OwnInsights } from './OwnInsights';
 import { strings } from '../../ui/strings';
 import { countryName } from '../chapters/model';
 import { Toggle } from '../entry/RecurringParts';
@@ -166,6 +167,9 @@ export function Insights() {
       <RecapLists />
 
       <NotesSection entries={entries} settlements={settlements} templates={templates} categories={categories} people={people.list} today={today} settleDay={household?.settle_day ?? null} />
+
+      {/* S10 (INS-10): each person's own regular payments, produced apart; never in any figure above. */}
+      <OwnInsights period={period} beforeWords={choice === '3months' ? strings.insights.before3 : choice === '12months' ? strings.insights.before12 : choice === 'year' ? strings.insights.beforeYear : strings.insights.before3} />
     </div>
   );
 }

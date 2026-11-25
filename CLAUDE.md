@@ -5,7 +5,7 @@ smsm is an installable phone app (PWA) for two people who share a home. It recor
 Read before writing any code, in this order: `docs/SPEC.md` (what, with acceptance-criteria ids), `docs/DESIGN.md` (look, feel, the avatar rig), `docs/DATA_MODEL.md` (tables, money rules, keeping phones in step), `docs/AI.md` (Gemini features and their guards), `docs/ENGINEERING.md` (stack, structure, tests, the slice protocol, definition of done), `docs/BUILD_PLAN.md` (slices), `docs/DECISIONS.md`, `docs/DEPLOY.md`. `supabase/schema.sql` with `tests/sql/` and `scripts/test-sql.sh` is the tested database baseline.
 
 ## Non-negotiables
-1. **Scope.** Shared spending and the debt between two people. Nothing about either person's own finances. If a change needs individual finances, it's out; ask.
+1. **Scope.** Shared spending and the debt between two people. Nothing about either person's own finances, except personal regular payments (owner, 25 Nov), kept out of every shared figure. If a change needs individual finances, it's out; ask.
 2. **Money is exact.** Integer pence everywhere. `paid` and `shares` each sum to the amount, enforced in TypeScript and in the database. One pure function computes the balance; tests prove it equals the database view.
 3. **Code computes, people decide.** AI never calculates a shown figure and never writes money without a person's tap. Every smart feature has a working fallback.
 4. **The database is the authority.** Row-level security on every table. Locked identity and the default split change only through approved requests. No hard deletes of money rows. Every change is logged.

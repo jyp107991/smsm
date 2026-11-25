@@ -245,4 +245,72 @@ describe.skipIf(!process.env.PGHOST)('netPositions against the member_net view',
       });
     }
   }, 120_000);
+
+  /**
+   * S10 (REC-12, BAL-1): core and SQL agree that one person's own entries are left out of the balance. Each household
+   * has random shared rows, its members' own entries as the app writes them (all the owner's, through row-level
+   * security and check_personal), and own entries shaped to move the balance if they were counted (written by the
+   * database owner with the checks off), so only "whose it is" can keep them out.
+   */
+  it('REC-12 BAL-1 netPositions and member_net (and member_net_on) both leave out personal entries', () => {
+    const households: (Household & { own: DbEntry[]; stray: DbEntry[] })[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const a = uid(5000 + 2 * i);
+      const b = uid(5001 + 2 * i);
+      const [h] = fc.sample(
+        fc.record({
+          entries: fc.array(entryArb(a, b), { maxLength: 15 }),
+          settlements: fc.array(settlementArb(a, b), { maxLength: 3 }),
+          own: fc.array(fc.record({ amount: fc.integer({ min: 1, max: 900_000 }), owner: fc.constantFrom(a, b), deleted: fc.boolean() }), { minLength: 1, maxLength: 6 }),
+          stray: fc.array(fc.record({ amount: fc.integer({ min: 1, max: 900_000 }), owner: fc.constantFrom(a, b) }), { minLength: 1, maxLength: 3 }),
+        }),
+        { numRuns: 1, seed: 20261125 + i },
+      );
+      if (!h) throw new Error('no sample');
+      const shared = h.entries.filter((e) => e.kind === 'expense');
+      households.push({
+        a, b, entries: shared, settlements: h.settlements,
+        own: h.own.map((o) => ({ kind: 'expense', mode: 'treat', amount: pence(o.amount), paid: { [o.owner]: pence(o.amount) }, shares: { [o.owner]: pence(o.amount) }, deleted: o.deleted, ownerId: o.owner })),
+        stray: h.stray.map((o) => ({ kind: 'expense', mode: 'for_other', amount: pence(o.amount), paid: { [o.owner]: pence(o.amount) }, shares: { [o.owner === a ? b : a]: pence(o.amount) }, deleted: false, ownerId: o.owner })),
+      });
+    }
+    const users = households.flatMap((h) => [h.a, h.b]);
+    const lines: string[] = [`insert into auth.users(id) values ${users.map((u) => `('${u}')`).join(', ')} on conflict do nothing;`];
+    for (const [i, h] of households.entries()) {
+      lines.push('set role authenticated;', householdSql({ a: h.a, b: h.b, entries: h.entries, settlements: h.settlements }, 900 + i));
+      for (const o of h.own) {
+        lines.push(`set request.jwt.claim.sub = '${o.ownerId ?? ''}';`,
+          `insert into expenses(household_id, kind, description, amount_pence, paid, split_mode, shares, owner_id, deleted_at) values ` +
+          `(:'hid', 'expense', 'Own', ${o.amount}, ${jsonb(o.paid)}, 'treat', ${jsonb(o.shares)}, '${o.ownerId ?? ''}', ${o.deleted ? 'now()' : 'null'});`);
+      }
+      lines.push('reset role;', 'alter table expenses disable trigger user;');
+      for (const o of h.stray) {
+        lines.push(`insert into expenses(household_id, kind, description, amount_pence, paid, split_mode, shares, owner_id) values ` +
+          `(:'hid', 'expense', 'Stray own', ${o.amount}, ${jsonb(o.paid)}, 'for_other', ${jsonb(o.shares)}, '${o.ownerId ?? ''}');`);
+      }
+      lines.push('alter table expenses enable trigger user;');
+    }
+    lines.push(`select m.user_id, m.net_pence, member_net_on(m.household_id, m.user_id, (now() at time zone 'Europe/London')::date) from member_net m order by m.user_id;`);
+    const out = psql(DB, ['-f', '-'], lines.join('\n'));
+    const dbNet = new Map<string, [number, number]>();
+    for (const line of out.trim().split('\n')) {
+      const [user, net, on] = line.split('|');
+      if (user && net !== undefined && on !== undefined) dbNet.set(user, [Number(net), Number(on)]);
+    }
+    let strays = 0;
+    for (const h of households) {
+      strays += h.stray.length;
+      const all = [...h.entries, ...h.own, ...h.stray];
+      const nets = netPositions([h.a, h.b], all, h.settlements);
+      const sharedOnly = netPositions([h.a, h.b], h.entries, h.settlements);
+      expect(nets).toEqual(sharedOnly);
+      for (const p of [h.a, h.b]) {
+        expect(dbNet.get(p)).toEqual([norm(nets[p] ?? Number.NaN), norm(nets[p] ?? Number.NaN)]);
+      }
+      // Counted, the strays would have moved it (so the agreement is about whose they are).
+      const counted = netPositions([h.a, h.b], all.map((e) => ({ ...e, ownerId: null })), h.settlements);
+      expect(counted).not.toEqual(sharedOnly);
+    }
+    expect(strays).toBeGreaterThan(0);
+  }, 120_000);
 });

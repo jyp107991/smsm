@@ -3,7 +3,7 @@
  * Insights (core/insights) and the one balance (core/balance), worked out on the phone, never stored. The shapes are
  * pinned by src/core/recap.test.ts. Pure: no I/O, no clock.
  */
-import { netPositions, withoutOrphans } from './balance';
+import { isPersonal, netPositions, withoutOrphans } from './balance';
 import { addMonths, daysInMonth, type IsoDate } from './dates';
 import {
   byCategory, notes, sharedSpend, usual, whoPaid, type InsightEntry, type InsightSettlement, type Month, type Note, type NoteTemplate,
@@ -15,7 +15,7 @@ import type { UserId } from './split';
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const lastOf = (m: Month): IsoDate => `${m}-${String(daysInMonth(Number(m.slice(0, 4)), Number(m.slice(5, 7)))).padStart(2, '0')}`;
 const COUNTED = new Set<string>(['ratio', 'exact', 'treat']);
-const isShared = (e: InsightEntry) => !e.deleted && e.kind === 'expense' && COUNTED.has(e.splitMode);
+const isShared = (e: InsightEntry) => !e.deleted && !isPersonal(e) && e.kind === 'expense' && COUNTED.has(e.splitMode);
 
 export interface RecapOptions {
   today: IsoDate;
@@ -91,7 +91,7 @@ export function recapOf(entries: readonly InsightEntry[], settlements: readonly 
   // function over every live entry and settle-up dated up to then, as the month's statement closes.
   const nets = netPositions(
     people,
-    withoutOrphans(entries).filter((e) => e.date <= to).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted })),
+    withoutOrphans(entries).filter((e) => e.date <= to).map((e) => ({ kind: e.kind, paid: e.paid, shares: e.shares, deleted: e.deleted, ownerId: e.ownerId ?? null })),
     settlements.filter((s) => s.date <= to).map((s) => ({ from: s.from, to: s.to, amount: s.amount, deleted: s.deleted })),
   );
   const [a, b] = people;

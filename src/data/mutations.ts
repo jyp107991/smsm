@@ -12,7 +12,7 @@ import type { SplitParams, UserId } from '../core/split';
 import { normaliseKey } from '../core/text';
 import type { IsoDate } from '../core/dates';
 import { isIsoDate } from '../core/dates';
-import { isRunning, occurrence, restart } from '../core/recurring';
+import { dueOccurrences, isRunning, occurrence, restart } from '../core/recurring';
 import type { Pence } from '../core/money';
 import { RECURRING_WRITE_COLUMNS, type AuthUser, type CategoryRow, type ChapterColumn, type ChapterRow, type ChapterWrite, type CommentColumn, type CommentRow, type ExpenseRow, type InboxItemRow, type RecurringColumn, type RecurringRow, type SettlementRow } from './api';
 import type { Json } from './database.types';
@@ -205,9 +205,13 @@ export function addImportedExpense(
  * ACT-5: either person can edit any entry; only the fields given change. Also how a refused write is fixed
  * (OFF-5): edit the kept entry by its id and it is saved again; the problem clears once it is stored.
  */
-export function editExpense(id: string, patch: Partial<ExpenseDraft>, layer = activeDataLayer()): void {
+export function editExpense(id: string, given: Partial<ExpenseDraft>, layer = activeDataLayer()): void {
   const ctx = context(layer);
   const current = currentExpense(layer, id);
+  refusePartnersOwn(current.row, ctx.uid);
+  // S10 (REC-10): a personal entry stays all its owner's, in no chapter, whatever the form sent.
+  const owner = current.row.owner_id ?? null;
+  const patch: Partial<ExpenseDraft> = owner === null ? given : personalPatch(given, owner);
   const base = { opId: newId(), by: ctx.uid, table: 'expenses', op: 'upsert', isNew: !current.onServer } as const;
   if (current.input) {
     // The entry as the person entered it (still waiting, or kept to fix): rebuilt exactly from that. A new pounds
@@ -226,6 +230,23 @@ export function editExpense(id: string, patch: Partial<ExpenseDraft>, layer = ac
   const split = patch.split ?? read.split;
   if (!split) throw new EntryInvalidError([SPLIT_AGAIN]);
   layer.enqueue({ ...base, ...expenseRowFor(ctx, { ...read.draft, split, ...patch }, current.row) });
+}
+
+/**
+ * S10 (REC-9, REC-10; row-level security): a personal row (a regular payment or what it posted) is changed only by its
+ * owner; the partner sees it read-only. Refused on the phone, as the database would refuse it.
+ */
+function refusePartnersOwn(row: { owner_id?: string | null } | undefined, uid: string): void {
+  const owner = row?.owner_id ?? null;
+  if (owner !== null && owner !== uid) throw new EntryInvalidError(['notTheirs']);
+}
+
+/** S10: an edit of a personal entry: whatever changes, it stays the owner's whole (a treat by them), in no chapter. */
+function personalPatch(patch: Partial<ExpenseDraft>, owner: UserId): Partial<ExpenseDraft> {
+  const out: Partial<ExpenseDraft> = { ...patch };
+  delete out.chapterId;
+  if (touchesMoney(patch)) Object.assign(out, { payer: owner, split: { mode: 'treat' }, kind: 'expense' });
+  return out;
 }
 
 /**
@@ -252,6 +273,7 @@ function dropRefusedNew(layer: DataLayer, table: 'expenses' | 'settlements', id:
 export function deleteExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row, onServer } = currentExpense(layer, id);
+  refusePartnersOwn(row, ctx.uid);
   if (dropRefusedNew(layer, 'expenses', id, onServer)) return true;
   // Q-F4: already deleted (a second tap, or the other phone got there first): nothing to do, nothing logged.
   if (row.deleted_at !== null) return false;
@@ -276,6 +298,7 @@ export function unkeepImportedExpense(id: string, layer = activeDataLayer()): bo
 export function restoreExpense(id: string, layer = activeDataLayer()): boolean {
   const ctx = context(layer);
   const { row } = currentExpense(layer, id);
+  refusePartnersOwn(row, ctx.uid);
   // Q-F4: not deleted: nothing to restore.
   if (row.deleted_at === null) return false;
   refuseForDeletedOriginal(layer, row.kind === 'money_back' ? row.refund_of : null);
@@ -503,6 +526,11 @@ export interface RecurringDraft {
   description: string; amount: Pence; categoryId: string | null; payer: UserId; split: SplitParams; notes?: string | null;
   frequency: 'weekly' | 'monthly' | 'yearly'; every: number; startDate: IsoDate; endDate: IsoDate | null;
   amountVaries: boolean; isSubscription: boolean;
+  /**
+   * S10 (REC-9, REC-11): whose it is: null, shared; the person's own id, theirs (paid and shared all by them; a fixed
+   * amount). Not given: as it was (a new one: shared). A change applies from the next payment on.
+   */
+  ownerId?: UserId | null;
 }
 
 /** The palette a category may use (DESIGN §3.1; the database checks the same list). */
@@ -543,11 +571,18 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
   if (!Number.isSafeInteger(draft.amount) || draft.amount <= 0) reasons.push('amount');
   if (!Number.isInteger(draft.every) || draft.every < 1 || draft.every > 52 || !isIsoDate(draft.startDate)
     || (draft.endDate !== null && (!isIsoDate(draft.endDate) || (draft.endDate < draft.startDate && !keptEnd)))) reasons.push('schedule');
+  // S10: only its owner changes a personal one; one is made only your own; a personal one has a fixed amount.
+  const owner = draft.ownerId === undefined ? (existing?.owner_id ?? null) : draft.ownerId;
+  if ((existing?.owner_id ?? null) !== null && existing?.owner_id !== ctx.uid) reasons.push('notTheirs');
+  else if (owner !== null && owner !== ctx.uid) reasons.push('notTheirs');
+  if (owner !== null && draft.amountVaries) reasons.push('personalVaries');
   if (reasons.length > 0) throw new EntryInvalidError(reasons);
   if (!ctx.pair) throw new PartnerNotJoinedError();
-  // The money, worked out as for an entry of that amount (check_money holds for templates too).
+  // The money, worked out as for an entry of that amount (check_money holds for templates too); a personal one is all
+  // its owner's (a treat by them).
   const money = expenseRowFor(ctx, {
-    description: draft.description, amount: draft.amount, date: layer.today(), categoryId: draft.categoryId, payer: draft.payer, split: draft.split,
+    description: draft.description, amount: draft.amount, date: layer.today(), categoryId: draft.categoryId,
+    ...(owner === null ? { payer: draft.payer, split: draft.split } : { payer: owner, split: { mode: 'treat' as const } }),
   }).row;
   const stamp = layer.now().toISOString();
   // Review 2: the schedule fields the form changed (all of them for a new one); the rest stay as this phone holds them.
@@ -574,14 +609,17 @@ export function saveRecurring(input: RecurringDraft & { id?: string; active?: bo
     category_id: draft.categoryId, paid: money.paid, paid_via: money.paid_via, split_mode: money.split_mode, split_params: money.split_params,
     shares: money.shares, is_subscription: draft.isSubscription, ...schedule, active: existing?.active ?? active ?? true,
     notes,
-    posted_count: expectedCount(existing, schedule), ever_posted: existing ? hasStarted(existing) : false,
+    posted_count: expectedCount(existing, schedule, owner, layer.today()), ever_posted: existing ? hasStarted(existing) : false,
     created_by: existing?.created_by ?? ctx.uid, created_at: existing?.created_at ?? stamp, updated_at: stamp,
     deleted_at: existing?.deleted_at ?? null,
+    owner_id: owner,
   };
   // Q-F1: the same form saved twice (a double tap) changes nothing.
   if (existing && sameJson(recurringWrite(existing), recurringWrite(row))) return row.id;
   // An edit writes what the form owns, never `active` (a partner's pause stays paused), and of the schedule only what it changed.
-  const columns = EDIT_COLUMNS.filter((k) => (k === 'notes' ? notesChanged : !(k in changed) || changed[k as keyof typeof changed]));
+  // S10: whose it is, only when the form changed it (a stale phone never writes an old owner back).
+  const ownerChanged = existing !== undefined && (existing.owner_id ?? null) !== owner;
+  const columns = EDIT_COLUMNS.filter((k) => (k === 'notes' ? notesChanged : k === 'owner_id' ? ownerChanged : !(k in changed) || changed[k as keyof typeof changed]));
   layer.enqueue({
     opId: newId(), by: ctx.uid, table: 'recurring', op: 'upsert', isNew: existing === undefined, row, input: null,
     ...(existing ? { columns } : {}),
@@ -598,12 +636,17 @@ export interface ScheduleWas { frequency: RecurringDraft['frequency']; every: nu
  * nearest to the old next day), so Bills shows the right next day meanwhile. Otherwise the stored count (the
  * server's; never sent).
  */
-function expectedCount(existing: RecurringRow | undefined, s: Pick<RecurringRow, 'frequency' | 'every' | 'start_date' | 'end_date'>): number {
+function expectedCount(
+  existing: RecurringRow | undefined, s: Pick<RecurringRow, 'frequency' | 'every' | 'start_date' | 'end_date'>, owner: string | null, today: IsoDate,
+): number {
   if (!existing) return 0;
-  const restarts = hasStarted(existing) && s.start_date !== existing.start_date && s.frequency === existing.frequency && s.every === existing.every;
-  if (!restarts) return existing.posted_count;
-  const old = { frequency: existing.frequency as RecurringDraft['frequency'], every: existing.every, startDate: existing.start_date, endDate: s.end_date };
-  return restart(old, existing.posted_count, s.start_date).done;
+  // S10 (REC-11): a change of whose posts what is already due first, as it was (recurring_guard).
+  const old = { frequency: existing.frequency as RecurringDraft['frequency'], every: existing.every, startDate: existing.start_date, endDate: existing.end_date };
+  const ownerMoves = (existing.owner_id ?? null) !== owner && existing.active && !isDeleted(existing);
+  const done = ownerMoves ? existing.posted_count + dueOccurrences(old, existing.posted_count, today).length : existing.posted_count;
+  const restarts = (hasStarted(existing) || done > 0) && s.start_date !== existing.start_date && s.frequency === existing.frequency && s.every === existing.every;
+  if (!restarts) return done;
+  return restart({ ...old, endDate: s.end_date }, done, s.start_date).done;
 }
 
 /** An edit writes what the form owns: never `active` (a partner's pause stays paused), never `deleted_at` (only Delete and Undo). */
@@ -619,6 +662,7 @@ function changeRecurring(
   const ctx = context(layer);
   const current = shown<RecurringRow>(layer, 'recurring').find((r) => r.id === id);
   if (!current) throw new EntryNotFoundError(id);
+  refusePartnersOwn(current, ctx.uid);
   const next: RecurringRow = { ...current, ...change, ...expected, updated_at: layer.now().toISOString() };
   if (sameJson(recurringWrite(current), recurringWrite(next))) return false;
   layer.enqueue({

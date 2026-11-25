@@ -26,13 +26,16 @@ describe('demo mode', () => {
     await waitFor(() => { expect(result.current.balance.status).toBe('ready'); });
     const seed = demoHousehold('2026-11-17');
     expect(result.current.members.data?.map((m) => m.display_name)).toEqual(['Jae', 'Sam']);
-    expect(result.current.entries.data).toHaveLength(seed.expenses.length);
+    // S10 (REC-12): the shared list is the seed's shared entries (each person's own are listed apart).
+    const shared = seed.expenses.filter((e) => e.owner_id === null).length;
+    expect(result.current.entries.data).toHaveLength(shared);
+    expect(seed.expenses.some((e) => e.owner_id !== null)).toBe(true);
     const expected = netPositions([JAE, SAM], seed.expenses.map(expenseToLedger), seed.settlements.map(settlementToLedger));
     expect(result.current.balance).toMatchObject({ status: 'ready', nets: expected });
 
     act(() => {
       addExpense({ description: 'Demo shop', amount: pence(1000), date: '2026-11-17', categoryId: null, payer: JAE, split: { mode: 'treat' } });
     });
-    await waitFor(() => { expect(result.current.entries.data).toHaveLength(seed.expenses.length + 1); });
+    await waitFor(() => { expect(result.current.entries.data).toHaveLength(shared + 1); });
   });
 });

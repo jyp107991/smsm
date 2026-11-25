@@ -38,7 +38,7 @@ CREATE FUNCTION public.check_comment_entry() RETURNS trigger
     SET search_path TO 'public'
     AS $$
 begin
-  if not exists (select 1 from expenses e where e.id = new.expense_id and e.household_id = new.household_id) then
+  if not exists (select 1 from expenses e where e.id = new.expense_id and e.household_id = new.household_id and e.owner_id is null) then
     raise exception 'that entry is not one of yours' using errcode = '23503';
   end if;
   return new;
@@ -92,6 +92,36 @@ begin
   return new;
 end $$;
 --
+-- Name: check_personal(); Type: FUNCTION; Schema: public; Owner: -
+--
+CREATE FUNCTION public.check_personal() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare o text;
+begin
+  if tg_table_name = 'expenses' and tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id then
+    raise exception 'whose an entry is never changes (it would move money already counted)' using errcode = '23514';
+  end if;
+  if new.owner_id is null then return new; end if;
+  o := new.owner_id::text;
+  if not exists (select 1 from members m where m.household_id = new.household_id and m.user_id = new.owner_id) then
+    raise exception 'a personal payment belongs to one of the two of you' using errcode = '23514';
+  end if;
+  if new.split_mode <> 'treat' or new.paid_via <> 'person'
+     or coalesce((new.paid ->> o)::bigint, -1) <> new.amount_pence or coalesce((new.shares ->> o)::bigint, -1) <> new.amount_pence then
+    raise exception 'a personal payment is all its owner''s: paid and shares are the whole amount' using errcode = '23514';
+  end if;
+  if tg_table_name = 'recurring' then
+    if new.amount_varies then
+      raise exception 'a personal regular payment has a fixed amount' using errcode = '23514';
+    end if;
+  elsif new.kind <> 'expense' or new.chapter_id is not null or new.refund_of is not null then
+    raise exception 'a personal entry is an expense, in no chapter' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+--
 -- Name: check_refund_limit(); Type: FUNCTION; Schema: public; Owner: -
 --
 CREATE FUNCTION public.check_refund_limit() RETURNS trigger
@@ -121,7 +151,7 @@ begin
   if new.kind <> 'money_back' or new.refund_of is null or new.deleted_at is not null then return new; end if;
   -- One refund at a time per original (two phones at once can't both squeeze in). Only the household's own expense.
   select * into v_orig from expenses where id = new.refund_of for update;
-  if not found or v_orig.household_id <> new.household_id or v_orig.kind <> 'expense' then
+  if not found or v_orig.household_id <> new.household_id or v_orig.kind <> 'expense' or v_orig.owner_id is not null then
     raise exception 'money back can only be for an expense of yours' using errcode = '23514';
   end if;
   -- Only a change that raises what has come back is checked.
@@ -496,7 +526,7 @@ CREATE FUNCTION public.member_net_on(p_household uuid, p_user uuid, p_day date) 
     AS $$
   select (coalesce((select sum(case e.kind when 'money_back' then -1 else 1 end
                                * (coalesce((e.paid ->> p_user::text)::bigint, 0) - coalesce((e.shares ->> p_user::text)::bigint, 0)))
-                      from expenses e where e.household_id = p_household and e.deleted_at is null and e.date <= p_day
+                      from expenses e where e.household_id = p_household and e.deleted_at is null and e.date <= p_day and e.owner_id is null
                         and not (e.kind = 'money_back' and exists (select 1 from expenses o where o.id = e.refund_of and o.deleted_at is not null))), 0)
         + coalesce((select sum(s.amount_pence) from settlements s
                      where s.household_id = p_household and s.deleted_at is null and s.from_user = p_user and s.date <= p_day), 0)
@@ -680,6 +710,8 @@ declare v_kind text; v_payload jsonb := '{}'; v_fields jsonb;
 begin
   if auth.uid() is null then return null; end if;
   if current_setting('smsm.following', true) = 'on' then return null; end if;
+  -- S10: a personal entry is its owner's own business: never a notification.
+  if new.owner_id is not null then return null; end if;
   if tg_op = 'INSERT' then
     if current_setting('smsm.posting', true) = 'on' or new.deleted_at is not null then return null; end if;
     v_kind := 'entry_added';
@@ -815,7 +847,7 @@ begin
   insert into notification_outbox(household_id, recipient, kind, ref_id, payload)
   select e.household_id, m.user_id, 'bill_posted', e.id, jsonb_build_object('recurring_id', e.recurring_id)
     from expenses e join members m on m.household_id = e.household_id
-   where e.recurring_id is not null and e.source = 'recurring' and e.occurrence_date = d and e.deleted_at is null
+   where e.recurring_id is not null and e.source = 'recurring' and e.occurrence_date = d and e.deleted_at is null and e.owner_id is null
      and (select count(*) from members x where x.household_id = e.household_id) = 2
      and not exists (select 1 from notification_outbox a where a.kind = 'bill_posted' and a.ref_id = e.id);
   get diagnostics c = row_count; n := n + c;
@@ -824,7 +856,7 @@ begin
   insert into notification_outbox(household_id, recipient, kind, ref_id)
   select r.household_id, m.user_id, 'bill_tomorrow', r.id
     from recurring r join members m on m.household_id = r.household_id
-   where r.active and (r.end_date is null or r.end_date >= d + 1)
+   where r.active and r.deleted_at is null and r.owner_id is null and (r.end_date is null or r.end_date >= d + 1)
      and exists (select 1 from generate_series(r.posted_count, r.posted_count + 3) k
                   where (r.start_date + recurring_step(r.frequency, r.every) * k)::date = d + 1)
      and (select count(*) from members x where x.household_id = r.household_id) = 2;
@@ -836,7 +868,7 @@ begin
     select h.id, m.user_id, 'recap_ready', jsonb_build_object('month', to_char(d - 1, 'YYYY-MM'))
       from households h join members m on m.household_id = h.id
      where (select count(*) from members x where x.household_id = h.id) = 2
-       and exists (select 1 from expenses e where e.household_id = h.id and e.deleted_at is null
+       and exists (select 1 from expenses e where e.household_id = h.id and e.deleted_at is null and e.owner_id is null
                      and e.date between date_trunc('month', d - 1)::date and d - 1);
     get diagnostics c = row_count; n := n + c;
   end if;
@@ -900,7 +932,7 @@ CREATE FUNCTION public.recurring_guard() RETURNS trigger
     LANGUAGE plpgsql
     SET search_path TO 'public'
     AS $$
-declare uk_today date := (now() at time zone 'Europe/London')::date; nxt date; n int := 0;
+declare uk_today date := (now() at time zone 'Europe/London')::date; nxt date; n int := 0; done int; started boolean;
         own constant text[] := array['deleted_at', 'updated_at', 'posted_count', 'ever_posted'];
 begin
   if tg_op = 'INSERT' then
@@ -914,6 +946,18 @@ begin
   end if;
   if current_user = 'authenticated' and new.posted_count is distinct from old.posted_count then
     raise exception 'posted_count is kept by the server' using errcode = '42501';
+  end if;
+  -- 4. Whose it is: never the other person's; only the owner hands theirs back to shared (row-level security too).
+  if new.owner_id is distinct from old.owner_id and coalesce(current_setting('smsm.restoring', true), '') <> 'on' then
+    if old.owner_id is not null and new.owner_id is not null then
+      raise exception 'a personal regular payment can''t be handed to the other person' using errcode = '42501';
+    end if;
+    if auth.uid() is not null and coalesce(new.owner_id, old.owner_id) is distinct from auth.uid() then
+      raise exception 'only its owner can change whose a regular payment is' using errcode = '42501';
+    end if;
+    if old.deleted_at is not null then
+      raise exception 'a deleted regular payment can''t change whose it is' using errcode = '23514';
+    end if;
   end if;
   -- 2. Only the server says it has posted, and it never stops having posted.
   new.ever_posted := old.ever_posted;
@@ -933,15 +977,21 @@ begin
     raise exception 'a regular payment that is still running can''t be deleted: pause or end it first' using errcode = '23514';
   end if;
   -- 1c. Deleted: first the days due by today that haven't posted (nothing for a paused one).
+  done := old.posted_count;
   if old.deleted_at is null and new.deleted_at is not null then
     new.posted_count := recurring_post_due_one(old.id);
+  elsif new.owner_id is distinct from old.owner_id then
+    -- 4b. A change of whose: what is already due posts first, as it was (nothing for a paused one).
+    done := recurring_post_due_one(old.id);
+    new.posted_count := done;
   end if;
-  if old.ever_posted and (new.frequency, new.every) is not distinct from (old.frequency, old.every)
+  started := old.ever_posted or done > 0;
+  if started and (new.frequency, new.every) is not distinct from (old.frequency, old.every)
      and new.start_date is distinct from old.start_date then
     -- 3. A new start: the next payment is the new occurrence nearest to the old next day.
-    new.posted_count := recurring_restart_index(old.start_date, old.frequency, old.every, old.posted_count, new.start_date);
-  elsif old.ever_posted and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
-    nxt := (old.start_date + recurring_step(old.frequency, old.every) * old.posted_count)::date;
+    new.posted_count := recurring_restart_index(old.start_date, old.frequency, old.every, done, new.start_date);
+  elsif started and (new.frequency, new.every, new.start_date) is distinct from (old.frequency, old.every, old.start_date) then
+    nxt := (old.start_date + recurring_step(old.frequency, old.every) * done)::date;
     new.start_date := greatest(new.start_date, nxt);
     new.posted_count := 0;
   end if;
@@ -974,7 +1024,8 @@ begin
   if not r.active or r.deleted_at is not null then return n; end if;
   perform set_config('smsm.posting', 'on', true);
   v_late := exists (select 1 from notification_daily_runs where day = uk_today)
-            and (select count(*) from members x where x.household_id = r.household_id) = 2;
+            and (select count(*) from members x where x.household_id = r.household_id) = 2
+            and r.owner_id is null;
   select home_country into home from households where id = r.household_id;
   loop
     d := (r.start_date + recurring_step(r.frequency, r.every) * n)::date;
@@ -987,9 +1038,9 @@ begin
     else
       v_id := null;
       insert into expenses(household_id, description, amount_pence, date, category_id, chapter_id, paid, paid_via,
-                           split_mode, split_params, shares, notes, country, source, recurring_id, occurrence_date)
+                           split_mode, split_params, shares, notes, country, source, recurring_id, occurrence_date, owner_id)
       values (r.household_id, r.description, r.amount_pence, d, r.category_id, null, r.paid, r.paid_via,
-              r.split_mode, r.split_params, r.shares, r.notes, coalesce(home, 'GB'), 'recurring', r.id, d)
+              r.split_mode, r.split_params, r.shares, r.notes, coalesce(home, 'GB'), 'recurring', r.id, d, r.owner_id)
       on conflict do nothing
       returning id into v_id;
       if v_late and v_id is not null and d = uk_today then
@@ -1158,6 +1209,8 @@ begin
     rc.every := coalesce(rc.every, 1); rc.posted_count := coalesce(rc.posted_count, 0);
     rc.created_at := coalesce(rc.created_at, now()); rc.updated_at := coalesce(rc.updated_at, now());
     rc.created_by := restore_person(rc.created_by, p_people, member_ids);
+    -- S10: whose it is, the person mapped (a person not mapped: refused by check_personal).
+    if rc.owner_id is not null then rc.owner_id := coalesce(restore_person(rc.owner_id, p_people, member_ids), rc.owner_id); end if;
     insert into recurring select rc.*;
     added := jsonb_set(added, '{recurring}', to_jsonb((added ->> 'recurring')::int + 1));
   end loop;
@@ -1189,6 +1242,7 @@ begin
     e.category_guess := coalesce(e.category_guess, false); e.created_at := coalesce(e.created_at, now()); e.updated_at := coalesce(e.updated_at, now());
     e.created_by := restore_person(e.created_by, p_people, member_ids);
     e.updated_by := restore_person(e.updated_by, p_people, member_ids);
+    if e.owner_id is not null then e.owner_id := coalesce(restore_person(e.owner_id, p_people, member_ids), e.owner_id); end if;
     insert into expenses select e.* on conflict do nothing;
     if found then
       added := jsonb_set(added, '{expenses}', to_jsonb((added ->> 'expenses')::int + 1));
@@ -1758,6 +1812,7 @@ CREATE TABLE public.expenses (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
     category_guess boolean DEFAULT false NOT NULL,
+    owner_id uuid,
     CONSTRAINT expenses_amount_pence_check CHECK ((amount_pence > 0)),
     CONSTRAINT expenses_description_check CHECK ((length(TRIM(BOTH FROM description)) > 0)),
     CONSTRAINT expenses_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'money_back'::text]))),
@@ -1876,7 +1931,7 @@ CREATE VIEW public.member_net WITH (security_invoker='true') AS
                     ELSE 1
                 END * (COALESCE(((e.paid ->> (m.user_id)::text))::bigint, (0)::bigint) - COALESCE(((e.shares ->> (m.user_id)::text))::bigint, (0)::bigint)))) AS sum
            FROM public.expenses e
-          WHERE ((e.household_id = m.household_id) AND (e.deleted_at IS NULL) AND (NOT ((e.kind = 'money_back'::text) AND (EXISTS ( SELECT 1
+          WHERE ((e.household_id = m.household_id) AND (e.deleted_at IS NULL) AND (e.owner_id IS NULL) AND (NOT ((e.kind = 'money_back'::text) AND (EXISTS ( SELECT 1
                    FROM public.expenses o
                   WHERE ((o.id = e.refund_of) AND (o.deleted_at IS NOT NULL)))))))), (0)::numeric) + COALESCE(( SELECT sum(s.amount_pence) AS sum
            FROM public.settlements s
@@ -1966,6 +2021,7 @@ CREATE TABLE public.recurring (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
     ever_posted boolean DEFAULT false NOT NULL,
+    owner_id uuid,
     CONSTRAINT recurring_amount_pence_check CHECK ((amount_pence > 0)),
     CONSTRAINT recurring_every_check CHECK (((every >= 1) AND (every <= 52))),
     CONSTRAINT recurring_frequency_check CHECK ((frequency = ANY (ARRAY['weekly'::text, 'monthly'::text, 'yearly'::text]))),
@@ -2272,6 +2328,10 @@ CREATE TRIGGER expenses_log AFTER INSERT OR UPDATE ON public.expenses FOR EACH R
 --
 CREATE TRIGGER expenses_notify AFTER INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.notify_expense();
 --
+-- Name: expenses expenses_personal; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER expenses_personal BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.check_personal();
+--
 -- Name: expenses expenses_refund_limit; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER expenses_refund_limit BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.check_refund_limit();
@@ -2315,6 +2375,10 @@ CREATE TRIGGER recurring_guard BEFORE INSERT OR UPDATE ON public.recurring FOR E
 -- Name: recurring recurring_log; Type: TRIGGER; Schema: public; Owner: -
 --
 CREATE TRIGGER recurring_log AFTER INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.log_activity();
+--
+-- Name: recurring recurring_personal; Type: TRIGGER; Schema: public; Owner: -
+--
+CREATE TRIGGER recurring_personal BEFORE INSERT OR UPDATE ON public.recurring FOR EACH ROW EXECUTE FUNCTION public.check_personal();
 --
 -- Name: recurring recurring_stamp; Type: TRIGGER; Schema: public; Owner: -
 --
@@ -2665,7 +2729,7 @@ ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 --
 -- Name: expenses expenses_ins; Type: POLICY; Schema: public; Owner: -
 --
-CREATE POLICY expenses_ins ON public.expenses FOR INSERT WITH CHECK ((household_id = public.my_household()));
+CREATE POLICY expenses_ins ON public.expenses FOR INSERT WITH CHECK (((household_id = public.my_household()) AND ((owner_id IS NULL) OR (owner_id = auth.uid()))));
 --
 -- Name: expenses expenses_sel; Type: POLICY; Schema: public; Owner: -
 --
@@ -2673,7 +2737,7 @@ CREATE POLICY expenses_sel ON public.expenses FOR SELECT USING ((household_id = 
 --
 -- Name: expenses expenses_upd; Type: POLICY; Schema: public; Owner: -
 --
-CREATE POLICY expenses_upd ON public.expenses FOR UPDATE USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
+CREATE POLICY expenses_upd ON public.expenses FOR UPDATE USING (((household_id = public.my_household()) AND ((owner_id IS NULL) OR (owner_id = auth.uid())))) WITH CHECK (((household_id = public.my_household()) AND ((owner_id IS NULL) OR (owner_id = auth.uid()))));
 --
 -- Name: households hh_read; Type: POLICY; Schema: public; Owner: -
 --
@@ -2767,9 +2831,17 @@ CREATE POLICY recaps_read ON public.recaps FOR SELECT USING ((household_id = pub
 --
 ALTER TABLE public.recurring ENABLE ROW LEVEL SECURITY;
 --
--- Name: recurring recurring_all; Type: POLICY; Schema: public; Owner: -
+-- Name: recurring recurring_ins; Type: POLICY; Schema: public; Owner: -
 --
-CREATE POLICY recurring_all ON public.recurring USING ((household_id = public.my_household())) WITH CHECK ((household_id = public.my_household()));
+CREATE POLICY recurring_ins ON public.recurring FOR INSERT WITH CHECK (((household_id = public.my_household()) AND ((owner_id IS NULL) OR (owner_id = auth.uid()))));
+--
+-- Name: recurring recurring_sel; Type: POLICY; Schema: public; Owner: -
+--
+CREATE POLICY recurring_sel ON public.recurring FOR SELECT USING ((household_id = public.my_household()));
+--
+-- Name: recurring recurring_upd; Type: POLICY; Schema: public; Owner: -
+--
+CREATE POLICY recurring_upd ON public.recurring FOR UPDATE USING (((household_id = public.my_household()) AND ((owner_id IS NULL) OR (owner_id = auth.uid())))) WITH CHECK (((household_id = public.my_household()) AND ((owner_id IS NULL) OR (owner_id = auth.uid()))));
 --
 -- Name: restore_ids; Type: ROW SECURITY; Schema: public; Owner: -
 --
@@ -2817,6 +2889,11 @@ GRANT ALL ON FUNCTION public.check_entry_chapter() TO service_role;
 REVOKE ALL ON FUNCTION public.check_money() FROM PUBLIC;
 GRANT ALL ON FUNCTION public.check_money() TO authenticated;
 GRANT ALL ON FUNCTION public.check_money() TO service_role;
+--
+-- Name: FUNCTION check_personal(); Type: ACL; Schema: public; Owner: -
+--
+REVOKE ALL ON FUNCTION public.check_personal() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.check_personal() TO service_role;
 --
 -- Name: FUNCTION check_refund_limit(); Type: ACL; Schema: public; Owner: -
 --

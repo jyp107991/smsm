@@ -14,3 +14,11 @@ export function paceTail(p: Pace): string {
     : p.direction === 'over' && p.amount !== null ? strings.insights.over(whole(p.amount))
     : p.direction === 'on' ? strings.insights.onPace : '';
 }
+
+/** S10 (INS-10): the same pace in words for one person's own figures, with their name ("on Jae's usual pace"). */
+export function ownPaceTail(p: Pace, name: string): string {
+  const whole = (x: number) => `£${Math.floor(x / 100).toLocaleString('en-GB')}`;
+  return p.direction === 'under' && p.amount !== null ? strings.insights.ownUnder(name, whole(p.amount))
+    : p.direction === 'over' && p.amount !== null ? strings.insights.ownOver(name, whole(p.amount))
+    : p.direction === 'on' ? strings.insights.ownOnPace(name) : '';
+}
